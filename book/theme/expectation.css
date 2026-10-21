@@ -1,0 +1,31 @@
+/* mdBook's light and navy themes on Expectation's day and night palettes (expectation_theme). */
+.light, html:not(.js) {
+  --bg: #ebe8dd; --fg: #1a1b17;
+  --sidebar-bg: #e2dfd0; --sidebar-fg: #1a1b17; --sidebar-non-existant: #a6aa9a;
+  --sidebar-active: #136a32; --sidebar-spacer: #cfcab6;
+  --scrollbar: #a6aa9a; --icons: #545a4f; --icons-hover: #1a1b17;
+  --links: #085d7b; --inline-code-color: #8c267e;
+  --theme-popup-bg: #f6f4ed; --theme-popup-border: #cfcab6; --theme-hover: #e4e1d3;
+  --quote-bg: #f6f4ed; --quote-border: #cfcab6;
+  --table-border-color: #cfcab6; --table-header-bg: #e2dfd0; --table-alternate-bg: #f1efe7;
+  --searchbar-border-color: #cfcab6; --searchbar-bg: #fbfaf6; --searchbar-fg: #1a1b17;
+  --searchresults-header-fg: #545a4f; --searchresults-border-color: #cfcab6; --search-mark-bg: #f5e5c2;
+}
+.navy {
+  --bg: #1a1b17; --fg: #dfe8df;
+  --sidebar-bg: #22241e; --sidebar-fg: #dfe8df; --sidebar-non-existant: #3a403a;
+  --sidebar-active: #4cff7a; --sidebar-spacer: #45483d;
+  --scrollbar: #45483d; --icons: #919c91; --icons-hover: #dfe8df;
+  --links: #45d4ff; --inline-code-color: #ff5ce1;
+  --theme-popup-bg: #2b2d26; --theme-popup-border: #45483d; --theme-hover: #2a302a;
+  --quote-bg: #2b2d26; --quote-border: #45483d;
+  --table-border-color: #45483d; --table-header-bg: #22241e; --table-alternate-bg: #20221c;
+  --searchbar-border-color: #45483d; --searchbar-bg: #050806; --searchbar-fg: #dfe8df;
+  --searchresults-header-fg: #919c91; --searchresults-border-color: #45483d; --search-mark-bg: #3a2c08;
+}
+h1, h2, h3, h4, .menu-title, .chapter, .sidebar .part-title { font-family: Menlo, ui-monospace, "SF Mono", "Fira Mono", Consolas, monospace; }
+.content h1 { font-size: 2em; }
+.content h2, .content h3 { margin-top: 1.8em; }
+.light pre > code, html:not(.js) pre > code { background: #fbfaf6; }
+.navy pre > code { background: #050806; }
+pre > code { border-radius: 6px; }

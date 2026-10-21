@@ -1,0 +1,19 @@
+[book]
+title = "Expectation"
+description = "Acceptance testing where the behaviour is the source of truth"
+authors = ["Patrick Tescher"]
+language = "en"
+src = "src"
+
+[output.html]
+site-url = "/guide/"
+git-repository-url = "https://github.com/ptescher/expectation"
+edit-url-template = "https://github.com/ptescher/expectation/edit/main/book/{path}"
+default-theme = "light"
+preferred-dark-theme = "navy"
+additional-css = ["theme/expectation.css"]
+no-section-label = false
+
+[output.html.fold]
+enable = true
+level = 1

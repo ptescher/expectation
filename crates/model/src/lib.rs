@@ -1,4 +1,4 @@
-//! The expectation domain's core model: the vocabulary a suite is written in, the conditions
+//! Expectation's core model: the vocabulary a suite is written in, the conditions
 //! built from it, and the expectations and stories that use them.
 //!
 //! An *expectation* says how the system behaves: given some state, when something happens,

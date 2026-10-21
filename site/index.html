@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Expectation</title>
+<meta name="description" content="Acceptance testing where the behaviour is the source of truth: write expectations once, and get conflict checking, generated acceptance tests and a user manual.">
+<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="./">expectation</a>
+  <nav>
+    <a href="guide/">Guide</a>
+    <a href="example/site/index.html">Example manual</a>
+    <a href="api/expectation_harness/index.html">API</a>
+    <a href="https://github.com/ptescher/expectation">GitHub</a>
+  </nav>
+</header>
+
+<main>
+<section class="hero">
+  <p class="eyebrow">Acceptance testing for Rust</p>
+  <h1>Write the behaviour once.<br>Get the conflicts, the tests <span class="nowrap">and the manual.</span></h1>
+  <p class="lede">Describe your system as expectations in a shared vocabulary. Expectation checks
+  that they agree, compiles your user stories into acceptance tests, runs them against the real
+  thing, and writes the user manual, with a screenshot of every step.</p>
+  <p class="actions">
+    <a class="btn primary" href="guide/getting-started.html">Get started</a>
+    <a class="btn" href="example/site/index.html">See a generated manual</a>
+  </p>
+  <pre class="install"><span class="prompt">$</span> cargo install --git https://github.com/ptescher/expectation expectation_cli</pre>
+</section>
+
+<section class="pipeline" aria-label="From spec to manual">
+  <article class="panel">
+    <div class="title"><span class="n">1</span> Specify</div>
+    <pre class="screen gherkin"><span class="kw">Expectation:</span> Turning the dial up starts the kettle
+  <span class="kw">Given</span> the kettle is off
+  <span class="kw">When</span> the dial is above 55 %
+  <span class="kw">Then</span> the kettle is heating
+
+<span class="kw">Expectation:</span> The child lock holds the kettle
+  <span class="kw">Given</span> the kettle is off
+  <span class="kw">And</span> the child lock is on
+  <span class="kw">When</span> the dial is above 55 %
+  <span class="kw">Then</span> the kettle is off</pre>
+    <p>Every step is a declared state or event, so the suite is a model, not a script.</p>
+  </article>
+
+  <article class="panel">
+    <div class="title"><span class="n">2</span> Check</div>
+    <pre class="screen"><span class="bad">error[conflict]</span>: «The child lock holds the kettle»
+and «Turning the dial up starts the kettle»
+disagree about the kettle
+ <span class="muted">= note:</span> both apply when the kettle is off and
+   the child lock is on, and the dial is above 55 %
+ <span class="muted">= help:</span> «The child lock holds the kettle» is the
+   more specific; if it's an exception, add
+   <span class="ok">Overrides: Turning the dial up starts the kettle</span></pre>
+    <p>Contradictions, unreachable behaviour and untested rules are caught before anything runs.</p>
+  </article>
+
+  <article class="panel">
+    <div class="title"><span class="n">3</span> Test</div>
+    <pre class="screen">Keeping little hands off
+  <span class="muted">arrange</span>  the kettle is off, the child lock is off
+  1. <span class="muted">when</span>   the user presses lock
+       <span class="muted">check</span>  the child lock is on        <span class="ok">✓</span>
+  2. <span class="muted">when</span>   the dial is 100 %
+       <span class="muted">check</span>  the kettle is off           <span class="ok">✓</span>
+  3. <span class="muted">when</span>   the dial is 80 %
+       <span class="muted">check</span>  the kettle is heating       <span class="ok">✓</span>
+<span class="ok">✓</span> Reaching «Running dry stops the kettle»</pre>
+    <p>Stories become tests; the expectations supply the checks. Generated tests cover the rest.</p>
+  </article>
+
+  <article class="panel">
+    <div class="title"><span class="n">4</span> Document</div>
+    <div class="screen doc">
+      <p class="doc-h">First cup</p>
+      <ol>
+        <li><strong>Set the dial to 80 %.</strong><br>The kettle is heating.</li>
+      </ol>
+      <img src="example/screenshots/first-cup--turn-it-up-then-turn-it-off/01.svg" alt="The toy kettle heating, with its display reading HEATING" loading="lazy">
+    </div>
+    <p>Stories are tutorials, features are topic pages, and the test evidence is one click away.</p>
+  </article>
+</section>
+
+<section class="features">
+  <h2>What you get</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>Conflicts, found mechanically</h3>
+      <p>Conditions are sets of states, so overlaps and contradictions are exact. Exceptions are
+      explicit with <code>Overrides:</code>, and they must form a DAG.</p>
+    </div>
+    <div class="card">
+      <h3>Stories that can't drift</h3>
+      <p>A story that relies on unspecified behaviour, or contradicts an expectation, is
+      rejected before it runs. It never has to restate what the rules already promise.</p>
+    </div>
+    <div class="card">
+      <h3>Coverage by construction</h3>
+      <p>A flow DAG from the starting state gives every expectation a shortest route, and a
+      generated test follows it when no story does.</p>
+    </div>
+    <div class="card">
+      <h3>Any system, through a driver</h3>
+      <p>A dozen closures bind the vocabulary to your code: a library, a game loop, an API, a
+      browser, a device. Time, polling and screenshots are built in.</p>
+    </div>
+    <div class="card">
+      <h3>Honest about gaps</h3>
+      <p>What the driver or the machine can't do yet is "not supported yet", not a failure,
+      and the manual shows it. Databases and containers start themselves.</p>
+    </div>
+    <div class="card">
+      <h3>A manual people read</h3>
+      <p>Markdown for GitHub and an HTML site, in the user's words, with
+      <code>Say:</code> and <code>Shows:</code> lines for what to press and what appears.</p>
+    </div>
+  </div>
+</section>
+
+<section class="code">
+  <div class="copy">
+    <h2>Bind it, run it</h2>
+    <p>Bind each term of the vocabulary to your system, then run the suite from a test. It fails
+    with every broken promise, named after the expectation that made it.</p>
+    <p><a href="guide/drivers.html">Drivers in the guide →</a></p>
+  </div>
+  <pre class="screen rust"><span class="k">let mut</span> driver = Bindings::new(Kettle::default())
+    .observe(<span class="s">"the kettle"</span>, |k| k.phase_name())
+    .set(<span class="s">"the dial"</span>, |k, v| k.dial = v.as_f64().unwrap())
+    .on(<span class="s">"the user presses lock"</span>, Kettle::press_lock)
+    .on_settle(|k| k.run_for(<span class="n">1.0</span>))
+    .on_screenshot(|k| Screenshot::svg(k.svg()));
+
+Acceptance::load(<span class="s">"expectations"</span>)?
+    .with_coverage()
+    .assert_passes(&amp;<span class="k">mut</span> driver, &amp;RunOptions::default());</pre>
+</section>
+
+<section class="next">
+  <a class="card link" href="guide/introduction.html"><small>Read</small>The guide</a>
+  <a class="card link" href="guide/kettle.html"><small>Walk through</small>A worked example</a>
+  <a class="card link" href="example/site/index.html"><small>Browse</small>The kettle manual</a>
+  <a class="card link" href="api/expectation_harness/index.html"><small>Look up</small>The API</a>
+</section>
+</main>
+
+<footer>
+  <p>Expectation is MIT licensed. <a href="https://github.com/ptescher/expectation">Source on GitHub</a>.</p>
+</footer>
+</body>
+</html>

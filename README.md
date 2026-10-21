@@ -30,6 +30,8 @@ events, so expectations can be compared mechanically. Expectation uses that to:
 
 There are no dependencies outside the standard library.
 
+**Docs:** [the guide](https://expectation.sim001.net/guide/), [an example manual](https://expectation.sim001.net/example/site/index.html) and [the API](https://expectation.sim001.net/api/expectation_harness/index.html), at [expectation.sim001.net](https://expectation.sim001.net).
+
 ## A taste
 
 ```gherkin

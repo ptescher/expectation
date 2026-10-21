@@ -13,7 +13,7 @@
 //!
 //! The wording comes from the specs: `Say:` on an event or phrase tells the reader what to do
 //! ("press Space"), `Set:` on a state tells them how to change it, and a story's text under its
-//! narrative is the tutorial's introduction. [`voice`] turns steps into instructions with them.
+//! narrative is the tutorial's introduction. `voice` turns steps into instructions with them.
 //! A step without a screenshot (its test isn't supported yet, didn't run, or failed before it
 //! got there) shows a placeholder instead.
 

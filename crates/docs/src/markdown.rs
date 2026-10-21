@@ -13,7 +13,7 @@ use expectation_story::{Because, Check, CheckResult, Origin, Plan, Status, StepR
 use std::fmt::Write;
 
 const GENERATED: &str =
-    "<!-- Generated from the suite's .expect files by the expectation domain; edit those, not this. -->";
+    "<!-- Generated from the suite's .expect files by Expectation (github.com/ptescher/expectation); edit those, not this. -->";
 
 pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
     let mut pages = vec![
