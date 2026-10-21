@@ -2,6 +2,7 @@
 name = "expectation_model"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 repository.workspace = true
 description = "Expectation: vocabulary, conditions, expectations and stories as plain data"
 

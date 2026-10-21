@@ -2,6 +2,7 @@
 name = "expectation_story"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 repository.workspace = true
 description = "Expectation: user stories compiled into acceptance-test plans, and their results"
 

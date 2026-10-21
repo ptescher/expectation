@@ -2,6 +2,7 @@
 name = "expectation_language"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 repository.workspace = true
 description = "Expectation: the .expect file format (parser and name resolution)"
 

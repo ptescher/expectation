@@ -2,6 +2,7 @@
 name = "expectation_graph"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 repository.workspace = true
 description = "Expectation: conflict detection, override precedence and the flow DAG"
 

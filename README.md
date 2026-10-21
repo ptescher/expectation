@@ -476,3 +476,7 @@ cargo run -p expectation_cli -- docs  <dir> <out-dir>      # docs from the resul
 ```
 
 Or install it: `cargo install --git https://github.com/ptescher/expectation expectation_cli`.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

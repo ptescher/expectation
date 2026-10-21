@@ -2,6 +2,7 @@
 name = "expectation_theme"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 repository.workspace = true
 description = "Expectation: the colours, type and shapes of the generated docs and graphs"
 
