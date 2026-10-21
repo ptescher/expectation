@@ -217,7 +217,7 @@ pub fn explore(suite: &Suite, prec: &Precedence, roots: &[(Condition, SectionId)
 }
 
 /// For each transition, the transitions its own trigger might also set off.
-fn companions(transitions: &[&Expectation]) -> Vec<Vec<usize>> {
+pub(crate) fn companions(transitions: &[&Expectation]) -> Vec<Vec<usize>> {
     transitions
         .iter()
         .map(|e| (0..transitions.len()).filter(|&c| e.trigger.may_fire(&transitions[c].trigger)).collect())

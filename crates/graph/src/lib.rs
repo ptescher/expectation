@@ -10,10 +10,12 @@ pub mod export;
 pub mod flow;
 pub mod precedence;
 pub mod semantics;
+pub mod states;
 
 pub use conflict::{Conflict, Kind as ConflictKind};
 pub use flow::{Flow, Limits, Node, Route};
 pub use precedence::Precedence;
+pub use states::StateMap;
 
 use expectation_model::{Condition, Diagnostic, ExpId, FeatureId, SectionId, Suite};
 

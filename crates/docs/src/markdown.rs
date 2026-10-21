@@ -502,6 +502,13 @@ fn report(d: &Docs, f: &Facts) -> String {
         })
     };
     let _ = writeln!(o, "```mermaid\n{}```", expectation_graph::export::mermaid(s, d.analysis, &classes));
+    let map = expectation_graph::states::explore(s, &d.analysis.precedence, &[], Default::default());
+    let _ = writeln!(
+        o,
+        "\n## State map\n\nThe states the app can get into from each section's setup, and every way from one to \
+         another. [The HTML site](site/states.html) has an interactive one, with screenshots.\n\n```mermaid\n{}```",
+        expectation_graph::states::mermaid(s, &map)
+    );
     o
 }
 

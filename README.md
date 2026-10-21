@@ -482,6 +482,7 @@ The docs are only as good as the words in the specs. Some habits that help:
 ```bash
 cargo run -p expectation_cli -- check <dir>                # diagnostics; exits 1 on errors
 cargo run -p expectation_cli -- graph <dir> [--dot]        # the flow DAG as Mermaid or DOT
+cargo run -p expectation_cli -- states <dir> [--by <states>] [--dot]  # the app's states and the moves between them
 cargo run -p expectation_cli -- plan  <dir> [--coverage]   # the acceptance tests, step by step
 cargo run -p expectation_cli -- docs  <dir> <out-dir>      # docs from the results saved in <out-dir>/results
 ```

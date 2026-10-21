@@ -22,6 +22,7 @@ mod manual;
 mod map;
 mod markdown;
 pub mod outline;
+mod states;
 mod voice;
 
 use expectation_graph::Analysis;

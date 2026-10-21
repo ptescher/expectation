@@ -37,6 +37,27 @@ Prints the flow DAG: each feature as a group, each expectation as a node (invari
 hexagons), arrows from the start and between expectations, dotted arrows for overrides, and
 red ones for conflicts nobody has settled.
 
+## states
+
+```bash
+expectation states <dir>                               # Mermaid state diagram
+expectation states <dir> --dot                         # Graphviz DOT
+expectation states <dir> --by "the screen,the dialog"  # tell states apart by these
+```
+
+Prints the state map: every state the app can get into from each section's setup, and every
+action that moves it from one to another (`[*]` marks the starts). Where `graph` is about
+expectations, this is about the app: its screens and modes and how to get around them.
+
+States are told apart by the vocabulary's enumerated states unless `--by` names others, so a
+number like a dial's reading doesn't make a state per value. Name the state that is your app's
+screen to get one node per screen; actions that change only what `--by` leaves out show as
+staying put.
+
+The docs have the same map as `site/states.html`: drag to pan, scroll to zoom, and pick a state
+to see its screenshot (from a test step that was in it), what can be done there, the
+expectations behind each move, and the ways in. It works without JavaScript too.
+
 ## plan
 
 ```bash

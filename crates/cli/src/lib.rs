@@ -16,6 +16,10 @@ usage: expectation <command> <suite-dir> [options]
 commands:
   check <dir>               check the vocabulary, conflicts, overrides and stories
   graph <dir> [--dot]       print the flow DAG as Mermaid, or Graphviz DOT
+  states <dir> [--by <states>] [--dot]
+                            print the map of the app's states and the moves between them, as
+                            a Mermaid state diagram or Graphviz DOT; --by names the states that
+                            tell them apart, comma separated (default: every enumerated one)
   plan  <dir> [--coverage]  print the acceptance tests the stories compile to
                             (--coverage adds generated tests for untested expectations)
   docs  <dir> <out-dir>     write the docs (Markdown and an HTML site), with the results runs
@@ -58,7 +62,13 @@ fn load_platform(dir: &str, platform: Option<&str>) -> Checked {
 /// the suite, 2 for usage. A library, so that a project can ship the command under its own
 /// package.
 pub fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    // `--by <states>` takes a value; the other options are flags.
+    let by = args.iter().position(|a| a == "--by").map(|i| {
+        let v = args.get(i + 1).cloned().unwrap_or_default();
+        args.drain(i..(i + 2).min(args.len()));
+        v
+    });
     let flag = |f: &str| args.iter().any(|a| a == f);
     let pos: Vec<&str> = args.iter().filter(|a| !a.starts_with("--")).map(|s| s.as_str()).collect();
     match pos.as_slice() {
@@ -76,6 +86,19 @@ pub fn main() {
                 print!("{}", expectation_graph::export::dot(&c.suite, &c.analysis));
             } else {
                 print!("{}", expectation_graph::export::mermaid(&c.suite, &c.analysis, &|_| None));
+            }
+        }
+        ["states", dir] => {
+            let c = load(dir);
+            let by = states_by(&c.suite, by.as_deref());
+            let map = expectation_graph::states::explore(&c.suite, &c.analysis.precedence, &by, Default::default());
+            if flag("--dot") {
+                print!("{}", expectation_graph::states::dot(&c.suite, &map));
+            } else {
+                print!("{}", expectation_graph::states::mermaid(&c.suite, &map));
+            }
+            if map.truncated {
+                eprintln!("warning: the search hit its limits, so the map may be missing states");
             }
         }
         ["plan", dir] => {
@@ -157,6 +180,23 @@ fn docs(dir: &str, out: &str) {
             }
         }
     }
+}
+
+/// The states `--by` names, comma separated, or none for the default.
+fn states_by(suite: &Suite, by: Option<&str>) -> Vec<expectation_model::VarId> {
+    let Some(by) = by else { return vec![] };
+    by.split(',')
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .map(|n| match suite.vocabulary.find_var(n) {
+            Some(v) => v.id,
+            None => {
+                let known: Vec<&str> = suite.vocabulary.variables.iter().map(|v| v.subject.as_str()).collect();
+                eprintln!("error: --by: no state called «{n}» (the states are: {})", known.join(", "));
+                exit(2)
+            }
+        })
+        .collect()
 }
 
 fn check(dir: &str, platform: Option<&str>) {

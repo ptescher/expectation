@@ -2,7 +2,8 @@
 //! like a manual. A section page starts with what it assumes ("Before you begin": its setup,
 //! and the expectations that lead there from its parent), then its features and stories. A
 //! feature page shows each behaviour with a screenshot of it being tested. A test page walks
-//! through the steps. Plain HTML and CSS, no scripts.
+//! through the steps. Plain HTML and CSS; the state map adds a small script for panning and
+//! zooming, and works without it.
 
 use crate::{
     Docs, Facts, NO_SCREENSHOT, NOT_SUPPORTED, Page, action_heading, feature_slug, missing_shot, narrative,
@@ -31,6 +32,8 @@ enum Here {
     Test(usize),
     Tests,
     Map,
+    /// The app's states and the moves between them.
+    States,
     /// The definitions of the suite's terms.
     Glossary,
     /// The states, events and phrases the tests are written in.
@@ -70,6 +73,7 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
     }
     pages.push(Page { path: "site/tests.html".into(), content: site.tests_page() });
     pages.push(Page { path: "site/map.html".into(), content: site.map_page() });
+    pages.push(Page { path: "site/states.html".into(), content: site.states_page() });
     pages.push(Page { path: "site/vocabulary.html".into(), content: site.vocabulary_page() });
     pages.push(Page { path: "site/glossary.html".into(), content: site.glossary_page() });
     pages.push(Page { path: "site/assets/theme.css".into(), content: expectation_theme::css::stylesheet() });
@@ -231,6 +235,7 @@ impl Site<'_> {
             Here::Test(i) => (self.test_url(i), self.d.plans[i].title.clone()),
             Here::Tests => ("tests.html".into(), "Test report".into()),
             Here::Map => ("map.html".into(), "Map".into()),
+            Here::States => ("states.html".into(), "State map".into()),
             Here::Glossary => ("glossary.html".into(), "Glossary".into()),
             Here::Vocabulary => ("vocabulary.html".into(), "Test vocabulary".into()),
             Here::Theme => ("theme.html".into(), "Theme".into()),
@@ -859,7 +864,7 @@ impl Site<'_> {
         );
         let all: Vec<ExpId> = s.expectations.iter().map(|x| x.id).collect();
         let _ = write!(o, r#"<p class="tally">{} · expectations: {}</p>"#, esc(&self.summary()), self.tally(&all));
-        o.push_str(r#"<p>The tests use the states, actions and shorthand of the <a href="vocabulary.html">test vocabulary</a>. <a href="map.html">The map</a> shows which behaviour leads to which, and <a href="theme.html">the theme</a> shows the colours and type the docs are drawn in.</p>"#);
+        o.push_str(r#"<p>The tests use the states, actions and shorthand of the <a href="vocabulary.html">test vocabulary</a>. <a href="map.html">The map</a> shows which behaviour leads to which, <a href="states.html">the state map</a> shows the states the app gets into and how to get between them, and <a href="theme.html">the theme</a> shows the colours and type the docs are drawn in.</p>"#);
         for section in &s.sections {
             let tests: Vec<usize> =
                 (0..self.d.plans.len()).filter(|&i| self.d.plans[i].section == section.id).collect();
@@ -1042,6 +1047,24 @@ impl Site<'_> {
             let _ = write!(o, r#"<h2>{}</h2><div class="map">{map}</div>"#, esc(&chain.join(" › ")));
         }
         self.page(Here::Map, "Map", &o)
+    }
+
+    fn states_page(&self) -> String {
+        let s = self.suite();
+        let by = expectation_graph::states::default_by(s);
+        let map = expectation_graph::states::explore(s, &self.d.analysis.precedence, &by, Default::default());
+        let names: Vec<String> = map.by.iter().map(|&v| s.vocabulary.var(v).subject.clone()).collect();
+        let mut o = String::from("<h1>State map</h1>");
+        let _ = write!(
+            o,
+            r#"<p class="lede">Every state the app can get into from each section's setup, told apart by {}, and every way from one to another. A screenshot is from a test step that was in the state.</p><p class="legend"><span class="badge ok">start</span> Arrows are coloured by the verdict of the expectations behind them: <span class="badge ok">verified</span> <span class="badge bad">failed</span> <span class="badge idle">not verified</span>. States more than a move from the start are folded away at first: pick a state to see what can happen there and open the states it leads to (a <strong>+N</strong> on a card counts the ones still folded behind it). Drag to pan and scroll to zoom. <a href="map.html">The map of expectations</a> shows the same behaviour by rule instead of by state.</p>"#,
+            esc(&expectation_model::text::join_and(&names))
+        );
+        if map.truncated {
+            o.push_str(r#"<p class="note warn">The search stopped at its limits, so some states may be missing.</p>"#);
+        }
+        o.push_str(&crate::states::html(self.d, self.f, &map, &|e| self.exp_link(e), &|i| self.test_link(i)));
+        self.page(Here::States, "State map", &o)
     }
 
     fn vocabulary_page(&self) -> String {
@@ -1498,6 +1521,50 @@ ul.checks li.idle::before { content: "○"; color: var(--muted); }
 .note { margin: 12px 0; padding: 10px 14px; border-radius: var(--radius-screen); background: var(--bezel); border: 1px solid var(--bezel-edge); border-left: 3px solid var(--caution); }
 .note.warn { background: var(--caution-fill); color: var(--caution); border-color: var(--caution); }
 .note.bad { background: var(--warning-fill); color: var(--on-warning); border-color: var(--warning); }
+
+/* The state map: cards on the map's screen, the picked one's arrows lit. */
+main:has(.states) { max-width: none; }
+.states { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; margin: 10px 0 20px; }
+.states-view { position: relative; overflow: auto; max-height: 78vh; background: var(--map); border: 1px solid var(--bezel-edge); border-radius: var(--radius-panel); }
+.states.js .states-view { overflow: hidden; height: 78vh; }
+.states.js svg.statemap { width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.states-tools { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; z-index: 1; }
+.states-tools[hidden] { display: none; }
+.states-tools button { font: 13px var(--font-mono); min-width: 30px; padding: 4px 8px; color: var(--text); background: var(--bezel); border: 1px solid var(--bezel-edge); border-radius: var(--radius-control); cursor: pointer; }
+svg.statemap { display: block; font: 12px var(--font-mono); }
+svg.statemap.dragging { cursor: grabbing; }
+svg.statemap .move { fill: none; stroke: var(--muted); stroke-width: 1.4; opacity: .55; }
+svg.statemap .move.v-ok { stroke: var(--ok); }
+svg.statemap .move.v-bad { stroke: var(--warning); opacity: .9; }
+svg.statemap marker path { fill: var(--muted); }
+svg.statemap .state rect { fill: var(--off-fill); stroke: var(--off-edge); stroke-width: 1.5; }
+svg.statemap .state rect.noshot { fill: var(--screen); stroke: none; }
+svg.statemap .state text { fill: var(--text); }
+svg.statemap .state text.hint { fill: var(--muted); text-anchor: middle; font-size: 11px; }
+svg.statemap .state.start rect:first-of-type { stroke: var(--ok); stroke-width: 2.5; }
+svg.statemap a:hover rect:first-of-type { stroke-width: 3; }
+svg.statemap.picked .move { opacity: .12; }
+svg.statemap.picked .move.out, svg.statemap.picked .move.in { opacity: 1; stroke-width: 2.4; }
+svg.statemap.picked .move.out { stroke: var(--ok); }
+svg.statemap.picked .move.in { stroke: var(--caution); }
+svg.statemap.picked a[data-state] { opacity: .35; }
+svg.statemap.picked a.sel, svg.statemap.picked a.near { opacity: 1; }
+svg.statemap a.sel rect:first-of-type { stroke: var(--ok); stroke-width: 3; fill: var(--ok-fill); }
+svg.statemap .more rect { fill: var(--caution-fill); stroke: var(--caution); stroke-width: 1.5; }
+svg.statemap .more text { fill: var(--caution); text-anchor: middle; font-size: 11px; font-weight: 700; }
+.states-panels { position: sticky; top: 64px; max-height: calc(100vh - 80px); overflow: auto; font-size: 14px; }
+.states-panels h4 { margin: 14px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.states-panels ul { margin: 0; padding-left: 18px; }
+.states-panels ul.moves li { margin: 3px 0; }
+.states-panels ul.moves small { display: block; color: var(--muted); }
+.states-panels .act { font-family: var(--font-mono); font-size: 12px; }
+.states-panels figure { margin: 10px 0; }
+.states-panels figcaption { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.state-panel { display: none; }
+.state-panel:target, .state-panel.shown { display: block; }
+.states.js .state-panel:target:not(.shown) { display: none; }
+.states:has(.state-panel:target) .states-hint, .states:has(.state-panel.shown) .states-hint { display: none; }
+@media (max-width: 1200px) { .states { grid-template-columns: 1fr; } .states-panels { position: static; max-height: none; } }
 
 /* The DAG is drawn on the tactical map's screen. */
 .map { overflow-x: auto; background: var(--map); border: 1px solid var(--bezel-edge); border-radius: var(--radius-panel); padding: 8px; margin: 10px 0 20px; }
