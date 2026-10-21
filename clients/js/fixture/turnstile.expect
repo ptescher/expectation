@@ -1,0 +1,23 @@
+Vocabulary:
+  State: the turnstile is locked | unlocked
+  State: the coin box has 0..1000 coins
+  Event: a visitor inserts a coin
+  Event: a visitor pushes the arm
+Background:
+  Given the turnstile is locked
+  And the coin box has 0 coins
+Feature: Paying
+  Expectation: A coin unlocks it
+    Given the turnstile is locked
+    When a visitor inserts a coin
+    Then the turnstile is unlocked
+    And the coin box goes up by 1
+  Expectation: Pushing through locks it again
+    Given the turnstile is unlocked
+    When a visitor pushes the arm
+    Then the turnstile is locked
+Story: A day at the zoo
+  When a visitor inserts a coin
+  Then the turnstile is unlocked
+  When a visitor pushes the arm
+  Then the turnstile is locked

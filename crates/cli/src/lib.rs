@@ -136,7 +136,7 @@ fn docs(dir: &str, out: &str) {
             outline: None,
         };
         let tree = match &names[i] {
-            Some(n) if i > 0 => Path::new(out).join("platforms").join(n.to_lowercase()),
+            Some(n) if i > 0 => Path::new(out).join("platforms").join(expectation_model::text::slug(n)),
             _ => Path::new(out).to_path_buf(),
         };
         docs.write(&tree)

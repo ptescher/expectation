@@ -71,7 +71,7 @@ impl Acceptance {
     pub fn tree(&self, dir: &Path) -> std::path::PathBuf {
         match self.suite.platform.as_deref() {
             Some(p) if self.suite.platforms.first().map(String::as_str) != Some(p) => {
-                dir.join("platforms").join(p.to_lowercase())
+                dir.join("platforms").join(expectation_model::text::slug(p))
             }
             _ => dir.to_path_buf(),
         }

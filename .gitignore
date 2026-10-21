@@ -1,1 +1,5 @@
 /target
+/demos/kettle/gpui/target
+/demos/kettle/swiftui/build
+/demos/kettle/swiftui/Kettle.xcodeproj
+/clients/swift/.build

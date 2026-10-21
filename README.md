@@ -142,6 +142,14 @@ In the kettle, the dial has to be held above 55 % for 0.6 s before the kettle st
 child lock keeps the dial and buttons from reaching it. `--bug` lets the dial through the
 lock, and the run fails on «The child lock holds the kettle while the dial turns».
 
+## Any front end
+
+For apps that can't be driven from a Rust test, a driver goes inside the app and the runner
+talks to it over a small protocol: [Swift](clients/swift) (iOS, SwiftUI, UIKit),
+[JavaScript](clients/js) (React Native, web) and [Rust](crates/remote) (GPUI and other Rust
+UIs). The [kettle demo](demos/kettle) is one suite run against the same app built in GPUI,
+SwiftUI and React Native.
+
 ## Crates
 
 | Crate | Path | Role |
@@ -154,6 +162,7 @@ lock, and the run fails on «The child lock holds the kettle while the dial turn
 | `expectation_theme` | [crates/theme](crates/theme) | The colours, type and shapes the docs and graphs are drawn in |
 | `expectation_service` | [crates/service](crates/service) | The external things a run needs (a server, a database, a container): started once, stopped after, and "not supported yet" with how to get them when they can't be had |
 | `expectation_harness` | [crates/harness](crates/harness) | The `Driver` trait, closure `Bindings`, the runner, and the `Acceptance` pipeline |
+| `expectation_remote` | [crates/remote](crates/remote) | Driving an app through a driver embedded in it (Swift, JavaScript and Rust clients), and `expectation-run` |
 | `expectation_cli` | [crates/cli](crates/cli) | The `expectation` command: `check`, `graph`, `plan`, `docs` |
 
 ## The language

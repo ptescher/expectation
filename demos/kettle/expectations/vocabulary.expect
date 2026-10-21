@@ -1,0 +1,50 @@
+Suite: Kettle
+
+# One kettle app, built three times. Plain lines are about every one of them; a [tag] says
+# how one differs. Each app embeds the Expectation driver for its stack.
+
+Vocabulary:
+  Platform: GPUI | SwiftUI | React Native
+
+  State: the kettle is off | starting | heating | dry
+    Shows: off: the display reads OFF
+    Shows: heating: the display reads HEATING and the light turns red
+    Shows: dry: the display reads DRY
+  State: the dial is 0..100 %
+    Set: drag the DIAL slider to {value}
+  State: the preset is WARM | HOT | BOIL
+    Shows: the PRESET line reads {value}
+  State: the child lock is on | off
+    Shows: on: the LOCK badge lights up
+    Shows: off: the LOCK badge goes dark
+
+  Event: the user presses start
+    Say: click START
+    Say[SwiftUI]: tap START
+    Say[React Native]: tap START
+  Event: the user presses reset
+    Say: click RESET
+    Say[SwiftUI]: tap RESET
+    Say[React Native]: tap RESET
+  Event: the user presses preset
+    Say: click PRESET
+    Say[SwiftUI]: tap PRESET
+    Say[React Native]: tap PRESET
+  Event: the user presses lock
+    Say: click LOCK
+    Say[SwiftUI]: tap LOCK
+    Say[React Native]: tap LOCK
+  Event: the water runs out
+
+  Phrase: the kettle is plugged in and full
+    Say: open the app
+    Given the kettle is off
+    And the dial is 0 %
+    And the preset is WARM
+    And the child lock is off
+
+Background:
+  Given the kettle is plugged in and full
+
+Term: display
+  The panel at the top of the app. It shows the preset, the state and the water temperature.

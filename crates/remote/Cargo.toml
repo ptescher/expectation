@@ -1,0 +1,15 @@
+[package]
+name = "expectation_remote"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Expectation: drive an app through a driver embedded in it (a phone app, a desktop app, a web view), over a small HTTP protocol"
+
+[dependencies]
+expectation_model = { path = "../model" }
+expectation_harness = { path = "../harness" }
+expectation_story = { path = "../story" }
+
+[dev-dependencies]
+expectation_language = { path = "../language" }

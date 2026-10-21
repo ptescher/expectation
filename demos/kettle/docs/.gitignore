@@ -1,0 +1,12 @@
+# The manual is generated (site/build.sh, or `expectation docs expectations docs`): keep only
+# what the runs saved.
+*
+!.gitignore
+!results/
+!results/**
+!screenshots/
+!screenshots/**
+!platforms/
+!platforms/*/
+!platforms/*/screenshots/
+!platforms/*/screenshots/**

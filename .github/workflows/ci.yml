@@ -14,3 +14,4 @@ jobs:
       - run: cargo test --workspace
       - run: cargo run -p expectation_cli -- check crates/harness/examples/kettle
       - run: cargo run -p expectation_harness --example turnstile
+      - run: cargo build -p expectation_remote && node --test clients/js/test.mjs

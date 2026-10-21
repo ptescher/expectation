@@ -6,6 +6,7 @@
 
 - [Getting started](getting-started.md)
 - [A worked example: the kettle](kettle.md)
+- [One suite, three apps](demo.md)
 
 # Writing suites
 
@@ -21,6 +22,7 @@
 # Running
 
 - [Drivers](drivers.md)
+- [Embedded drivers](remote.md)
 - [External services](services.md)
 - [The generated manual](manual.md)
 

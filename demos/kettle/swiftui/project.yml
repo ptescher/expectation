@@ -1,0 +1,30 @@
+name: Kettle
+options:
+  bundleIdPrefix: net.sim001.expectation
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  ExpectationDriver:
+    path: ../../../clients/swift
+targets:
+  Kettle:
+    type: application
+    platform: iOS
+    sources: [Kettle]
+    dependencies:
+      - package: ExpectationDriver
+    info:
+      path: Kettle/Info.plist
+      properties:
+        CFBundleDisplayName: Kettle
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        # The runner listens on localhost: let the embedded driver reach it.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: net.sim001.expectation.kettle
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGNING_ALLOWED: NO

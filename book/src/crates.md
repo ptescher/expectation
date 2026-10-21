@@ -13,6 +13,7 @@ Most projects only need `expectation_harness` (and `expectation_story` for the r
 | `expectation_theme` | The colours, type and shapes the docs and graphs are drawn in. |
 | `expectation_service` | External services a run needs: started once, stopped after, "not supported yet" when they can't be had. |
 | `expectation_harness` | The `Driver` trait, `Bindings`, the runner, and the `Acceptance` pipeline. Re-exports the service crate as `expectation_harness::service`. |
+| `expectation_remote` | Driving an app through a driver embedded in it: `RemoteDriver`, the Rust client, and the `expectation-run` command. Clients for Swift and JavaScript are in `clients/`. |
 | `expectation_cli` | The `expectation` command, as a binary and a library. |
 
 Each crate depends only on the ones before it: `language`, `graph` and `story` build on

@@ -1,0 +1,21 @@
+Feature: Presets
+  PRESET steps through WARM, HOT and BOIL, and back to WARM. The kettle starts on
+  WARM. The child lock ignores it, like every other button.
+
+  Expectation: WARM to HOT
+    Given the preset is WARM
+    And the child lock is off
+    When the user presses preset
+    Then the preset is HOT
+
+  Expectation: HOT to BOIL
+    Given the preset is HOT
+    And the child lock is off
+    When the user presses preset
+    Then the preset is BOIL
+
+  Expectation: BOIL back to WARM
+    Given the preset is BOIL
+    And the child lock is off
+    When the user presses preset
+    Then the preset is WARM

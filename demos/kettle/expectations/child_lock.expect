@@ -1,0 +1,27 @@
+Feature: Child lock
+  LOCK turns the child lock on and off. While it is on, the dial and the other
+  buttons do nothing, so turning the dial doesn't start the kettle.
+
+  Expectation: Lock turns the child lock on
+    Given the child lock is off
+    When the user presses lock
+    Then the child lock is on
+
+  Expectation: Lock again turns it off
+    Given the child lock is on
+    When the user presses lock
+    Then the child lock is off
+
+  Expectation: The child lock holds the kettle while the dial turns
+    Overrides: Turning the dial up starts the kettle
+    Given the kettle is off
+    And the child lock is on
+    When the dial is above 55 %
+    Then the kettle is off
+
+  Expectation: The child lock ignores the start button
+    Overrides: The start button starts the kettle
+    Given the kettle is off
+    And the child lock is on
+    When the user presses start
+    Then the kettle is off

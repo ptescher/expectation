@@ -1,0 +1,77 @@
+expectation-results 1
+plan	first-cup--turn-it-up-then-turn-it-off	passed	4d66ca857a6d0086
+step	0	passed	1	screenshots/first-cup--turn-it-up-then-turn-it-off/00.png	-
+check	1	e:off	-
+check	1	n:0	-
+check	1	e:WARM	-
+check	1	e:off	-
+step	1	passed	1	screenshots/first-cup--turn-it-up-then-turn-it-off/01.png	-
+check	1	e:heating	-
+step	2	passed	1	screenshots/first-cup--turn-it-up-then-turn-it-off/02.png	-
+check	1	e:off	-
+plan	keeping-little-hands-off--turn-the-dial-with-the-lock-on-then-unlock-and-boil	passed	096c7cd0edbf4082
+step	0	passed	1	screenshots/keeping-little-hands-off--turn-the-dial-with-the-lock-on-then-unlock-and-boil/00.png	-
+check	1	e:off	-
+check	1	n:0	-
+check	1	e:WARM	-
+check	1	e:off	-
+step	1	passed	1	screenshots/keeping-little-hands-off--turn-the-dial-with-the-lock-on-then-unlock-and-boil/01.png	-
+check	1	e:on	-
+step	2	passed	1	screenshots/keeping-little-hands-off--turn-the-dial-with-the-lock-on-then-unlock-and-boil/02.png	-
+check	1	e:off	-
+step	3	passed	1	screenshots/keeping-little-hands-off--turn-the-dial-with-the-lock-on-then-unlock-and-boil/03.png	-
+check	1	e:off	-
+step	4	passed	1	screenshots/keeping-little-hands-off--turn-the-dial-with-the-lock-on-then-unlock-and-boil/04.png	-
+check	1	e:heating	-
+plan	choosing-a-preset--step-to-hot-and-start	passed	27ce7b3bca8920d2
+step	0	passed	1	screenshots/choosing-a-preset--step-to-hot-and-start/00.png	-
+check	1	e:off	-
+check	1	n:0	-
+check	1	e:WARM	-
+check	1	e:off	-
+step	1	passed	1	screenshots/choosing-a-preset--step-to-hot-and-start/01.png	-
+check	1	e:HOT	-
+step	2	passed	1	screenshots/choosing-a-preset--step-to-hot-and-start/02.png	-
+check	1	e:heating	-
+plan	coverage--the-child-lock-ignores-the-start-button	passed	6773b86bd102939c
+step	0	passed	1	screenshots/coverage--the-child-lock-ignores-the-start-button/00.png	-
+check	1	e:off	-
+check	1	n:0	-
+check	1	e:WARM	-
+check	1	e:off	-
+step	1	passed	1	screenshots/coverage--the-child-lock-ignores-the-start-button/01.png	-
+check	1	e:on	-
+step	2	passed	1	screenshots/coverage--the-child-lock-ignores-the-start-button/02.png	-
+check	1	e:off	-
+plan	coverage--running-dry-stops-the-kettle	passed	63658073c125f6ab
+step	0	passed	1	screenshots/coverage--running-dry-stops-the-kettle/00.png	-
+check	1	e:off	-
+check	1	n:0	-
+check	1	e:WARM	-
+check	1	e:off	-
+step	1	passed	1	screenshots/coverage--running-dry-stops-the-kettle/01.png	-
+check	1	e:heating	-
+step	2	passed	1	screenshots/coverage--running-dry-stops-the-kettle/02.png	-
+check	1	e:dry	-
+plan	coverage--hot-to-boil	passed	7bea37ca512fed08
+step	0	passed	1	screenshots/coverage--hot-to-boil/00.png	-
+check	1	e:off	-
+check	1	n:0	-
+check	1	e:WARM	-
+check	1	e:off	-
+step	1	passed	1	screenshots/coverage--hot-to-boil/01.png	-
+check	1	e:HOT	-
+step	2	passed	1	screenshots/coverage--hot-to-boil/02.png	-
+check	1	e:BOIL	-
+plan	coverage--boil-back-to-warm	passed	0d724dc968500806
+step	0	passed	1	screenshots/coverage--boil-back-to-warm/00.png	-
+check	1	e:off	-
+check	1	n:0	-
+check	1	e:WARM	-
+check	1	e:off	-
+step	1	passed	1	screenshots/coverage--boil-back-to-warm/01.png	-
+check	1	e:HOT	-
+step	2	passed	1	screenshots/coverage--boil-back-to-warm/02.png	-
+check	1	e:BOIL	-
+step	3	passed	1	screenshots/coverage--boil-back-to-warm/03.png	-
+check	1	e:WARM	-

@@ -400,7 +400,7 @@ impl Site<'_> {
     fn platform_picker(&self, file: &str) -> String {
         let s = self.suite();
         let Some(current) = s.platform.as_deref().filter(|_| s.platforms.len() > 1) else { return String::new() };
-        let root = |p: &str| if s.platforms[0] == p { String::new() } else { format!("platforms/{}/", p.to_lowercase()) };
+        let root = |p: &str| if s.platforms[0] == p { String::new() } else { format!("platforms/{}/", expectation_model::text::slug(p)) };
         // From site/ up to the docs directory.
         let up = "../".repeat(root(current).matches('/').count() + 1);
         let mut o = String::from(r#"<label class="platform">Platform <select aria-label="Platform" onchange="location.href=this.value">"#);

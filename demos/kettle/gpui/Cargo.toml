@@ -1,0 +1,20 @@
+[package]
+name = "kettle_gpui"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The kettle demo in GPUI, with the Expectation driver embedded"
+
+# Its own workspace: GPUI is a big dependency the rest of the repo doesn't need.
+[workspace]
+
+[dependencies]
+gpui = "0.2.2"
+expectation_remote = { path = "../../../crates/remote" }
+raw-window-handle = "0.6"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+
+[profile.dev.package."*"]
+opt-level = 2

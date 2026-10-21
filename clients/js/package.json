@@ -1,0 +1,11 @@
+{
+  "name": "expectation-driver",
+  "version": "0.1.0",
+  "description": "The Expectation driver for JavaScript apps (React Native, web): bind the vocabulary to the app, and the Expectation runner can drive it",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/ptescher/expectation", "directory": "clients/js" },
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": ["index.js", "index.d.ts"],
+  "scripts": { "test": "node --test test.mjs" }
+}
