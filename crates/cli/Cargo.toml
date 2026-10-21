@@ -13,6 +13,9 @@ expectation_graph = { path = "../graph" }
 expectation_story = { path = "../story" }
 expectation_docs = { path = "../docs" }
 
+[lib]
+path = "src/lib.rs"
+
 [[bin]]
 name = "expectation"
 path = "src/main.rs"
