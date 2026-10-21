@@ -1,0 +1,9 @@
+[package]
+name = "expectation_language"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+description = "Expectation: the .expect file format (parser and name resolution)"
+
+[dependencies]
+expectation_model = { path = "../model" }

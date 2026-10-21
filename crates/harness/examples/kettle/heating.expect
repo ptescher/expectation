@@ -1,0 +1,26 @@
+Feature: Heating
+  The kettle starts off. Turn the dial past 55 % to start it, the way you would an old
+  stovetop knob, or press start.
+
+  Expectation: Turning the dial up starts the kettle
+    Holding the dial above 55 % for a moment starts it.
+    Given the kettle is off
+    When the dial is above 55 %
+    Then the kettle is heating
+
+  Expectation: The start button starts the kettle
+    Given the kettle is off
+    When the user presses start
+    Then the kettle is heating
+
+  Expectation: Running dry stops the kettle
+    Given the kettle is heating
+    When the water runs out
+    Then the kettle is dry
+
+  Expectation: Reset turns the kettle off
+    With the dial still up it would start again straight away, so this is about resetting
+    with the dial down.
+    Given the dial is below 55 %
+    When the user presses reset
+    Then the kettle is off

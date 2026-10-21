@@ -1,0 +1,38 @@
+Story: First cup
+  As a tea drinker
+  I want to start the kettle by turning the dial
+  So that it works like the one I already have
+
+  Scenario: Turn it up, then turn it off
+    When the dial is 80 %
+    Then the kettle is heating
+    When the dial is 0 %
+    And the user presses reset
+    Then the kettle is off
+
+Story: Keeping little hands off
+  As a parent
+  I want the child lock to keep the kettle off
+  So that a curious toddler turning the dial doesn't start it
+
+  Scenario: Turn the dial with the lock on, then unlock and boil
+    When the user presses lock
+    Then the child lock is on
+    When the dial is 100 %
+    Then the kettle is off
+    When the dial is 0 %
+    And the user presses lock
+    Then the child lock is off
+    When the dial is 80 %
+    Then the kettle is heating
+
+Story: Choosing a preset
+  As someone who drinks green tea
+  I want to pick how hot the water gets before I start
+  So that I don't scald the leaves
+
+  Scenario: Step to HOT and start
+    When the user presses preset
+    Then the preset is HOT
+    When the user presses start
+    Then the kettle is heating

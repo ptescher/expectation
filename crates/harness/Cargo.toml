@@ -1,0 +1,14 @@
+[package]
+name = "expectation_harness"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+description = "Expectation: runs acceptance-test plans against a driver and captures screenshots"
+
+[dependencies]
+expectation_model = { path = "../model" }
+expectation_language = { path = "../language" }
+expectation_graph = { path = "../graph" }
+expectation_story = { path = "../story" }
+expectation_docs = { path = "../docs" }
+expectation_service = { path = "../service" }

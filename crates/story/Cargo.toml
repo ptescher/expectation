@@ -1,0 +1,13 @@
+[package]
+name = "expectation_story"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+description = "Expectation: user stories compiled into acceptance-test plans, and their results"
+
+[dependencies]
+expectation_model = { path = "../model" }
+expectation_graph = { path = "../graph" }
+
+[dev-dependencies]
+expectation_language = { path = "../language" }

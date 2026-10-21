@@ -1,0 +1,12 @@
+[package]
+name = "expectation_docs"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+description = "Expectation: documentation from expectations, stories, results and screenshots"
+
+[dependencies]
+expectation_model = { path = "../model" }
+expectation_graph = { path = "../graph" }
+expectation_story = { path = "../story" }
+expectation_theme = { path = "../theme" }

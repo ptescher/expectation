@@ -1,0 +1,8 @@
+[package]
+name = "expectation_theme"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+description = "Expectation: the colours, type and shapes of the generated docs and graphs"
+
+[dependencies]

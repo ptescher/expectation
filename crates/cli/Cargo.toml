@@ -1,0 +1,17 @@
+[package]
+name = "expectation_cli"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+description = "Expectation: the expectation command (check, graph, plan, docs)"
+
+[dependencies]
+expectation_model = { path = "../model" }
+expectation_language = { path = "../language" }
+expectation_graph = { path = "../graph" }
+expectation_story = { path = "../story" }
+expectation_docs = { path = "../docs" }
+
+[[bin]]
+name = "expectation"
+path = "src/main.rs"

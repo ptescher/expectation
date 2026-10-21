@@ -1,0 +1,8 @@
+[package]
+name = "expectation_service"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+description = "Expectation: the external services a test run needs (a server, a database, a container): started once, stopped after, and 'not supported yet' with how to get them when they can't be had"
+
+[dependencies]

@@ -1,0 +1,19 @@
+# The words every expectation and story in this suite is written in. world.rs is the toy
+# kettle it runs against.
+
+Vocabulary:
+  State: the kettle is off | starting | heating | dry
+  State: the dial is 0..100 %
+  State: the preset is WARM | HOT | BOIL
+  State: the child lock is on | off
+  Event: the user presses start
+  Event: the user presses reset
+  Event: the user presses preset
+  Event: the user presses lock
+  Event: the water runs out
+
+Background:
+  Given the kettle is off
+  And the dial is 0 %
+  And the preset is WARM
+  And the child lock is off
