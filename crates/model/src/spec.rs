@@ -221,6 +221,9 @@ pub struct Section {
     /// What its Background adds to its parent's.
     pub setup: Condition,
     pub setup_steps: Vec<StepText>,
+    /// `Launch:`: how to start the program under test, if this section says (its sub-sections
+    /// inherit it; see [`Suite::launch_of`]).
+    pub launch: Option<String>,
     /// The state everything in it starts from: its parent's start with `setup` written over it.
     pub start: Condition,
     pub span: Option<Span>,
@@ -325,6 +328,20 @@ impl Suite {
 
     pub fn story(&self, id: StoryId) -> &Story {
         &self.stories[id.0 as usize]
+    }
+
+    /// How to start the program under test for `id`: its own `Launch:`, else the nearest
+    /// ancestor's.
+    pub fn launch_of(&self, id: SectionId) -> Option<&str> {
+        let mut at = Some(id);
+        while let Some(i) = at {
+            let s = self.section(i);
+            if let Some(l) = &s.launch {
+                return Some(l);
+            }
+            at = s.parent;
+        }
+        None
     }
 
     pub fn section(&self, id: SectionId) -> &Section {

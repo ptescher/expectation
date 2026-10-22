@@ -70,6 +70,15 @@ pub trait Driver {
         vec![]
     }
 
+    /// Start the program under test, as the section's `Launch:` says (`how` is its text). The
+    /// runner calls it before the first test that needs it and again only when another section
+    /// launches differently, so a driver doesn't start its own server. Drivers that are always
+    /// attached to a running program leave it alone.
+    fn launch(&mut self, how: &str) -> Result<(), String> {
+        let _ = how;
+        Ok(())
+    }
+
     /// Put the system in its starting state (what the Background describes), before each test.
     fn reset(&mut self) -> Result<(), String> {
         Ok(())

@@ -215,6 +215,7 @@ fn sections(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
             description: header.map(|h| h.description.clone()).unwrap_or_default(),
             setup,
             setup_steps,
+            launch: header.and_then(|h| h.launch.as_ref().map(|(l, _)| l.clone())),
             start,
             span: header.map(|h| h.span.clone()),
             children: vec![],
@@ -302,6 +303,9 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
             }
         }
         for d in &f.events {
+            if let Some((say, span)) = &d.say {
+                launch_in_step(say, span, diags);
+            }
             let key = text::key(&d.text);
             if key.is_empty() {
                 diags.push(Diagnostic::error("bad-event", "an event needs a name").at(&d.span, ""));
@@ -326,6 +330,9 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
                 );
                 continue;
             }
+            if let Some((say, span)) = &rp.say {
+                launch_in_step(say, span, diags);
+            }
             let Some(body) = phrase_body(rp, &vocab, diags) else { continue };
             let id = PhraseId(vocab.phrases.len() as u32);
             let say = rp.say.as_ref().map(|(s, _)| s.clone());
@@ -333,6 +340,30 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
         }
     }
     vocab
+}
+
+/// A `Say:` with a shell command in backticks: text that starts with a path or a program
+/// name (`./app`, `cargo run -p x`, `some-command`). The docs would show it as a step of the
+/// tutorial, not under "Before you begin".
+fn launch_in_step(say: &str, span: &Span, diags: &mut Vec<Diagnostic>) {
+    let is_command = |code: &str| {
+        let mut words = code.split_whitespace();
+        let Some(first) = words.next() else { return false };
+        if first.starts_with("./") || first.starts_with('/') || first.starts_with("~/") {
+            return true;
+        }
+        let program = first.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '_' | '.'))
+            && first.starts_with(|c: char| c.is_ascii_lowercase());
+        // A lone word has to look like a program (`some-command`), not like a label.
+        program && (words.next().is_some() || first.contains(['-', '_', '.']))
+    };
+    if say.split('`').skip(1).step_by(2).any(is_command) {
+        diags.push(
+            Diagnostic::warning("launch-in-step", "this step tells the reader to run a command")
+                .at(span, "")
+                .help("starting the program is not a step: put it in `Launch:` under the `Section:`, which \"Before you begin\" shows"),
+        );
+    }
 }
 
 /// A phrase is a setup (Givens) or actions in order (each When starts one, And adds to it).

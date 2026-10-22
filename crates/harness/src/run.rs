@@ -21,7 +21,8 @@ impl Default for RunOptions {
 }
 
 pub fn run(suite: &Suite, plans: &[Plan], driver: &mut dyn Driver, opts: &RunOptions) -> Report {
-    Report { results: plans.iter().map(|p| run_plan(suite, p, driver, opts)).collect() }
+    let mut launched = None;
+    Report { results: plans.iter().map(|p| run_plan(suite, p, driver, opts, &mut launched)).collect() }
 }
 
 /// As [`run`], with what the driver needs from outside started before each plan: a service that
@@ -32,10 +33,11 @@ pub fn run_with(suite: &Suite, plans: &[Plan], driver: &mut dyn Driver, opts: &R
     let names: Vec<&str> = needs.iter().map(String::as_str).collect();
     let fresh = driver.fresh();
     let fresh: Vec<&str> = fresh.iter().map(String::as_str).collect();
+    let mut launched = None;
     let results = plans
         .iter()
         .map(|plan| match unsupported(suite, plan, driver).map_or_else(|| services.restart(&fresh).and_then(|()| services.start(&names)), |_| Ok(())) {
-            Ok(()) => run_plan(suite, plan, driver, opts),
+            Ok(()) => run_plan(suite, plan, driver, opts, &mut launched),
             Err(why) => {
                 let mut r = PlanResult::with(Status::Unsupported, plan);
                 r.start.error = Some(format!("It needs {why}."));
@@ -86,7 +88,9 @@ fn unsupported(suite: &Suite, plan: &Plan, driver: &dyn Driver) -> Option<PlanRe
     None
 }
 
-fn run_plan(suite: &Suite, plan: &Plan, driver: &mut dyn Driver, opts: &RunOptions) -> PlanResult {
+/// `launched` is how the program was last started (a section's `Launch:`), so it is started
+/// once for the plans that share it and again when a section says to start it differently.
+fn run_plan(suite: &Suite, plan: &Plan, driver: &mut dyn Driver, opts: &RunOptions, launched: &mut Option<String>) -> PlanResult {
     let failed = |error: String| StepResult {
         status: Status::Failed,
         checks: vec![],
@@ -118,6 +122,14 @@ fn run_plan(suite: &Suite, plan: &Plan, driver: &mut dyn Driver, opts: &RunOptio
         Some(format!("screenshots/{}/{name}", plan.slug))
     };
 
+    if let Some(how) = suite.launch_of(plan.section)
+        && launched.as_deref() != Some(how)
+    {
+        if let Err(e) = driver.launch(how) {
+            return skip_all(failed(format!("couldn't launch: {e}")));
+        }
+        *launched = Some(how.to_string());
+    }
     if let Err(e) = driver.reset() {
         return skip_all(failed(format!("couldn't reset: {e}")));
     }
