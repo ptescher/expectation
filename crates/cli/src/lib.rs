@@ -110,6 +110,8 @@ pub fn main() {
             if flag("--coverage") {
                 let extra = expectation_story::coverage_plans(&c.suite, &c.analysis, &c.plans);
                 c.plans.extend(extra);
+                let visits = expectation_story::visit_plans(&c.suite, &c.analysis, &c.plans);
+                c.plans.extend(visits);
             }
             for p in &c.plans {
                 print_plan(&c.suite, p);
@@ -144,6 +146,8 @@ fn docs(dir: &str, out: &str) {
         // runs have saved under <out>/results.
         let extra = expectation_story::coverage_plans(&c.suite, &c.analysis, &c.plans);
         c.plans.extend(extra);
+        let visits = expectation_story::visit_plans(&c.suite, &c.analysis, &c.plans);
+        c.plans.extend(visits);
         let report = expectation_story::load_results_for(&Path::new(out).join("results"), &c.plans, name.as_deref());
         manuals.push((c, report));
     }

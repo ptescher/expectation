@@ -97,6 +97,10 @@ impl Acceptance {
     pub fn with_coverage(mut self) -> Self {
         let extra = expectation_story::coverage_plans(&self.suite, &self.analysis, &self.plans);
         self.plans.extend(extra);
+        // And a test for each state a move from a start that no test passes through, so the
+        // state map has a screenshot of every state it shows at first.
+        let visits = expectation_story::visit_plans(&self.suite, &self.analysis, &self.plans);
+        self.plans.extend(visits);
         self
     }
 

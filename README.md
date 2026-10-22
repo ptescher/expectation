@@ -377,6 +377,9 @@ Planning walks each scenario through the expectations:
   `Acceptance::with_coverage()` and `expectation plan --coverage` add generated tests that
   follow those routes, starting from the expectation's own section setup. An expectation with
   no route is tested on its own: its Given arranged on the section setup, then its When.
+  They also add a test for each state of the state map a move from a start that no other
+  test passes through ("Visiting the state after «…»"), so the map's first view has a
+  screenshot of every state.
 - A test starts from its section's setup, with its scenario's Givens written over it.
 
 ## Running against the system under test

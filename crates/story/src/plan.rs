@@ -418,3 +418,69 @@ pub fn coverage_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec
     }
     out
 }
+
+/// A test for each state of the state map a move from a start that no other test passes
+/// through: the start arranged with the rule's Given, then the rule's When. Each runner takes
+/// a screenshot after the step, so the map's first view has a picture of every state. `plans`
+/// are the tests there are already, generated ones included.
+pub fn visit_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec<Plan> {
+    let by = expectation_graph::states::default_by(suite);
+    let key = |c: &Condition| c.restrict(by.iter().copied());
+    let mut seen: std::collections::HashSet<Condition> = plans
+        .iter()
+        .flat_map(|p| std::iter::once(&p.start).chain(p.steps.iter().map(|s| &s.state)))
+        .map(key)
+        .collect();
+    let mut slugs: std::collections::HashSet<String> = plans.iter().map(|p| p.slug.clone()).collect();
+    let mut out = vec![];
+    for m in expectation_graph::states::first_moves(suite, &analysis.precedence) {
+        if seen.contains(&key(&m.after)) {
+            continue;
+        }
+        let e = suite.exp(m.rule);
+        let section = suite.sections.iter().find(|s| s.id == m.section).expect("a move's section");
+        let text: Vec<StepText> = e
+            .when_steps()
+            .cloned()
+            .enumerate()
+            .map(|(i, mut t)| {
+                t.keyword = if i == 0 { Keyword::When } else { Keyword::And };
+                t
+            })
+            .collect();
+        let input = Input { action: e.trigger.clone(), checks: &[], written: text.clone(), text, span: e.span.clone(), group: 1 };
+        let mut given: Vec<StepText> =
+            suite.chain(section.id).iter().flat_map(|s| s.setup_steps.iter().cloned()).collect();
+        for (var, c) in m.before.iter().filter(|(v, c)| section.start.get(*v) != Some(c)) {
+            let (text, meaning) = (suite.vocabulary.var(var).describe(c), Some(expectation_model::Said::Fact(var, *c)));
+            given.push(StepText { keyword: Keyword::Given, text, span: e.span.clone(), meaning });
+        }
+        let base = prefixed(&section.slug, &format!("state--{}", text::slug(&e.name)));
+        let mut slug = base.clone();
+        let mut n = 2;
+        while slugs.contains(&slug) {
+            slug = format!("{base}-{n}");
+            n += 1;
+        }
+        let head = Head {
+            origin: Origin::Coverage { target: e.id },
+            section: section.id,
+            title: format!("Visiting the state after «{}»", e.name),
+            slug: slug.clone(),
+            start: m.before.clone(),
+            given,
+        };
+        let mut diags = vec![];
+        let plan = build(suite, &analysis.precedence, head, std::iter::once(input), &mut diags);
+        if diags.iter().any(|d| d.is_error()) {
+            continue;
+        }
+        seen.insert(key(&m.after));
+        for s in &plan.steps {
+            seen.insert(key(&s.state));
+        }
+        slugs.insert(slug);
+        out.push(plan);
+    }
+    out
+}
