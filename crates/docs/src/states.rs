@@ -2,10 +2,10 @@
 //! state where a test took one), and an arrow for every way from one to another. A column per
 //! number of moves from the start, start on the left.
 //!
-//! It works as plain HTML: each card links to a panel below the map (shown with `:target`)
-//! that says what the state is, what can be done there and where it leads. A small script,
-//! the only one on the site, adds panning and zooming and highlights the picked state's
-//! arrows without leaving the map.
+//! The page holds the states and the moves as data, each string written once, and a small
+//! script (the only one on the site) draws a state when it is opened: at first the start
+//! states and the states a move from them, then the states that a picked state leads to.
+//! Without the script, the panels of the start states are there as plain HTML.
 
 use crate::html::esc;
 use crate::{Docs, Facts};
@@ -53,14 +53,6 @@ fn shots(d: &Docs, map: &StateMap) -> Vec<Vec<Shot>> {
     out
 }
 
-fn short(s: &str) -> String {
-    if s.chars().count() <= CHARS {
-        return s.to_string();
-    }
-    let cut: String = s.chars().take(CHARS - 1).collect();
-    format!("{}…", cut.trim_end())
-}
-
 /// Each state's column and row: a column per level, and within one, states near the ones
 /// they're reached from (two sweeps of the average-neighbour heuristic), so arrows cross less.
 fn place(map: &StateMap) -> Vec<(usize, usize)> {
@@ -68,6 +60,14 @@ fn place(map: &StateMap) -> Vec<(usize, usize)> {
     let mut cols: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
     for (i, s) in map.states.iter().enumerate() {
         cols.entry(s.level).or_default().push(i);
+    }
+    // Each state's neighbours in other columns, found once.
+    let mut near: Vec<Vec<usize>> = vec![vec![]; n];
+    for m in map.moves.iter().filter(|m| !m.stays()) {
+        if map.states[m.to].level != map.states[m.from].level {
+            near[m.from].push(m.to);
+            near[m.to].push(m.from);
+        }
     }
     let mut row = vec![0f32; n];
     for col in cols.values() {
@@ -80,17 +80,11 @@ fn place(map: &StateMap) -> Vec<(usize, usize)> {
             let mut keyed: Vec<(f32, usize)> = col
                 .iter()
                 .map(|&i| {
-                    let near: Vec<f32> = map
-                        .moves
-                        .iter()
-                        .filter(|m| !m.stays())
-                        .filter_map(|m| match (m.from == i, m.to == i) {
-                            (true, _) if map.states[m.to].level != map.states[i].level => Some(row[m.to]),
-                            (_, true) if map.states[m.from].level != map.states[i].level => Some(row[m.from]),
-                            _ => None,
-                        })
-                        .collect();
-                    let key = if near.is_empty() { row[i] } else { near.iter().sum::<f32>() / near.len() as f32 };
+                    let key = if near[i].is_empty() {
+                        row[i]
+                    } else {
+                        near[i].iter().map(|&j| row[j]).sum::<f32>() / near[i].len() as f32
+                    };
                     (key, i)
                 })
                 .collect();
@@ -110,19 +104,66 @@ fn place(map: &StateMap) -> Vec<(usize, usize)> {
     at
 }
 
-/// The worst verdict among `exps`, as a class for their arrow.
-fn verdict_class(f: &Facts, exps: &[ExpId]) -> &'static str {
-    let v: Vec<Option<Verdict>> = exps.iter().map(|&e| f.verdict(e)).collect();
-    if v.contains(&Some(Verdict::Failed)) {
-        "v-bad"
-    } else if !v.is_empty() && v.iter().all(|v| *v == Some(Verdict::Verified)) {
-        "v-ok"
-    } else {
-        "v-idle"
+/// A verdict as the data says it: 0 verified, 1 failed, 2 not verified.
+fn verdict_code(v: Option<Verdict>) -> u8 {
+    match v {
+        Some(Verdict::Verified) => 0,
+        Some(Verdict::Failed) => 1,
+        _ => 2,
     }
 }
 
-/// The map and its panels. `exp_link` is an expectation's link, `test_link` a test's.
+/// A JSON string, safe inside a `<script>`.
+fn js(s: &str) -> String {
+    let mut o = String::with_capacity(s.len() + 2);
+    o.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => o.push_str("\\\""),
+            '\\' => o.push_str("\\\\"),
+            '\n' => o.push_str("\\n"),
+            '<' => o.push_str("\\u003c"),
+            c if (c as u32) < 0x20 => {
+                let _ = write!(o, "\\u{:04x}", c as u32);
+            }
+            c => o.push(c),
+        }
+    }
+    o.push('"');
+    o
+}
+
+/// Strings written once and referred to by number.
+#[derive(Default)]
+struct Table {
+    index: std::collections::HashMap<String, usize>,
+    items: Vec<String>,
+}
+
+impl Table {
+    fn id(&mut self, item: String) -> usize {
+        if let Some(&i) = self.index.get(&item) {
+            return i;
+        }
+        self.items.push(item.clone());
+        self.index.insert(item, self.items.len() - 1);
+        self.items.len() - 1
+    }
+
+    fn json(&self) -> String {
+        format!("[{}]", self.items.join(","))
+    }
+}
+
+fn list(items: impl Iterator<Item = usize>) -> String {
+    let v: Vec<String> = items.map(|i| i.to_string()).collect();
+    format!("[{}]", v.join(","))
+}
+
+/// The map. The page holds the states and the moves as data: each fact, action, rule and test written
+/// once, and states and moves as numbers. The script draws a state's card, arrows and panel
+/// when it is opened, so a map of thousands of states stays a small page. `exp_link` is an
+/// expectation's link, `test_link` a test's.
 pub fn html(
     d: &Docs,
     f: &Facts,
@@ -137,221 +178,188 @@ pub fn html(
     }
     let shots = shots(d, map);
     let with_shots = shots.iter().any(|s| !s.is_empty());
-    let facts: Vec<Vec<String>> = (0..n).map(|i| map.facts(s, i)).collect();
-    let lines = facts.iter().map(|f| f.len().max(1)).max().unwrap_or(1) as f32;
+    let cond_facts: Vec<Vec<(String, String)>> = (0..n)
+        .map(|i| {
+            let c = &map.states[i].cond;
+            c.iter()
+                .map(|(v, k)| {
+                    let var = s.vocabulary.var(v);
+                    let p = var.predicate(k);
+                    let part = ["is ", "are ", "has ", "have "].iter().find_map(|w| p.strip_prefix(w)).unwrap_or(&p);
+                    (var.describe(k), part.to_string())
+                })
+                .collect()
+        })
+        .collect();
+    let lines = cond_facts.iter().map(|f| f.len().max(1)).max().unwrap_or(1) as f32;
     let h = if with_shots { THUMB + 10.0 } else { 0.0 } + 14.0 + lines * LINE + 8.0;
     let at = place(map);
-    let cols = at.iter().map(|a| a.0).max().unwrap_or(0) + 1;
-    let tallest = at.iter().map(|a| a.1).max().unwrap_or(0) + 1;
-    let xy = |i: usize| (PAD + at[i].0 as f32 * (W + GAP_X), PAD + at[i].1 as f32 * (h + GAP_Y));
-    // Room above and below for the arrows that go back.
-    let width = PAD * 2.0 + cols as f32 * (W + GAP_X) - GAP_X;
-    let height = PAD * 2.0 + tallest as f32 * (h + GAP_Y) - GAP_Y + 60.0;
+
+    // Moves from each state, found once.
+    let mut from: Vec<Vec<usize>> = vec![vec![]; n];
+    for (k, m) in map.moves.iter().enumerate() {
+        from[m.from].push(k);
+    }
+    let label = |i: usize| -> String {
+        if cond_facts[i].is_empty() {
+            "anything".into()
+        } else {
+            cond_facts[i].iter().map(|(_, p)| p.as_str()).collect::<Vec<_>>().join(" · ")
+        }
+    };
+    let action = |k: usize| s.describe_trigger(&map.moves[k].action);
+
+    // The data.
+    let (mut facts, mut actions, mut exps, mut tests, mut paths) =
+        (Table::default(), Table::default(), Table::default(), Table::default(), Table::default());
+    let mut states_json = Vec::with_capacity(n);
+    for i in 0..n {
+        let st = &map.states[i];
+        let fs = list(cond_facts[i].iter().map(|(fact, part)| facts.id(format!("[{},{}]", js(fact), js(part)))));
+        let (shot, plan) = match shots[i].first() {
+            Some(sh) => (paths.id(js(&sh.path)) as i64, tests.id(js(&test_link(sh.plan))) as i64),
+            None => (-1, -1),
+        };
+        states_json.push(format!("[{},{},{},{},{fs},{shot},{plan}]", st.level, st.start as u8, at[i].0, at[i].1));
+    }
+    let mut moves_json = Vec::with_capacity(map.moves.len());
+    for (k, m) in map.moves.iter().enumerate() {
+        let a = actions.id(js(&action(k)));
+        let es = list(m.fired.iter().map(|&e| exps.id(format!("[{},{}]", js(&exp_link(e)), verdict_code(f.verdict(e))))));
+        moves_json.push(format!("[{},{},{a},{es}]", m.from, m.to));
+    }
 
     let mut o = String::new();
     let _ = write!(
         o,
-        r#"<div class="states" id="states"><div class="states-view"><div class="states-tools" hidden><button type="button" data-zoom="1.25" aria-label="Zoom in">+</button><button type="button" data-zoom="0.8" aria-label="Zoom out">−</button><button type="button" data-zoom="fit">Fit</button><button type="button" data-fold="all">Show all</button><button type="button" data-fold="near">Fold</button></div><svg class="statemap" viewBox="0 0 {width:.0} {height:.0}" width="{width:.0}" height="{height:.0}" data-geom="{W} {h:.1} {GAP_X} {GAP_Y} {PAD}" role="img" aria-label="Map of the states"><defs><marker id="st-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker></defs><g class="moves">"#
+        r#"<div class="states" id="states"><div class="states-view"><div class="states-tools" hidden><button type="button" data-zoom="1.25" aria-label="Zoom in">+</button><button type="button" data-zoom="0.8" aria-label="Zoom out">−</button><button type="button" data-zoom="fit">Fit</button><button type="button" data-fold="near">Fold</button></div><svg class="statemap" role="img" aria-label="Map of the states"><defs><marker id="st-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z"/></marker></defs><g class="moves"></g><g class="cards"></g></svg></div>"#
     );
 
-    // One arrow per pair of states, whatever the actions; the panel lists them.
-    let mut pairs: BTreeMap<(usize, usize), Vec<usize>> = BTreeMap::new();
-    for (k, m) in map.moves.iter().enumerate() {
-        if !m.stays() {
-            pairs.entry((m.from, m.to)).or_default().push(k);
-        }
-    }
-    for (&(a, b), ms) in &pairs {
-        let ((ax, ay), (bx, by)) = (xy(a), xy(b));
-        let path = if at[b].0 > at[a].0 {
-            // Forward: right side to left side.
-            let (x1, y1, x2, y2) = (ax + W, ay + h / 2.0, bx, by + h / 2.0);
-            let mid = (x1 + x2) / 2.0;
-            format!("M{x1:.1} {y1:.1}C{mid:.1} {y1:.1} {mid:.1} {y2:.1} {x2:.1} {y2:.1}")
-        } else if at[b].0 < at[a].0 {
-            // Back: bottom to bottom, dipping below.
-            let (x1, y1, x2, y2) = (ax + W * 0.4, ay + h, bx + W * 0.6, by + h);
-            let dip = y1.max(y2) + 30.0 + (x1 - x2).abs() * 0.08;
-            format!("M{x1:.1} {y1:.1}C{x1:.1} {dip:.1} {x2:.1} {dip:.1} {x2:.1} {y2:.1}")
+    // Without the script: the states the map shows at first, as panels.
+    o.push_str(r#"<div class="states-panels"><p class="states-hint">Pick a state on the map to see what can happen there.</p><noscript><p>The map needs JavaScript. Here are the start states and where they lead.</p>"#);
+    let state_link = |j: usize| {
+        if map.states[j].start {
+            format!(r##"<a href="#state-{j}">{}</a>"##, esc(&label(j)))
         } else {
-            // Same column: out of the right side and back in, bulging right.
-            let (x, y1, y2) = (ax + W, ay + h * 0.35, by + h * 0.65);
-            let bulge = x + 36.0 + (y1 - y2).abs() * 0.12;
-            format!("M{x:.1} {y1:.1}C{bulge:.1} {y1:.1} {bulge:.1} {y2:.1} {x:.1} {y2:.1}")
-        };
-        let fired: Vec<ExpId> = ms.iter().flat_map(|&k| map.moves[k].fired.clone()).collect();
-        let actions: Vec<String> = ms.iter().map(|&k| s.describe_trigger(&map.moves[k].action)).collect();
-        let _ = write!(
-            o,
-            r#"<path class="move {}" data-from="{a}" data-to="{b}" d="{path}" marker-end="url(#st-arrow)"><title>{}</title></path>"#,
-            verdict_class(f, &fired),
-            esc(&actions.join("; "))
-        );
-    }
-    o.push_str("</g>");
-
-    for i in 0..n {
-        let (x, y) = xy(i);
-        let st = &map.states[i];
-        let mut class = String::from("state");
-        if st.start {
-            class.push_str(" start");
+            esc(&label(j))
         }
-        let label = map.label(s, i);
-        let _ = write!(
-            o,
-            r##"<a href="#state-{i}" data-state="{i}" data-cell="{} {} {x:.1} {y:.1}" data-level="{}"><g class="{class}"><title>{}</title><rect x="{x:.1}" y="{y:.1}" width="{W}" height="{h:.1}" rx="10"/>"##,
-            at[i].0,
-            at[i].1,
-            st.level,
-            esc(&facts[i].join("\n"))
-        );
-        let mut ty = y + 8.0;
-        if with_shots {
-            match shots[i].first() {
-                Some(shot) => {
-                    let _ = write!(
-                        o,
-                        r#"<image href="../{}" x="{:.1}" y="{ty:.1}" width="{:.1}" height="{THUMB}" preserveAspectRatio="xMidYMid slice"/>"#,
-                        esc(&shot.path),
-                        x + 8.0,
-                        W - 16.0
-                    );
-                }
-                None => {
-                    let _ = write!(
-                        o,
-                        r#"<rect class="noshot" x="{:.1}" y="{ty:.1}" width="{:.1}" height="{THUMB}" rx="6"/><text class="hint" x="{:.1}" y="{:.1}">no screenshot</text>"#,
-                        x + 8.0,
-                        W - 16.0,
-                        x + W / 2.0,
-                        ty + THUMB / 2.0 + 4.0
-                    );
-                }
-            }
-            ty += THUMB + 10.0;
-        }
-        let shown: Vec<String> = if facts[i].is_empty() { vec![label] } else { facts[i].iter().map(|f| short(f)).collect() };
-        for (k, line) in shown.iter().enumerate() {
-            let _ = write!(o, r#"<text x="{:.1}" y="{:.1}">{}</text>"#, x + 12.0, ty + 12.0 + k as f32 * LINE, esc(line));
-        }
-        o.push_str("</g></a>");
-    }
-    o.push_str("</svg></div>");
-
-    // The panels.
-    o.push_str(r#"<div class="states-panels"><p class="states-hint">Pick a state on the map to see what can happen there.</p>"#);
-    let state_link = |j: usize| format!(r##"<a href="#state-{j}" data-state="{j}">{}</a>"##, esc(&map.label(s, j)));
+    };
     let by_exps = |fired: &[ExpId]| -> String {
         let links: Vec<String> = fired.iter().map(|&e| exp_link(e)).collect();
         if links.is_empty() { String::new() } else { format!(r#"<small>{}</small>"#, links.join(", ")) }
     };
-    for i in 0..n {
-        let st = &map.states[i];
-        let _ = write!(o, r#"<section class="state-panel" id="state-{i}"><h3>{}</h3>"#, esc(&map.label(s, i)));
-        let mut tags = vec![];
-        if st.start {
-            tags.push(r#"<span class="badge ok">start</span>"#.to_string());
-        } else {
-            let moves = if st.level == 1 { "1 move".to_string() } else { format!("{} moves", st.level) };
-            tags.push(format!(r#"<span class="badge idle">{moves} from the start</span>"#));
-        }
-        let _ = write!(o, "<p>{}</p>", tags.join(" "));
-        if !facts[i].is_empty() {
-            let items: Vec<String> = facts[i].iter().map(|f| format!("<li>{}</li>", esc(f))).collect();
+    for i in (0..n).filter(|&i| map.states[i].start) {
+        let _ = write!(o, r#"<section class="state-panel static" id="state-{i}"><h3>{}</h3>"#, esc(&label(i)));
+        o.push_str(r#"<p><span class="badge ok">start</span></p>"#);
+        if !cond_facts[i].is_empty() {
+            let items: Vec<String> = cond_facts[i].iter().map(|(f, _)| format!("<li>{}</li>", esc(f))).collect();
             let _ = write!(o, r#"<ul class="facts">{}</ul>"#, items.join(""));
         }
-        if let Some(shot) = shots[i].first() {
-            let _ = write!(
-                o,
-                r#"<figure><a href="../{0}"><img src="../{0}" alt="{1}" loading="lazy"></a><figcaption>From {2}</figcaption></figure>"#,
-                esc(&shot.path),
-                esc(&map.label(s, i)),
-                test_link(shot.plan)
-            );
+        let mut out = vec![];
+        let mut stays = vec![];
+        for &k in &from[i] {
+            let m = &map.moves[k];
+            if m.stays() {
+                stays.push(format!(r#"<li><span class="act">{}</span> {}</li>"#, esc(&action(k)), by_exps(&m.fired)));
+            } else {
+                out.push(format!(r#"<li><span class="act">{}</span> → {} {}</li>"#, esc(&action(k)), state_link(m.to), by_exps(&m.fired)));
+            }
         }
-        let list = |o: &mut String, title: &str, items: Vec<String>| {
+        for (title, items) in [("From here", out), ("Stays here", stays)] {
             if !items.is_empty() {
                 let _ = write!(o, r#"<h4>{title}</h4><ul class="moves">{}</ul>"#, items.join(""));
             }
-        };
-        let out: Vec<String> = map
-            .moves_from(i)
-            .filter(|m| !m.stays())
-            .map(|m| {
-                format!(
-                    r#"<li><span class="act">{}</span> → {} {}</li>"#,
-                    esc(&s.describe_trigger(&m.action)),
-                    state_link(m.to),
-                    by_exps(&m.fired)
-                )
-            })
-            .collect();
-        list(&mut o, "From here", out);
-        let stays: Vec<String> = map
-            .moves_from(i)
-            .filter(|m| m.stays())
-            .map(|m| format!(r#"<li><span class="act">{}</span> {}</li>"#, esc(&s.describe_trigger(&m.action)), by_exps(&m.fired)))
-            .collect();
-        list(&mut o, "Stays here", stays);
-        let into: Vec<String> = map
-            .moves_into(i)
-            .map(|m| format!(r#"<li>{} → <span class="act">{}</span></li>"#, state_link(m.from), esc(&s.describe_trigger(&m.action))))
-            .collect();
-        list(&mut o, "Ways in", into);
+        }
         o.push_str("</section>");
     }
-    o.push_str("</div></div>");
+    o.push_str(r#"</noscript><section class="state-panel live" hidden></section></div></div>"#);
+
+    let _ = write!(
+        o,
+        r#"<script type="application/json" id="states-data">{{"g":[{W},{h:.1},{GAP_X},{GAP_Y},{PAD},{THUMB},{},{CHARS}],"f":{},"a":{},"e":{},"t":{},"p":{},"s":[{}],"m":[{}]}}</script>"#,
+        with_shots as u8,
+        facts.json(),
+        actions.json(),
+        exps.json(),
+        tests.json(),
+        paths.json(),
+        states_json.join(","),
+        moves_json.join(",")
+    );
     o.push_str(SCRIPT);
     o
 }
 
-/// Pan, zoom, pick, and fold: only the states a move from the start show at first, and
-/// picking one opens the states it leads to. Cards are laid out again for what's showing.
-/// Without the script, every state shows, and the links and `:target` still work.
-const SCRIPT: &str = r#"<script>
+/// Draws the map from the data: the start states and the states a move from them at first;
+/// picking a state opens the states it leads to. Cards are laid out again for what's open.
+const SCRIPT: &str = r##"<script>
 (() => {
   const root = document.getElementById("states");
-  const svg = root.querySelector("svg.statemap");
-  const [W, H, GX, GY, PAD] = svg.dataset.geom.split(" ").map(Number);
+  const D = JSON.parse(document.getElementById("states-data").textContent);
+  const [W, H, GX, GY, PAD, THUMB, SHOTS, CHARS] = D.g;
   const NS = "http://www.w3.org/2000/svg";
+  const svg = root.querySelector("svg.statemap");
+  const cards = svg.querySelector(".cards"), arrows = svg.querySelector(".moves");
+  const panel = root.querySelector(".state-panel.live");
   root.classList.add("js");
   root.querySelector(".states-tools").hidden = false;
-  svg.removeAttribute("width");
-  svg.removeAttribute("height");
 
-  // The cards, where the page drew them, and the arrows between them.
-  const nodes = new Map();
-  svg.querySelectorAll("a[data-state]").forEach((el) => {
-    const [col, row, x0, y0] = el.dataset.cell.split(" ").map(Number);
-    const more = document.createElementNS(NS, "g");
-    more.setAttribute("class", "more");
-    more.innerHTML = `<rect x="${x0 + W - 30}" y="${y0 - 10}" width="40" height="20" rx="10"/><text x="${x0 + W - 10}" y="${y0 + 4}"></text>`;
-    el.querySelector("g").appendChild(more);
-    nodes.set(el.dataset.state, { el, col, row, x0, y0, level: Number(el.dataset.level), x: x0, y: y0, more });
-  });
-  const moves = [...svg.querySelectorAll(".move")];
-  const outs = (id) => [...new Set(moves.filter((m) => m.dataset.from === id).map((m) => m.dataset.to))];
-  const near = () => new Set([...nodes].filter(([, n]) => n.level <= 1).map(([id]) => id));
+  const N = D.s.length;
+  const level = (i) => D.s[i][0];
+  const outs = Array.from({ length: N }, () => []), ins = Array.from({ length: N }, () => []);
+  D.m.forEach((m, k) => { outs[m[0]].push(k); if (m[1] !== m[0]) ins[m[1]].push(k); });
+  const label = (i) => D.s[i][4].length ? D.s[i][4].map((f) => D.f[f][1]).join(" · ") : "anything";
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const short = (s) => [...s].length <= CHARS ? s : [...s].slice(0, CHARS - 1).join("").trimEnd() + "…";
+  const el = (tag, attrs, html) => {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (html) e.innerHTML = html;
+    return e;
+  };
+
+  // Cards, drawn the first time they open, at 0 0 and moved into place.
+  const drawn = new Map();
+  const card = (i) => {
+    if (drawn.has(i)) return drawn.get(i);
+    const st = D.s[i];
+    const facts = st[4].map((f) => D.f[f][0]);
+    let inner = `<title>${esc(facts.join("\n") || "anything")}</title><rect x="0" y="0" width="${W}" height="${H}" rx="10"/>`;
+    let ty = 8;
+    if (SHOTS) {
+      inner += st[5] >= 0
+        ? `<image href="../${esc(D.p[st[5]])}" x="8" y="${ty}" width="${W - 16}" height="${THUMB}" preserveAspectRatio="xMidYMid slice"/>`
+        : `<rect class="noshot" x="8" y="${ty}" width="${W - 16}" height="${THUMB}" rx="6"/><text class="hint" x="${W / 2}" y="${ty + THUMB / 2 + 4}">no screenshot</text>`;
+      ty += THUMB + 10;
+    }
+    (facts.length ? facts.map(short) : ["anything"]).forEach((line, k) => {
+      inner += `<text x="12" y="${ty + 12 + k * 16}">${esc(line)}</text>`;
+    });
+    inner += `<g class="more"><rect x="${W - 30}" y="-10" width="40" height="20" rx="10"/><text x="${W - 10}" y="4"></text></g>`;
+    const a = el("a", { href: `#state-${i}`, "data-state": i }, `<g class="state${st[1] ? " start" : ""}">${inner}</g>`);
+    cards.appendChild(a);
+    const n = { a, more: a.querySelector(".more"), x: 0, y: 0 };
+    drawn.set(i, n);
+    return n;
+  };
+
+  const near = () => new Set(D.s.map((s, i) => i).filter((i) => level(i) <= 1));
   let open = near();
-  if (open.size === nodes.size) root.querySelectorAll("[data-fold]").forEach((b) => b.hidden = true);
-
-  // Open `id`, and a shortest way to it from what's open, so it isn't left on its own.
-  const reveal = (id) => {
-    while (id !== undefined && !open.has(id)) {
-      open.add(id);
-      const level = nodes.get(id).level;
-      id = moves.find((m) => m.dataset.to === id && nodes.get(m.dataset.from).level === level - 1)?.dataset.from;
+  const reveal = (i) => {
+    while (i !== undefined && !open.has(i)) {
+      open.add(i);
+      const k = ins[i].find((k) => level(D.m[k][0]) === level(i) - 1);
+      i = k === undefined ? undefined : D.m[k][0];
     }
   };
 
-  const path = (a, b) => {
-    if (b.col > a.col) {
+  const path = (a, b, ca, cb) => {
+    if (cb > ca) {
       const [x1, y1, x2, y2] = [a.x + W, a.y + H / 2, b.x, b.y + H / 2];
       const mid = (x1 + x2) / 2;
       return `M${x1} ${y1}C${mid} ${y1} ${mid} ${y2} ${x2} ${y2}`;
     }
-    if (b.col < a.col) {
+    if (cb < ca) {
       const [x1, y1, x2, y2] = [a.x + W * 0.4, a.y + H, b.x + W * 0.6, b.y + H];
       const dip = Math.max(y1, y2) + 30 + Math.abs(x1 - x2) * 0.08;
       return `M${x1} ${y1}C${x1} ${dip} ${x2} ${dip} ${x2} ${y2}`;
@@ -361,66 +369,75 @@ const SCRIPT: &str = r#"<script>
     return `M${x} ${y1}C${bulge} ${y1} ${bulge} ${y2} ${x} ${y2}`;
   };
 
-  // What's open, packed into columns by level with the page's order kept.
+  // What's open, in columns by level with the order the page worked out kept.
   let home = { x: 0, y: 0, w: 1, h: 1 };
   const layout = () => {
     const cols = new Map();
-    nodes.forEach((n, id) => {
-      if (open.has(id)) (cols.get(n.col) ?? cols.set(n.col, []).get(n.col)).push(n);
-    });
+    open.forEach((i) => { const c = D.s[i][2]; (cols.get(c) ?? cols.set(c, []).get(c)).push(i); });
     const order = [...cols.keys()].sort((a, b) => a - b);
     let rows = 1;
     order.forEach((c, ci) => {
-      const col = cols.get(c).sort((a, b) => a.row - b.row);
+      const col = cols.get(c).sort((a, b) => D.s[a][3] - D.s[b][3]);
       rows = Math.max(rows, col.length);
-      col.forEach((n, ri) => { n.x = PAD + ci * (W + GX); n.y = PAD + ri * (H + GY); });
+      col.forEach((i, ri) => { const n = card(i); n.x = PAD + ci * (W + GX); n.y = PAD + ri * (H + GY); });
     });
-    nodes.forEach((n, id) => {
-      const shown = open.has(id);
-      n.el.style.display = shown ? "" : "none";
-      n.el.setAttribute("transform", `translate(${n.x - n.x0} ${n.y - n.y0})`);
-      const folded = outs(id).filter((t) => !open.has(t)).length;
-      n.more.style.display = shown && folded ? "" : "none";
+    drawn.forEach((n, i) => {
+      const shown = open.has(i);
+      n.a.style.display = shown ? "" : "none";
+      if (!shown) return;
+      n.a.setAttribute("transform", `translate(${n.x} ${n.y})`);
+      const folded = new Set(outs[i].map((k) => D.m[k][1]).filter((t) => t !== i && !open.has(t))).size;
+      n.more.style.display = folded ? "" : "none";
       n.more.querySelector("text").textContent = `+${folded}`;
-      n.el.setAttribute("aria-label", folded ? `${n.el.querySelector("title").textContent} (${folded} more beyond)` : "");
     });
-    moves.forEach((m) => {
-      const shown = open.has(m.dataset.from) && open.has(m.dataset.to);
-      m.style.display = shown ? "" : "none";
-      if (shown) m.setAttribute("d", path(nodes.get(m.dataset.from), nodes.get(m.dataset.to)));
+    // One arrow for each pair of open states, coloured by the worst verdict behind it.
+    const pairs = new Map();
+    open.forEach((i) => outs[i].forEach((k) => {
+      const t = D.m[k][1];
+      if (t === i || !open.has(t)) return;
+      const key = `${i} ${t}`;
+      (pairs.get(key) ?? pairs.set(key, []).get(key)).push(k);
+    }));
+    arrows.replaceChildren();
+    pairs.forEach((ks, key) => {
+      const [a, b] = key.split(" ").map(Number);
+      const v = ks.flatMap((k) => D.m[k][3].map((e) => D.e[e][1]));
+      const cls = v.includes(1) ? "v-bad" : v.length && v.every((x) => x === 0) ? "v-ok" : "v-idle";
+      const p = el("path", { class: `move ${cls}`, "data-from": a, "data-to": b, d: path(drawn.get(a), drawn.get(b), D.s[a][2], D.s[b][2]), "marker-end": "url(#st-arrow)" },
+        `<title>${esc(ks.map((k) => D.a[D.m[k][2]]).join("; "))}</title>`);
+      arrows.appendChild(p);
     });
     home = { x: 0, y: 0, w: PAD * 2 + order.length * (W + GX) - GX + 40, h: PAD * 2 + rows * (H + GY) - GY + 60 };
   };
 
+  // The view keeps the shape of the map's box, so a tall map is never squeezed into a strip.
   let view = { x: 0, y: 0, w: 1, h: 1 };
-  const draw = () => svg.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`);
-  const fit = () => { view = { ...home }; draw(); };
-  // After opening more, fit again if any of it is off screen.
-  const fitIfNeeded = () => {
-    const out = [...nodes].some(([id, n]) => open.has(id) &&
-      (n.x < view.x || n.y < view.y || n.x + W > view.x + view.w || n.y + H > view.y + view.h));
-    if (out) fit();
-  };
-  const zoom = (k, cx = view.x + view.w / 2, cy = view.y + view.h / 2) => {
-    const w = Math.min(Math.max(view.w / k, 120), home.w * 4);
-    const s = w / view.w;
-    view = { x: cx - (cx - view.x) * s, y: cy - (cy - view.y) * s, w, h: view.h * s };
+  const aspect = () => { const r = svg.getBoundingClientRect(); return r.width ? r.height / r.width : 0.6; };
+  const draw = () => { view.h = view.w * aspect(); svg.setAttribute("viewBox", `${view.x} ${view.y} ${view.w} ${view.h}`); };
+  const fit = () => { view = { x: 0, y: 0, w: Math.max(home.w, home.h / aspect()) }; draw(); };
+  // Readable: about three columns across, from the top left.
+  const start = () => { view = { x: 0, y: 0, w: Math.min(Math.max(home.w, 2 * (W + GX)), 3 * (W + GX) + PAD) }; draw(); };
+  // Bring state `i` into view, keeping the zoom.
+  const show = (i) => {
+    const n = drawn.get(i);
+    if (n.x >= view.x && n.y >= view.y && n.x + W <= view.x + view.w && n.y + H <= view.y + view.h) return;
+    view = { ...view, x: n.x + W / 2 - view.w / 2, y: n.y + H / 2 - view.h / 2 };
     draw();
   };
+  const zoom = (k, cx = view.x + view.w / 2, cy = view.y + view.h / 2) => {
+    const w = Math.min(Math.max(view.w / k, 120), Math.max(home.w, home.h / aspect()) * 2);
+    const s = w / view.w;
+    view = { x: cx - (cx - view.x) * s, y: cy - (cy - view.y) * s, w };
+    draw();
+  };
+  window.addEventListener("resize", draw);
   const point = (e) => {
     const r = svg.getBoundingClientRect();
     return { x: view.x + (e.clientX - r.left) / r.width * view.w, y: view.y + (e.clientY - r.top) / r.height * view.h };
   };
-  svg.addEventListener("wheel", (e) => {
-    e.preventDefault();
-    const p = point(e);
-    zoom(Math.exp(-e.deltaY / 300), p.x, p.y);
-  }, { passive: false });
+  svg.addEventListener("wheel", (e) => { e.preventDefault(); const p = point(e); zoom(Math.exp(-e.deltaY / 300), p.x, p.y); }, { passive: false });
   let drag = null;
-  svg.addEventListener("pointerdown", (e) => {
-    if (e.button !== 0) return;
-    drag = { x: e.clientX, y: e.clientY, view: { ...view }, moved: false };
-  });
+  svg.addEventListener("pointerdown", (e) => { if (e.button === 0) drag = { x: e.clientX, y: e.clientY, view: { ...view }, moved: false }; });
   window.addEventListener("pointermove", (e) => {
     if (!drag) return;
     const r = svg.getBoundingClientRect();
@@ -431,65 +448,89 @@ const SCRIPT: &str = r#"<script>
     view = { ...view, x: drag.view.x - dx / r.width * view.w, y: drag.view.y - dy / r.height * view.h };
     draw();
   });
-  window.addEventListener("pointerup", () => {
-    svg.classList.remove("dragging");
-    setTimeout(() => { drag = null; });
-  });
+  window.addEventListener("pointerup", () => { svg.classList.remove("dragging"); setTimeout(() => { drag = null; }); });
+
+  // The picked state's panel, written when it's picked.
+  const link = (j) => `<a href="#state-${j}" data-state="${j}">${esc(label(j))}</a>`;
+  const rules = (k) => D.m[k][3].length ? `<small>${D.m[k][3].map((e) => D.e[e][0]).join(", ")}</small>` : "";
+  const section = (title, items) => items.length ? `<h4>${title}</h4><ul class="moves">${items.join("")}</ul>` : "";
+  const showPanel = (i) => {
+    const st = D.s[i];
+    const lv = st[0] === 1 ? "1 move" : `${st[0]} moves`;
+    let html = `<h3>${esc(label(i))}</h3><p>${st[1] ? '<span class="badge ok">start</span>' : `<span class="badge idle">${lv} from the start</span>`}</p>`;
+    if (st[4].length) html += `<ul class="facts">${st[4].map((f) => `<li>${esc(D.f[f][0])}</li>`).join("")}</ul>`;
+    if (st[5] >= 0) {
+      const p = esc(D.p[st[5]]);
+      html += `<figure><a href="../${p}"><img src="../${p}" alt="${esc(label(i))}" loading="lazy"></a><figcaption>From ${D.t[st[6]]}</figcaption></figure>`;
+    }
+    const act = (k) => `<span class="act">${esc(D.a[D.m[k][2]])}</span>`;
+    html += section("From here", outs[i].filter((k) => D.m[k][1] !== i).map((k) => `<li>${act(k)} → ${link(D.m[k][1])} ${rules(k)}</li>`));
+    html += section("Stays here", outs[i].filter((k) => D.m[k][1] === i).map((k) => `<li>${act(k)} ${rules(k)}</li>`));
+    html += section("Ways in", ins[i].map((k) => `<li>${link(D.m[k][0])} → ${act(k)}</li>`));
+    panel.innerHTML = html;
+    panel.hidden = false;
+    panel.classList.add("shown");
+  };
 
   let picked = null;
   const pick = (i) => {
     picked = i;
-    root.querySelectorAll(".state-panel.shown").forEach((p) => p.classList.remove("shown"));
     svg.classList.toggle("picked", i !== null);
-    svg.querySelectorAll(".sel,.near,.in,.out").forEach((el) => el.classList.remove("sel", "near", "in", "out"));
-    if (i === null || !nodes.has(i)) return;
+    if (i === null || !(i >= 0 && i < N)) { panel.hidden = true; panel.classList.remove("shown"); layout(); return; }
     reveal(i);
-    outs(i).forEach((t) => open.add(t));
+    outs[i].forEach((k) => open.add(D.m[k][1]));
     layout();
-    fitIfNeeded();
-    document.getElementById(`state-${i}`)?.classList.add("shown");
-    nodes.get(i).el.classList.add("sel");
-    svg.querySelectorAll(`.move[data-from="${i}"]`).forEach((m) => {
-      m.classList.add("out");
-      nodes.get(m.dataset.to).el.classList.add("near");
-    });
-    svg.querySelectorAll(`.move[data-to="${i}"]`).forEach((m) => {
-      m.classList.add("in");
-      nodes.get(m.dataset.from).el.classList.add("near");
+    show(i);
+    showPanel(i);
+    drawn.forEach((n) => n.a.classList.remove("sel", "near"));
+    drawn.get(i).a.classList.add("sel");
+    arrows.querySelectorAll(".move").forEach((m) => {
+      if (Number(m.dataset.from) === i) { m.classList.add("out"); drawn.get(Number(m.dataset.to)).a.classList.add("near"); }
+      if (Number(m.dataset.to) === i) { m.classList.add("in"); drawn.get(Number(m.dataset.from)).a.classList.add("near"); }
     });
   };
   root.querySelectorAll("[data-zoom]").forEach((b) => b.addEventListener("click", () => {
     if (b.dataset.zoom === "fit") fit(); else zoom(Number(b.dataset.zoom));
   }));
-  root.querySelectorAll("[data-fold]").forEach((b) => b.addEventListener("click", () => {
-    open = b.dataset.fold === "all" ? new Set(nodes.keys()) : near();
+  root.querySelector("[data-fold]").addEventListener("click", () => {
+    open = near();
     if (picked !== null) reveal(picked);
     layout();
-    fit();
-  }));
+    start();
+    if (picked !== null) pick(picked);
+  });
   root.addEventListener("click", (e) => {
     const a = e.target.closest("a[data-state]");
     if (!a) return;
     e.preventDefault();
     if (drag && drag.moved) return;
     history.replaceState(null, "", `#state-${a.dataset.state}`);
-    pick(a.dataset.state);
+    pick(Number(a.dataset.state));
   });
   layout();
-  fit();
-  const m = location.hash.match(/^#state-(\d+)$/);
-  pick(m ? m[1] : null);
+  start();
+  const fromHash = () => { const m = location.hash.match(/^#state-(\d+)$/); pick(m ? Number(m[1]) : null); };
+  window.addEventListener("hashchange", fromHash);
+  fromHash();
 })();
-</script>"#;
+</script>"##;
 
 #[cfg(test)]
 mod tests {
-    use super::short;
+    use super::{Table, js};
 
     #[test]
-    fn long_facts_are_cut_short() {
-        assert_eq!(short("the kettle is off"), "the kettle is off");
-        let s = short("the selected item in the inspector is the first one");
-        assert!(s.ends_with('…') && s.chars().count() <= super::CHARS);
+    fn strings_are_safe_inside_a_script() {
+        assert_eq!(js(r#"say "hi" </script>"#), r#""say \"hi\" \u003c/script>""#);
+        assert_eq!(js("a\\b\nc"), r#""a\\b\nc""#);
+    }
+
+    #[test]
+    fn a_string_is_written_once() {
+        let mut t = Table::default();
+        assert_eq!(t.id(js("on")), 0);
+        assert_eq!(t.id(js("off")), 1);
+        assert_eq!(t.id(js("on")), 0);
+        assert_eq!(t.json(), r#"["on","off"]"#);
     }
 }
