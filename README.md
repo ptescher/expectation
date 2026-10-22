@@ -243,7 +243,8 @@ into one.
 Name events for what the user means, not the button they press: "the user starts the
 kettle", not "the user presses START". The button goes in a `Say:` line under the event,
 which is what the docs tell the reader to do ("Press START."). A `Set:` line under a state
-says how to change it, with `{value}` for the value. Without them, the docs make do: "the
+says how to change it, with `{value}` for the value. A state can also have a `Set:` for one
+value, as `Shows:` lines do: `Set: lost: switch off the radio`. Without them, the docs make do: "the
 user clicks the canvas" becomes "Click the canvas", and a state becomes "Set the dial to
 80 %".
 

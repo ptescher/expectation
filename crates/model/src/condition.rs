@@ -238,7 +238,7 @@ mod tests {
             key: format!("v{id}"),
             kind,
             verb: "is".into(),
-            set: None,
+            set: None, sets: vec![],
             shows: vec![],
             span: Span::new("t", 1),
         }

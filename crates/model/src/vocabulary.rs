@@ -40,6 +40,9 @@ pub struct Variable {
     /// How docs tell the reader to change it, with `{value}` for the value ("open the dial
     /// to {value}"). Without it: "set the dial to 80 %".
     pub set: Option<String>,
+    /// `Set:` lines for one value each ("lost", "switch off the TX15"): they win over `set`
+    /// for that value.
+    pub sets: Vec<(String, String)>,
     /// What the reader sees, from `Shows:` lines: for one value ("dry", "the display says
     /// DRY", or "at least 99 %" for a number), or for any value with `{value}` in it
     /// (`None`, "the button reads UPLOAD {value}").
@@ -234,7 +237,11 @@ impl Variable {
                 if yes.is_empty() {
                     "is impossible".into()
                 } else if yes.len() > 1 && no.len() == 1 {
-                    format!("is not {}", no[0])
+                    // Every value but "not over" is "over", not "not not over".
+                    match no[0].strip_prefix("not ") {
+                        Some(positive) => format!("is {positive}"),
+                        None => format!("is not {}", no[0]),
+                    }
                 } else {
                     format!("is {}", yes.join(" or "))
                 }
@@ -288,7 +295,7 @@ mod tests {
             kind: VarKind::Number { min: 0.0, max: 100.0, unit: Some("%".into()) },
             verb: "is".into(),
             span: Span::new("t", 1),
-            set: None,
+            set: None, sets: vec![],
             shows: vec![],
         };
         let eighty = Constraint::Range(Interval::point(80.0));

@@ -204,6 +204,32 @@ Story: First cup
         assert!(!l.render_diagnostics().contains("launch-in-step"), "{}", l.render_diagnostics());
     }
 
+    #[test]
+    fn a_state_can_have_a_set_for_each_value() {
+        let l = load_sources(
+            "t",
+            &[(
+                "t.expect",
+                "Vocabulary:\n  State: the link is up | lost | weak\n    Set: lost: switch off the radio\n    Set: up: switch on the radio\n    Set: make the link {value}\n",
+            )],
+        );
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        let var = &l.suite.vocabulary.variables[0];
+        assert_eq!(var.set.as_deref(), Some("make the link {value}"));
+        assert_eq!(
+            var.sets,
+            vec![("lost".to_string(), "switch off the radio".to_string()), ("up".to_string(), "switch on the radio".to_string())]
+        );
+    }
+
+    #[test]
+    fn every_value_but_not_over_reads_over() {
+        let l = load_sources("t", &[("t.expect", "Vocabulary:\n  State: the game is won | a draw | not over\n")]);
+        let var = &l.suite.vocabulary.variables[0];
+        assert_eq!(var.predicate(&expectation_model::Constraint::OneOf(0b011)), "is over");
+        assert_eq!(var.predicate(&expectation_model::Constraint::OneOf(0b110)), "is not won");
+    }
+
     /// The warnings a suite gets, in order.
     fn warnings(sources: &[(&str, &str)]) -> Vec<&'static str> {
         let l = load_sources("t", sources);

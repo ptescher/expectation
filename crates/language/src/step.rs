@@ -249,7 +249,7 @@ pub fn declare_state(decl: &str, span: &Span, id: VarId) -> Result<Variable, Dia
         VarKind::Enum(names)
     };
     let verb = decl[at + 1..at + len - 1].to_string();
-    Ok(Variable { id, key: text::key(&subject), subject, kind, verb, span: span.clone(), set: None, shows: vec![] })
+    Ok(Variable { id, key: text::key(&subject), subject, kind, verb, span: span.clone(), set: None, sets: vec![], shows: vec![] })
 }
 
 #[cfg(test)]
