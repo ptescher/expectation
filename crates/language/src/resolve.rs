@@ -134,6 +134,7 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
             });
         }
     }
+    crate::sizing::check(suite, diags);
 }
 
 /// One section per directory with files in it, and per directory above those. Each takes its

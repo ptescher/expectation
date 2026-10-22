@@ -477,6 +477,19 @@ The docs are only as good as the words in the specs. Some habits that help:
   good target: one instruction per sentence, active voice, common words.
 - Generate the docs and read them as a newcomer would, then fix the specs, not the output.
 
+`expectation check` warns when the pages would be badly sized (the limits are constants in
+[`sizing.rs`](crates/language/src/sizing.rs)):
+
+| Warning | When |
+| --- | --- |
+| `many-scenarios` | A story has more than one scenario. Each scenario is a tutorial page of its own. |
+| `short-story` | A scenario has fewer than 3 numbered steps (each `When` starts one). |
+| `long-story` | A scenario has more than 8 numbered steps. |
+| `big-feature` | A feature has more than 8 expectations on its topic page (`Docs: hidden` ones don't count). |
+| `small-feature` | A feature has 1 expectation on its page, and its section has other features. |
+| `crowded-section` | A section (not counting its subsections) has more than 8 tutorials or more than 8 topics. |
+| `no-tutorial` | A section has 2 or more features and no story. |
+
 ## The `expectation` command
 
 ```bash
