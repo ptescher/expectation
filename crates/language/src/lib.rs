@@ -33,6 +33,7 @@
 mod lens;
 mod parse;
 mod resolve;
+pub mod sizing;
 pub mod step;
 
 use expectation_model::{Diagnostic, Suite};
@@ -201,6 +202,115 @@ Story: First cup
         assert!(l.render_diagnostics().contains("launch-in-step"), "{}", l.render_diagnostics());
         let l = load_sources("t", &[("t.expect", "Vocabulary:\n  Event: the user unlocks it\n    Say: press `UNLOCK`\n")]);
         assert!(!l.render_diagnostics().contains("launch-in-step"), "{}", l.render_diagnostics());
+    }
+
+    #[test]
+    fn a_state_can_have_a_set_for_each_value() {
+        let l = load_sources(
+            "t",
+            &[(
+                "t.expect",
+                "Vocabulary:\n  State: the link is up | lost | weak\n    Set: lost: switch off the radio\n    Set: up: switch on the radio\n    Set: make the link {value}\n",
+            )],
+        );
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        let var = &l.suite.vocabulary.variables[0];
+        assert_eq!(var.set.as_deref(), Some("make the link {value}"));
+        assert_eq!(
+            var.sets,
+            vec![("lost".to_string(), "switch off the radio".to_string()), ("up".to_string(), "switch on the radio".to_string())]
+        );
+    }
+
+    #[test]
+    fn every_value_but_not_over_reads_over() {
+        let l = load_sources("t", &[("t.expect", "Vocabulary:\n  State: the game is won | a draw | not over\n")]);
+        let var = &l.suite.vocabulary.variables[0];
+        assert_eq!(var.predicate(&expectation_model::Constraint::OneOf(0b011)), "is over");
+        assert_eq!(var.predicate(&expectation_model::Constraint::OneOf(0b110)), "is not won");
+    }
+
+    /// The warnings a suite gets, in order.
+    fn warnings(sources: &[(&str, &str)]) -> Vec<&'static str> {
+        let l = load_sources("t", sources);
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        l.diagnostics.iter().filter(|d| !d.is_error()).map(|d| d.code).collect()
+    }
+
+    const SIZING_VOCAB: &str =
+        "Vocabulary:\n State: the light is off | on\n State: the switch is up | down\n Event: the user presses A\n";
+
+    /// A feature with `n` expectations, the first `hidden` of them `Docs: hidden`.
+    fn feature(name: &str, n: usize, hidden: usize) -> String {
+        let mut out = format!("Feature: {name}\n");
+        for i in 0..n {
+            let docs = if i < hidden { "  Docs: hidden\n" } else { "" };
+            out += &format!(
+                " Expectation: {name} {i}\n{docs}  Given the light is off\n  When the user presses A\n  Then the light is on\n"
+            );
+        }
+        out
+    }
+
+    /// A story with a scenario of that many numbered steps for each of `scenarios`.
+    fn story(name: &str, scenarios: &[usize]) -> String {
+        let mut out = format!("Story: {name}\n");
+        for (i, &steps) in scenarios.iter().enumerate() {
+            out += &format!(" Scenario: {name} {i}\n");
+            for _ in 0..steps {
+                out += "  When the user presses A\n  And the switch is up\n  Then the light is on\n";
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn warns_about_tutorials_too_many_short_or_long() {
+        let suite = |stories: &str| warnings(&[("t.expect", &format!("{SIZING_VOCAB}{stories}"))]);
+        let none: Vec<&str> = vec![];
+        assert_eq!(suite(&story("S", &[3])), none);
+        assert_eq!(suite(&story("S", &[8])), none);
+        assert_eq!(suite(&story("S", &[3, 4])), vec!["many-scenarios"]);
+        assert_eq!(suite(&story("S", &[3, 1])), vec!["many-scenarios", "short-story"]);
+        assert_eq!(suite(&story("S", &[2])), vec!["short-story"]);
+        assert_eq!(suite(&story("S", &[9])), vec!["long-story"]);
+        // Steps straight under the story are its one scenario, and an `And` joins the When before it.
+        assert_eq!(suite("Story: S\n When the user presses A\n And the switch is up\n"), vec!["short-story"]);
+    }
+
+    #[test]
+    fn warns_about_topics_too_big_or_too_small() {
+        let suite = |body: String| warnings(&[("t.expect", &format!("{SIZING_VOCAB}{body}{}", story("S", &[3])))]);
+        let none: Vec<&str> = vec![];
+        assert_eq!(suite(feature("F", 8, 0)), none);
+        assert_eq!(suite(feature("F", 9, 0)), vec!["big-feature"]);
+        // Hidden expectations aren't on the page.
+        assert_eq!(suite(feature("F", 10, 2)), none);
+        // One behaviour is fine as a topic when it's alone in its section.
+        assert_eq!(suite(feature("F", 1, 0)), none);
+        assert_eq!(suite(feature("F", 1, 0) + &feature("G", 2, 0)), vec!["small-feature"]);
+        assert_eq!(suite(feature("F", 3, 2) + &feature("G", 2, 0)), vec!["small-feature"]);
+    }
+
+    #[test]
+    fn warns_about_sections_crowded_or_without_a_tutorial() {
+        let features = |n: usize, p: &str| (0..n).map(|i| feature(&format!("{p}{i}"), 2, 0)).collect::<String>();
+        let stories = |n: usize, p: &str| (0..n).map(|i| story(&format!("{p}{i}"), &[3])).collect::<String>();
+        let one = |body: String| warnings(&[("t.expect", &format!("{SIZING_VOCAB}Section: Root\n{body}"))]);
+        let none: Vec<&str> = vec![];
+        assert_eq!(one(features(8, "F") + &stories(8, "S")), none);
+        assert_eq!(one(features(9, "F") + &stories(1, "S")), vec!["crowded-section"]);
+        assert_eq!(one(features(1, "F") + &stories(9, "S")), vec!["crowded-section"]);
+        assert_eq!(one(features(2, "F")), vec!["no-tutorial"]);
+        assert_eq!(one(features(1, "F")), none);
+        // A subsection's pages are its own, not its parent's.
+        let root = format!("{SIZING_VOCAB}Section: Root\n{}{}", features(5, "F"), stories(1, "S"));
+        let sub = format!("Section: Sub\n{}{}", features(5, "G"), stories(1, "T"));
+        assert_eq!(warnings(&[("t.expect", &root), ("a/a.expect", &sub)]), none);
+        // A section without a `Section:` line is pointed at by its first feature.
+        let l = load_sources("t", &[("t.expect", &root), ("a/a.expect", &features(2, "G"))]);
+        assert_eq!(l.diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(), vec!["no-tutorial"]);
+        assert!(l.render_diagnostics().contains("a/a.expect:1"), "{}", l.render_diagnostics());
     }
 
     #[test]

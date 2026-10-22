@@ -243,7 +243,8 @@ into one.
 Name events for what the user means, not the button they press: "the user starts the
 kettle", not "the user presses START". The button goes in a `Say:` line under the event,
 which is what the docs tell the reader to do ("Press START."). A `Set:` line under a state
-says how to change it, with `{value}` for the value. Without them, the docs make do: "the
+says how to change it, with `{value}` for the value. A state can also have a `Set:` for one
+value, as `Shows:` lines do: `Set: lost: switch off the radio`. Without them, the docs make do: "the
 user clicks the canvas" becomes "Click the canvas", and a state becomes "Set the dial to
 80 %".
 
@@ -351,7 +352,7 @@ left after an action overwrites some states.
   Its parents are the expectations that take the last step on those shortest routes. Levels
   only increase along edges, so the result is a DAG even though the behaviour loops (start,
   run dry, reset, start again). An expectation the search never reaches gets a warning,
-  because nothing can test it.
+  because no story can get there; only a generated test that arranges its Given can test it.
 - **Ways into a section.** For each section, a goal-directed search finds the chain of
   expectations that gets from its parent's setup to its own: "press PEN", or "sign in, open
   a project, press PEN" for something deeper. That chain, with any step it works without
@@ -374,7 +375,8 @@ Planning walks each scenario through the expectations:
   promises is a warning (`unpromised`), and it's checked anyway.
 - Expectations no story exercises get a warning with a route that would reach them.
   `Acceptance::with_coverage()` and `expectation plan --coverage` add generated tests that
-  follow those routes, starting from the expectation's own section setup.
+  follow those routes, starting from the expectation's own section setup. An expectation with
+  no route is tested on its own: its Given arranged on the section setup, then its When.
 - A test starts from its section's setup, with its scenario's Givens written over it.
 
 ## Running against the system under test
@@ -476,6 +478,19 @@ The docs are only as good as the words in the specs. Some habits that help:
 - Keep reader-facing text short and plain. Simplified Technical English (ASD-STE100) is a
   good target: one instruction per sentence, active voice, common words.
 - Generate the docs and read them as a newcomer would, then fix the specs, not the output.
+
+`expectation check` warns when the pages would be badly sized (the limits are constants in
+[`sizing.rs`](crates/language/src/sizing.rs)):
+
+| Warning | When |
+| --- | --- |
+| `many-scenarios` | A story has more than one scenario. Each scenario is a tutorial page of its own. |
+| `short-story` | A scenario has fewer than 3 numbered steps (each `When` starts one). |
+| `long-story` | A scenario has more than 8 numbered steps. |
+| `big-feature` | A feature has more than 8 expectations on its topic page (`Docs: hidden` ones don't count). |
+| `small-feature` | A feature has 1 expectation on its page, and its section has other features. |
+| `crowded-section` | A section (not counting its subsections) has more than 8 tutorials or more than 8 topics. |
+| `no-tutorial` | A section has 2 or more features and no story. |
 
 ## The `expectation` command
 

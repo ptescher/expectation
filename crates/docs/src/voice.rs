@@ -58,6 +58,14 @@ fn value(var: &Variable, c: &expectation_model::Constraint) -> String {
 
 /// How to change a state: its `Set:`, or "set the dial to 80 %".
 fn set(var: &Variable, c: &expectation_model::Constraint) -> String {
+    if let expectation_model::Constraint::OneOf(mask) = c {
+        if let (VarKind::Enum(values), 1) = (&var.kind, mask.count_ones()) {
+            let one = &values[mask.trailing_zeros() as usize];
+            if let Some((_, text)) = var.sets.iter().find(|(v, _)| v == one) {
+                return text.clone();
+            }
+        }
+    }
     let v = value(var, c);
     let comparison = ["above", "below", "at least", "at most", "between", "more than", "fewer than", "not "]
         .iter()
@@ -162,7 +170,9 @@ pub fn state(suite: &Suite, step: &StepText) -> String {
 pub fn setup(suite: &Suite, step: &StepText) -> String {
     let v = &suite.vocabulary;
     match step.meaning {
-        Some(Said::Fact(var, c)) if v.var(var).set.is_some() => sentence(&set(v.var(var), &c)),
+        Some(Said::Fact(var, c)) if v.var(var).set.is_some() || !v.var(var).sets.is_empty() => {
+            sentence(&set(v.var(var), &c))
+        }
         _ => sentence(&state(suite, step)),
     }
 }

@@ -39,6 +39,8 @@ pub struct RawDecl {
     pub text: String,
     pub span: Span,
     pub say: Option<(String, Span)>,
+    /// A state's `Set:` lines for one value each: "lost: switch off the TX15".
+    pub sets: Vec<(String, Span)>,
     pub shows: Vec<(String, Span)>,
     /// `Say[iOS]:`, `Set[iOS]:` and `Shows[iOS]:`: what differs on another platform.
     pub variants: Vec<Variant>,
@@ -289,7 +291,7 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
             let (tag, rest) = tagged(line, p)?;
             Some((*p, tag, rest))
         }) {
-            let decl = RawDecl { text: rest.trim().to_string(), span: span.clone(), say: None, shows: vec![], variants: vec![] };
+            let decl = RawDecl { text: rest.trim().to_string(), span: span.clone(), say: None, sets: vec![], shows: vec![], variants: vec![] };
             if !matches!(block, Block::Vocabulary | Block::Phrase) {
                 diags.push(
                     Diagnostic::error("syntax", format!("`{prefix}:` belongs in a Vocabulary block")).at(&span, ""),
@@ -392,6 +394,11 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                     (_, Last::State) => out.states.last_mut().unwrap().variants.push(variant),
                     _ => out.events.last_mut().unwrap().variants.push(variant),
                 }
+                continue;
+            }
+            // A state can have a `Set:` for each value; the resolver sorts them out.
+            if let (Block::Vocabulary, Last::State, Some(d)) = (block, last, out.states.last_mut()) {
+                d.sets.push((rest.trim().to_string(), span));
                 continue;
             }
             let target = match (block, last) {

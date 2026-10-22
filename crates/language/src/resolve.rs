@@ -134,6 +134,7 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
             });
         }
     }
+    crate::sizing::check(suite, diags);
 }
 
 /// One section per directory with files in it, and per directory above those. Each takes its
@@ -278,13 +279,27 @@ fn shows(
     (None, line.to_string())
 }
 
+/// A `Set:` line for one value of a named state: "lost: switch off the TX15".
+fn set_for_value(var: &expectation_model::Variable, line: &str) -> Option<(String, String)> {
+    let (value, text) = line.split_once(':')?;
+    let expectation_model::VarKind::Enum(values) = &var.kind else { return None };
+    let v = values.iter().find(|v| v.eq_ignore_ascii_case(value.trim()))?;
+    Some((v.clone(), text.trim().to_string()))
+}
+
 fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
     let mut vocab = Vocabulary::default();
     for f in files {
         for d in &f.states {
             let id = VarId(vocab.variables.len() as u32);
             let Ok(mut var) = step::declare_state(&d.text, &d.span, id).map_err(|e| diags.push(e)) else { continue };
-            var.set = d.say.as_ref().map(|(s, _)| s.clone());
+            for (line, _) in &d.sets {
+                match set_for_value(&var, line) {
+                    Some(one) => var.sets.push(one),
+                    None if var.set.is_none() => var.set = Some(line.clone()),
+                    None => {}
+                }
+            }
             var.shows = d.shows.iter().map(|(t, span)| shows(&var, t, span, diags)).collect();
             // A state can be declared in more than one section; a `Set:` on any of them counts.
             match vocab.variables.iter_mut().find(|v| v.key == var.key) {
@@ -292,6 +307,7 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
                     if prev.set.is_none() {
                         prev.set = var.set;
                     }
+                    prev.sets.extend(var.sets);
                     prev.shows.extend(var.shows);
                 }
                 Some(prev) => diags.push(

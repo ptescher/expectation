@@ -294,7 +294,21 @@ pub fn untested(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec<Diagn
         if !cov[e.id.0 as usize].is_empty() {
             continue;
         }
-        let Some(route) = &analysis.flow.routes[e.id.0 as usize] else { continue };
+        let Some(route) = &analysis.flow.routes[e.id.0 as usize] else {
+            // Nothing leads there, so a test has to arrange the Given and act (`coverage_plans` does).
+            let section = suite.section_of(e.id);
+            let mut lines = arranged(suite, &section.start, &section.start.overlay(&e.given));
+            if !e.is_invariant() {
+                lines.push(format!("When {}", suite.describe_trigger(&e.trigger)));
+            }
+            diags.push(Diagnostic::warning("untested", format!("no story exercises «{}»", e.name)).at(&e.span, "").help(
+                format!(
+                    "no chain of expectations gets there, so a test has to arrange its Given directly{}",
+                    if lines.is_empty() { String::new() } else { format!(": {}", lines.join(" / ")) }
+                ),
+            ));
+            continue;
+        };
         let mut lines: Vec<String> = route
             .start
             .iter()
@@ -313,8 +327,19 @@ pub fn untested(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec<Diagn
     diags
 }
 
+/// The `Given …` lines that arrange `start` on top of `base`.
+fn arranged(suite: &Suite, base: &Condition, start: &Condition) -> Vec<String> {
+    start
+        .iter()
+        .filter(|(v, c)| base.get(*v) != Some(c))
+        .map(|(v, c)| format!("Given {}", suite.vocabulary.var(v).describe(c)))
+        .collect()
+}
+
 /// Generated plans for expectations no plan in `plans` exercises, following each one's
-/// shortest route from the flow graph. Routes that can't be made into a clean plan are skipped.
+/// shortest route from the flow graph. One the flow graph has no route to is tested on its own:
+/// its Given arranged on its section's start, then its When. Plans that can't be made clean
+/// are skipped.
 pub fn coverage_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec<Plan> {
     let cov = coverage(suite, plans);
     let mut covered: Vec<bool> = cov.iter().map(|c| !c.is_empty()).collect();
@@ -330,14 +355,18 @@ pub fn coverage_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec
             let roots = [(section.start.clone(), section.id)];
             expectation_graph::flow::explore(suite, &analysis.precedence, &roots, expectation_graph::Limits::default())
         });
-        let Some(route) = flow.routes[e.id.0 as usize].as_ref().or(analysis.flow.routes[e.id.0 as usize].as_ref())
-        else {
-            continue;
-        };
-        if route.steps.is_empty() {
+        let route = flow.routes[e.id.0 as usize].as_ref().or(analysis.flow.routes[e.id.0 as usize].as_ref());
+        if route.is_some_and(|r| r.steps.is_empty()) {
             continue;
         }
-        let inputs = route.steps.iter().enumerate().map(|(n, &s)| {
+        // Without a route, the expectation on its own: its Given arranged on the section's
+        // start, then its When (an invariant needs no step: it's checked at the start).
+        let (start, steps, title) = match route {
+            Some(r) => (r.start.clone(), r.steps.clone(), format!("Reaching «{}»", e.name)),
+            None if e.is_invariant() => (section.start.overlay(&e.given), vec![], format!("Arranging «{}»", e.name)),
+            None => (section.start.overlay(&e.given), vec![e.id], format!("Arranging «{}»", e.name)),
+        };
+        let inputs = steps.iter().enumerate().map(|(n, &s)| {
             let x = suite.exp(s);
             let text: Vec<StepText> = x
                 .when_steps()
@@ -359,24 +388,26 @@ pub fn coverage_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec
         });
         let mut given: Vec<StepText> =
             suite.chain(section.id).iter().flat_map(|s| s.setup_steps.iter().cloned()).collect();
-        for (var, c) in route.start.iter().filter(|(v, c)| section.start.get(*v) != Some(c)) {
+        for (var, c) in start.iter().filter(|(v, c)| section.start.get(*v) != Some(c)) {
             let span = e.span.clone();
             let (text, meaning) = (suite.vocabulary.var(var).describe(c), Some(expectation_model::Said::Fact(var, *c)));
             given.push(StepText { keyword: Keyword::Given, text, span, meaning });
         }
         let mut diags = vec![];
-        let title = format!("Reaching «{}»", e.name);
         let head = Head {
             origin: Origin::Coverage { target: e.id },
             section: section.id,
             title,
             slug: prefixed(&section.slug, &format!("coverage--{}", text::slug(&e.name))),
-            start: route.start.clone(),
+            start,
             given,
         };
         let plan = build(suite, &analysis.precedence, head, inputs, &mut diags);
         if diags.iter().any(|d| d.is_error()) {
             continue;
+        }
+        for &x in &plan.start_invariants {
+            covered[x.0 as usize] = true;
         }
         for step in &plan.steps {
             for x in step.exercises() {
