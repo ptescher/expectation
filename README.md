@@ -351,7 +351,7 @@ left after an action overwrites some states.
   Its parents are the expectations that take the last step on those shortest routes. Levels
   only increase along edges, so the result is a DAG even though the behaviour loops (start,
   run dry, reset, start again). An expectation the search never reaches gets a warning,
-  because nothing can test it.
+  because no story can get there; only a generated test that arranges its Given can test it.
 - **Ways into a section.** For each section, a goal-directed search finds the chain of
   expectations that gets from its parent's setup to its own: "press PEN", or "sign in, open
   a project, press PEN" for something deeper. That chain, with any step it works without
@@ -374,7 +374,8 @@ Planning walks each scenario through the expectations:
   promises is a warning (`unpromised`), and it's checked anyway.
 - Expectations no story exercises get a warning with a route that would reach them.
   `Acceptance::with_coverage()` and `expectation plan --coverage` add generated tests that
-  follow those routes, starting from the expectation's own section setup.
+  follow those routes, starting from the expectation's own section setup. An expectation with
+  no route is tested on its own: its Given arranged on the section setup, then its When.
 - A test starts from its section's setup, with its scenario's Givens written over it.
 
 ## Running against the system under test

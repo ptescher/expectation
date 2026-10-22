@@ -125,4 +125,42 @@ Story: Boil dry
         // Help needs the help screen hidden, which the Background leaves open: it's arranged.
         assert_eq!(generated[2].given.last().unwrap().text, "the help screen is hidden");
     }
+
+    #[test]
+    fn coverage_arranges_what_nothing_leads_to() {
+        // Nothing sets the clock, so no route from the Background reaches 5 s: the generated test
+        // arranges the Given itself and acts once.
+        let src = "
+Vocabulary:
+  State: the clock is 0..60 s
+  State: the result is none | draw
+  Event: the clock runs out
+
+Background:
+  Given the clock is 60 s
+  And the result is none
+
+Feature: End
+  Expectation: A tie when the clock runs out is a draw
+    Given the clock is 5 s
+    When the clock runs out
+    Then the result is draw
+";
+        let l = expectation_language::load_sources("t", &[("t.expect", src)]);
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        let (s, a) = (&l.suite, expectation_graph::analyze(&l.suite));
+        assert!(a.flow.routes[0].is_none());
+        let untested = untested(s, &a, &[]);
+        assert_eq!(untested.len(), 1);
+        let help = untested[0].help.as_deref().unwrap();
+        assert!(help.contains("has to arrange its Given directly: Given the clock is 5 s / When the clock runs out"), "{help}");
+        let generated = coverage_plans(s, &a, &[]);
+        assert_eq!(generated.len(), 1);
+        let plan = &generated[0];
+        assert_eq!(plan.title, "Arranging «A tie when the clock runs out is a draw»");
+        assert_eq!(plan.given.last().unwrap().text, "the clock is 5 s");
+        assert_eq!(plan.steps.len(), 1);
+        assert_eq!(plan.steps[0].fired, vec![expectation_model::ExpId(0)]);
+        assert!(coverage(s, &generated)[0].len() == 1);
+    }
 }
