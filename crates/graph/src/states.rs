@@ -136,6 +136,45 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
     map
 }
 
+/// A move from a start of the map: the start arranged with the rule's Given (`before`), the
+/// rule that fires, and the state after.
+#[derive(Clone, Debug)]
+pub struct FirstMove {
+    pub section: SectionId,
+    pub before: Condition,
+    pub rule: ExpId,
+    pub after: Condition,
+}
+
+/// Every move one step from a start of the map: from each section's setup and each story's
+/// arranged start, every transition that can fire there. What a test needs to visit each state
+/// a move from the start.
+pub fn first_moves(suite: &Suite, prec: &Precedence) -> Vec<FirstMove> {
+    let transitions: Vec<&Expectation> = suite.transitions().collect();
+    let companions = companions(&transitions);
+    let mut scopes: HashMap<SectionId, Vec<bool>> = HashMap::new();
+    let mut seen: HashMap<(Condition, SectionId), ()> = HashMap::new();
+    let mut out = vec![];
+    for (root, section) in crate::roots(suite) {
+        let scope = scopes.entry(section).or_insert_with(|| in_scope(suite, section));
+        let (cond, _) = settle(suite, prec, &root, &[]);
+        if !cond.is_satisfiable() || seen.insert((cond.clone(), section), ()).is_some() {
+            continue;
+        }
+        for (t, e) in transitions.iter().enumerate() {
+            if !scope[e.id.0 as usize] || !cond.overlaps(&e.given) {
+                continue;
+            }
+            let pre = cond.and(&e.given);
+            let o = perform_among(suite, prec, &pre, &e.trigger, companions[t].iter().map(|&c| transitions[c]));
+            if o.fired.contains(&e.id) && o.after.is_satisfiable() {
+                out.push(FirstMove { section, before: pre, rule: e.id, after: o.after });
+            }
+        }
+    }
+    out
+}
+
 impl StateMap {
     /// The map's state that a full state `c` (a test step's, say) is in: the one that says
     /// exactly what `c` does about the `by` states, or else the most specific one that holds.

@@ -4,7 +4,7 @@
 pub mod plan;
 pub mod report;
 
-pub use plan::{Because, Check, Origin, Plan, PlanStep, Planned, coverage, coverage_plans, plan_stories, untested};
+pub use plan::{Because, Check, Origin, Plan, PlanStep, Planned, coverage, coverage_plans, plan_stories, untested, visit_plans};
 pub use report::{CheckResult, PlanResult, Report, Status, StepResult, Verdict, load_results, load_results_for, results_file};
 
 #[cfg(test)]
@@ -162,5 +162,51 @@ Feature: End
         assert_eq!(plan.steps.len(), 1);
         assert_eq!(plan.steps[0].fired, vec![expectation_model::ExpId(0)]);
         assert!(coverage(s, &generated)[0].len() == 1);
+    }
+
+    #[test]
+    fn every_state_a_move_from_the_start_gets_a_visit() {
+        // From the kettle off, two moves lead out: switching it on and unplugging it. The story
+        // switches it on, so only the unplugged kettle needs a test of its own.
+        let src = "
+Vocabulary:
+  State: the kettle is off | heating | unplugged
+  Event: the user switches it on
+  Event: the user unplugs it
+
+Background:
+  Given the kettle is off
+
+Feature: Kettle
+  Expectation: On heats
+    Given the kettle is off
+    When the user switches it on
+    Then the kettle is heating
+
+  Expectation: Unplugged
+    Given the kettle is off
+    When the user unplugs it
+    Then the kettle is unplugged
+
+Story: Boiling
+  As a tea drinker
+  I want hot water
+  So that I make tea
+
+  Scenario: Switch on
+    When the user switches it on
+    Then the kettle is heating
+";
+        let l = expectation_language::load_sources("t", &[("t.expect", src)]);
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        let (s, a) = (&l.suite, expectation_graph::analyze(&l.suite));
+        let stories = plan_stories(s, &a).plans;
+        let visits = visit_plans(s, &a, &stories);
+        let titles: Vec<&str> = visits.iter().map(|p| p.title.as_str()).collect();
+        assert_eq!(titles, ["Visiting the state after «Unplugged»"]);
+        assert_eq!(visits[0].steps.len(), 1);
+        // With that test too, nothing is left to visit.
+        let all: Vec<Plan> = stories.into_iter().chain(visits).collect();
+        assert!(visit_plans(s, &a, &all).is_empty());
     }
 }
