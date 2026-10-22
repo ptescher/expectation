@@ -175,6 +175,35 @@ Story: First cup
 ";
 
     #[test]
+    fn launch_is_inherited_and_overridden() {
+        let l = load_sources(
+            "t",
+            &[
+                ("t.expect", "Section: Root\nLaunch: run the app\n"),
+                ("a/a.expect", "Section: A\n"),
+                ("b/b.expect", "Section: B\nLaunch: run the other app\n"),
+            ],
+        );
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        let s = &l.suite;
+        let launch = |name: &str| s.launch_of(s.sections.iter().find(|x| x.name == name).unwrap().id);
+        assert_eq!(launch("Root"), Some("run the app"));
+        assert_eq!(launch("A"), Some("run the app"));
+        assert_eq!(launch("B"), Some("run the other app"));
+    }
+
+    #[test]
+    fn warns_about_a_command_in_a_say() {
+        let l = load_sources(
+            "t",
+            &[("t.expect", "Vocabulary:\n  Event: the user starts it\n    Say: run `cargo run -p towers` in a terminal\n")],
+        );
+        assert!(l.render_diagnostics().contains("launch-in-step"), "{}", l.render_diagnostics());
+        let l = load_sources("t", &[("t.expect", "Vocabulary:\n  Event: the user unlocks it\n    Say: press `UNLOCK`\n")]);
+        assert!(!l.render_diagnostics().contains("launch-in-step"), "{}", l.render_diagnostics());
+    }
+
+    #[test]
     fn parses_a_suite() {
         let l = load_sources("t", &[("t.expect", SUITE)]);
         assert!(!l.has_errors(), "{}", l.render_diagnostics());

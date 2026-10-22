@@ -113,6 +113,12 @@ pub fn apply(files: &mut [RawFile], want: Option<&str>, diags: &mut Vec<Diagnost
     let skipped = |dir: &str| left_out.iter().any(|d| d.is_empty() || dir == d || dir.starts_with(&format!("{d}/")));
     let mut left_out_names: Vec<String> = vec![];
     for f in files.iter_mut() {
+        if let Some(sec) = &mut f.section {
+            if other && let Some(v) = sec.launch_variants.iter().rev().find(|v| v.platform == current) {
+                sec.launch = Some((v.text.clone(), v.span.clone()));
+            }
+            sec.launch_variants.clear();
+        }
         f.phrases.retain(|p| match &p.platform {
             Some((t, _)) => *t == current,
             None => !own.contains(&p.name),

@@ -615,8 +615,9 @@ impl Site<'_> {
                 let then = if before.route.is_empty() || before.route_is_detail { "" } else { " Then:" };
                 let _ = write!(o, "<p>Start from the setup in {}.{then}</p>", self.section_link(parent));
             }
-            if !before.items.is_empty() {
-                o.push_str(&self.list("before", false, &before.items));
+            let items: Vec<String> = before.launch.iter().chain(&before.items).cloned().collect();
+            if !items.is_empty() {
+                o.push_str(&self.list("before", false, &items));
             }
             if !before.route.is_empty() {
                 let route = self.list("route", true, &before.route);

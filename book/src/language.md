@@ -71,6 +71,13 @@ A section's `Background:` is its setup, written over its parent's. So everything
 start from that setup and don't re-explain how to get there, the way a manual assumes you've
 read the chapter before.
 
+A section's `Launch:` line, right under its `Section:` line, says how to start the program
+under test: `Launch: run cargo run -p kettle`. It is always shown first under "Before you begin"
+and never as a numbered step, every sub-section inherits it, and a sub-section's own `Launch:`
+replaces it (`Launch[iOS]:` for another platform). Drivers get it as `Driver::launch`, called
+once for the tests that share it, so a runner doesn't start its own server. A `Say:` that holds
+a shell command in backticks (one that starts with a program name or a path, like `` `cargo run` `` or `` `./app` ``) gets a `launch-in-step` warning.
+
 Each top-level section is a system of its own: stories and the flow graph only use the
 expectations in their own top-level section.
 

@@ -71,6 +71,10 @@ pub struct RawSection {
     pub name: String,
     pub span: Span,
     pub description: Vec<String>,
+    /// `Launch:` under it: how to start the program under test.
+    pub launch: Option<(String, Span)>,
+    /// `Launch[iOS]:`: how it starts on another platform.
+    pub launch_variants: Vec<Variant>,
 }
 
 #[derive(Debug, Clone)]
@@ -202,7 +206,7 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                         .at(&prev.span, "named here first"),
                 );
             }
-            out.section = Some(RawSection { name: name.to_string(), span, description: vec![] });
+            out.section = Some(RawSection { name: name.to_string(), span, description: vec![], launch: None, launch_variants: vec![] });
             block = Block::Section;
             continue;
         }
@@ -311,6 +315,26 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                 });
                 last = Last::Phrase;
                 block = Block::Phrase;
+            }
+            continue;
+        }
+
+        if let Some((tag, rest)) = tagged(line, "Launch") {
+            match (block, out.section.as_mut()) {
+                (Block::Section, Some(sec)) => match tag {
+                    Some(platform) => sec.launch_variants.push(Variant {
+                        platform,
+                        shows: false,
+                        text: rest.trim().to_string(),
+                        span,
+                    }),
+                    None => sec.launch = Some((rest.trim().to_string(), span)),
+                },
+                _ => diags.push(
+                    Diagnostic::error("syntax", "`Launch:` goes right under the `Section:` it is for")
+                        .at(&span, "")
+                        .help("`Section: <name>` then `Launch: run cargo run`"),
+                ),
             }
             continue;
         }

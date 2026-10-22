@@ -231,10 +231,10 @@ fn index(d: &Docs) -> String {
                 let _ = write!(o, " start from the setup in {}.", s.section(parent).name);
             }
             o.push_str("\n\n");
-            for item in &before.items {
+            for item in before.launch.iter().chain(&before.items) {
                 let _ = writeln!(o, "- {}", prose(d, item, false));
             }
-            if !before.items.is_empty() {
+            if before.launch.is_some() || !before.items.is_empty() {
                 o.push('\n');
             }
             if !before.route.is_empty() {

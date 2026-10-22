@@ -10,6 +10,9 @@ use expectation_story::{Origin, Plan, Status};
 
 /// A section's "Before you begin".
 pub struct Before {
+    /// How to start the program, from the section's (or its nearest ancestor's) `Launch:`.
+    /// Always first, never a numbered step.
+    pub launch: Option<String>,
     /// Start from this section's setup first.
     pub parent: Option<SectionId>,
     /// What to have in place, one sentence each.
@@ -78,7 +81,8 @@ pub fn before(d: &Docs, id: SectionId) -> Option<Before> {
     let s = d.suite;
     let section = s.section(id);
     let route = route(d, id);
-    if section.setup_steps.is_empty() && route.is_empty() {
+    let launch = s.launch_of(id).map(voice::sentence);
+    if section.setup_steps.is_empty() && route.is_empty() && launch.is_none() {
         return None;
     }
     // The author's own words for the setup come first. Without them, the route there is the
@@ -94,6 +98,7 @@ pub fn before(d: &Docs, id: SectionId) -> Option<Before> {
     };
     let detail = said && !route.is_empty();
     Some(Before {
+        launch,
         parent: section.parent.filter(|&p| !s.section(p).start.is_unconstrained()),
         items,
         route,
@@ -243,6 +248,7 @@ pub fn tutorial(d: &Docs, f: &Facts, i: usize) -> Option<Tutorial> {
     // steps that get there from the section above; then what the scenario adds.
     let mut before: Vec<String> = vec![];
     let mut details = None;
+    before.extend(s.launch_of(plan.section).map(voice::sentence));
     for section in s.chain(plan.section) {
         match self::before(d, section.id) {
             Some(b) if b.route_is_detail || b.route.is_empty() => {
