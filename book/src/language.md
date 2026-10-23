@@ -145,6 +145,7 @@ An expectation's Then can also be **relative**: `the drawing goes up by 1`, `goe
 Expectation: <name>
   <description>
   Overrides: <another expectation>
+  Hands over to: <a setup>
   Given …
   When …
   Then …
@@ -156,6 +157,11 @@ Expectation: <name>
 - An expectation with no `When` is an **invariant**: it holds whenever its Given does.
 - `Overrides: <name>` makes it an exception to another expectation: where both apply, this
   one wins. Overrides must form a DAG.
+- `Hands over to: <setup>` says that when this fires, a different program (or part of one)
+  takes over, and it starts in that setup: the launcher starts the sim, so afterwards the sim
+  is "just started" and nothing of the launcher's buttons carries over. A section whose
+  Background is that setup is then reached from here instead of being a start of the state
+  map. Tests don't check it; they check the expectation's Then.
 - `Docs: hidden` keeps it off its topic page. It's still tested, and it's in the test report.
 
 Text before the first step is the expectation's description.

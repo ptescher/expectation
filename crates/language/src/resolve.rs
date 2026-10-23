@@ -655,6 +655,13 @@ fn expectation(
                 .help("say what the system does: `Then …`"),
         );
     }
+    let mut hands_over: Option<Condition> = None;
+    for s in &re.hands_over {
+        let target = hands_over.get_or_insert_with(Condition::new);
+        for f in facts_of(s, vocab, diags) {
+            add(target, &f, vocab, diags, "this setup can never hold");
+        }
+    }
     Expectation {
         id,
         feature,
@@ -667,6 +674,7 @@ fn expectation(
         then,
         shifts,
         overrides: vec![],
+        hands_over,
         steps: re.steps.iter().map(|s| text_of(s, vocab)).collect(),
         hidden: re.hidden,
     }

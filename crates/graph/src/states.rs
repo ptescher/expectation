@@ -35,6 +35,9 @@ pub struct Move {
     pub action: Trigger,
     /// The transitions that fire, in the order they were found.
     pub fired: Vec<ExpId>,
+    /// It hands over to another program or setup (`Hands over to:`): the state it leaves is
+    /// where that one starts, not a change to this one.
+    pub hands_over: bool,
 }
 
 impl Move {
@@ -84,9 +87,12 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
     let mut queue: Vec<(Condition, SectionId, u32)> = vec![];
     let mut seen: HashMap<(Condition, SectionId), ()> = HashMap::new();
     let mut scopes: HashMap<SectionId, Vec<bool>> = HashMap::new();
-    for (root, section) in crate::roots(suite) {
+    let roots: Vec<(Condition, SectionId)> =
+        crate::roots(suite).into_iter().map(|(r, s)| (settle(suite, prec, &r, &[]).0, s)).collect();
+    // The states a hand-over leads into: they are reached, not started in.
+    let mut handed_to: Vec<usize> = vec![];
+    for (cond, section) in roots.iter().cloned() {
         scopes.entry(section).or_insert_with(|| in_scope(suite, section));
-        let (cond, _) = settle(suite, prec, &root, &[]);
         if !cond.is_satisfiable() || seen.contains_key(&(cond.clone(), section)) {
             continue;
         }
@@ -113,7 +119,7 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
             }
             let to = node(&mut map, &out.after, level + 1, false);
             let m = *moves.entry((from, to, e.trigger.clone())).or_insert_with(|| {
-                map.moves.push(Move { from, to, action: e.trigger.clone(), fired: vec![] });
+                map.moves.push(Move { from, to, action: e.trigger.clone(), fired: vec![], hands_over: false });
                 map.moves.len() - 1
             });
             for f in out.fired.iter().filter(|f| scope[f.0 as usize]) {
@@ -121,6 +127,15 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
                     map.moves[m].fired.push(*f);
                 }
             }
+            // A hand-over goes on in the section that starts there, if one does.
+            let section = match out.handed_over {
+                Some(_) => {
+                    map.moves[m].hands_over = true;
+                    handed_to.push(to);
+                    roots.iter().find(|(c, _)| *c == out.after).map(|&(_, s)| s).unwrap_or(section)
+                }
+                None => section,
+            };
             if seen.contains_key(&(out.after.clone(), section)) {
                 continue;
             }
@@ -133,7 +148,34 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
         }
         i += 1;
     }
+    for i in handed_to {
+        map.states[i].start = false;
+    }
+    relevel(&mut map);
     map
+}
+
+/// Levels again, as the fewest moves from a start now that a state some hand-over leads into
+/// is no longer one.
+fn relevel(map: &mut StateMap) {
+    let mut level: Vec<Option<u32>> = map.states.iter().map(|s| s.start.then_some(0)).collect();
+    let mut queue: Vec<usize> = (0..level.len()).filter(|&i| level[i].is_some()).collect();
+    let mut at = 0;
+    while at < queue.len() {
+        let from = queue[at];
+        at += 1;
+        for m in map.moves.iter().filter(|m| m.from == from) {
+            if level[m.to].is_none() {
+                level[m.to] = Some(level[from].unwrap() + 1);
+                queue.push(m.to);
+            }
+        }
+    }
+    for (s, l) in map.states.iter_mut().zip(level) {
+        if let Some(l) = l {
+            s.level = l;
+        }
+    }
 }
 
 /// A move from a start of the map: the start arranged with the rule's Given (`before`), the
@@ -345,5 +387,87 @@ Feature: Navigation
         // 0..10 in settings, and the volume never changes anywhere else.
         assert_eq!(map.states.len(), 11);
         assert!(map.states.iter().all(|st| st.cond.vars().all(|v| v == volume)));
+    }
+
+    const LAUNCHER: &str = "
+Section: Launcher
+  Opens the app.
+Background:
+  Given the launcher is idle
+Feature: Launching
+  Expectation: Launch starts the app
+    Given the launcher is idle
+    When the user launches
+    Then the launcher is running
+    Hands over to: the app has just started
+";
+
+    const APP: &str = "
+Section: App
+  The app itself.
+Background:
+  Given the app has just started
+Feature: Navigation
+  Expectation: Settings opens from home
+    Given the screen is home
+    When the user opens settings
+    Then the screen is settings
+";
+
+    const VOCAB: &str = "
+Suite: Two programs
+Vocabulary:
+  State: the launcher is idle | running
+  State: the screen is home | settings
+  Event: the user launches
+  Event: the user opens settings
+  Phrase: the app has just started
+    Given the screen is home
+";
+
+    #[test]
+    fn a_hand_over_is_reached_and_not_a_start() {
+        let l = expectation_language::load_sources(
+            "t",
+            &[
+                ("root.expect", VOCAB),
+                ("01-launcher/l.expect", LAUNCHER),
+                ("02-app/a.expect", APP),
+            ],
+        );
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        let s = l.suite;
+        let a = crate::analyze(&s);
+        let map = explore(&s, &a.precedence, &[], Limits::default());
+        let at = |name: &str| {
+            (0..map.states.len())
+                .find(|&i| map.label(&s, i) == name)
+                .unwrap()
+        };
+        let (idle, home, settings) = (at("idle"), at("home"), at("settings"));
+        // The launcher is the only start; the app's own start is one launch away.
+        assert_eq!(map.states.iter().filter(|st| st.start).count(), 1);
+        assert!(map.states[idle].start && !map.states[home].start);
+        assert_eq!(
+            (
+                map.states[idle].level,
+                map.states[home].level,
+                map.states[settings].level
+            ),
+            (0, 1, 2)
+        );
+        let launch = map
+            .moves
+            .iter()
+            .find(|m| m.from == idle && m.to == home)
+            .unwrap();
+        assert!(launch.hands_over);
+        // Nothing from the launcher's side is carried into the app.
+        assert!(
+            map.states[home]
+                .cond
+                .vars()
+                .all(|v| s.vocabulary.var(v).subject.contains("screen"))
+        );
     }
 }

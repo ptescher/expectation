@@ -47,7 +47,8 @@ expectation states <dir> --by "the screen,the dialog"  # tell states apart by th
 
 Prints the state map: every state the app can get into from each section's setup, and every
 action that moves it from one to another (`[*]` marks the starts). Where `graph` is about
-expectations, this is about the app: its screens and modes and how to get around them.
+expectations, this is about the app: its screens and modes and how to get around them. A section
+whose setup another expectation `Hands over to:` is not a start: it is reached from there.
 
 States are told apart by the vocabulary's enumerated states unless `--by` names others, so a
 number like a dial's reading doesn't make a state per value. Name the state that is your app's

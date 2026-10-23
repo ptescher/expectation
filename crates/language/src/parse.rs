@@ -103,6 +103,8 @@ pub struct RawExpectation {
     pub description: Vec<String>,
     pub steps: Vec<RawStep>,
     pub overrides: Vec<(String, Span)>,
+    /// `Hands over to:` the setup it names.
+    pub hands_over: Vec<RawStep>,
     /// `Docs: hidden`.
     pub hidden: bool,
 }
@@ -234,6 +236,7 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                             description: vec![],
                             steps: vec![],
                             overrides: vec![],
+                            hands_over: vec![],
                             hidden: false,
                         });
                         Block::Expectation
@@ -421,6 +424,15 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                         .help("`Docs: hidden` keeps an expectation out of the reading pages"),
                 ),
                 _ => diags.push(Diagnostic::error("syntax", "`Docs:` belongs in an Expectation").at(&span, "")),
+            }
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("Hands over to:") {
+            match (block, out.features.last_mut().and_then(|f| f.expectations.last_mut())) {
+                (Block::Expectation, Some(e)) => {
+                    e.hands_over.push(RawStep { keyword: Keyword::Given, text: rest.trim().to_string(), span })
+                }
+                _ => diags.push(Diagnostic::error("syntax", "`Hands over to:` belongs in an Expectation").at(&span, "")),
             }
             continue;
         }
