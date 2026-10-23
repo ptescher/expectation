@@ -23,7 +23,7 @@ pub struct MapState {
     pub cond: Condition,
     /// The fewest moves from a start.
     pub level: u32,
-    /// A section's setup or a story's arranged start is in it.
+    /// A section's setup or a story's arranged start is in it, and no other one leads to it.
     pub start: bool,
 }
 
@@ -89,8 +89,6 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
     let mut scopes: HashMap<SectionId, Vec<bool>> = HashMap::new();
     let roots: Vec<(Condition, SectionId)> =
         crate::roots(suite).into_iter().map(|(r, s)| (settle(suite, prec, &r, &[]).0, s)).collect();
-    // The states a hand-over leads into: they are reached, not started in.
-    let mut handed_to: Vec<usize> = vec![];
     for (cond, section) in roots.iter().cloned() {
         scopes.entry(section).or_insert_with(|| in_scope(suite, section));
         if !cond.is_satisfiable() || seen.contains_key(&(cond.clone(), section)) {
@@ -135,7 +133,6 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
             let section = match out.handed_over {
                 Some(_) => {
                     map.moves[m].hands_over = true;
-                    handed_to.push(to);
                     roots.iter().find(|(c, _)| *c == out.after).map(|&(_, s)| s).unwrap_or(section)
                 }
                 None => section,
@@ -152,15 +149,46 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
         }
         i += 1;
     }
-    for i in handed_to {
-        map.states[i].start = false;
-    }
+    prune_starts(&mut map);
     relevel(&mut map);
     map
 }
 
-/// Levels again, as the fewest moves from a start now that a state some hand-over leads into
-/// is no longer one.
+/// A setup that another one leads to (a section's setup is a few clicks from its parent's, the
+/// sim's is a LAUNCH from the launcher's) is reached, not a start. Of setups that lead to each
+/// other, the first stays.
+fn prune_starts(map: &mut StateMap) {
+    let starts: Vec<usize> = (0..map.states.len()).filter(|&i| map.states[i].start).collect();
+    let mut from: Vec<Vec<usize>> = vec![vec![]; map.states.len()];
+    for m in &map.moves {
+        from[m.from].push(m.to);
+    }
+    let reach: Vec<Vec<bool>> = starts
+        .iter()
+        .map(|&s| {
+            let mut seen = vec![false; map.states.len()];
+            let mut stack = vec![s];
+            seen[s] = true;
+            while let Some(i) = stack.pop() {
+                for &j in &from[i] {
+                    if !seen[j] {
+                        seen[j] = true;
+                        stack.push(j);
+                    }
+                }
+            }
+            seen
+        })
+        .collect();
+    for (a, &r) in starts.iter().enumerate() {
+        let led = starts.iter().enumerate().any(|(b, &other)| b != a && reach[b][r] && (!reach[a][other] || other < r));
+        if led {
+            map.states[r].start = false;
+        }
+    }
+}
+
+/// Levels again, as the fewest moves from a start now that some setups are reached instead.
 fn relevel(map: &mut StateMap) {
     let mut level: Vec<Option<u32>> = map.states.iter().map(|s| s.start.then_some(0)).collect();
     let mut queue: Vec<usize> = (0..level.len()).filter(|&i| level[i].is_some()).collect();
