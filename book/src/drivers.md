@@ -130,3 +130,19 @@ without running anything.
 
 Results are keyed by each test's name and a fingerprint of its plan, so results saved for an
 older version of a test are ignored, not misapplied.
+
+## Running in parallel
+
+`run_parallel` runs the tests on `n` worker threads. Each worker builds its own driver (and
+its own services) by calling your closure with the worker's number, so nothing is shared:
+give each one its own app instance, port, database or screen.
+
+```rust,ignore
+let report = acceptance.run_parallel(4, &RunOptions::default(), |n| {
+    Worker::new(MyDriver::start(8000 + n as u16))
+        .with_services(services_for(n))
+});
+```
+
+Workers take the next test as they finish one, and the report is in the order of the tests.
+The closure runs on the worker's thread, so a driver need not be `Send`.
