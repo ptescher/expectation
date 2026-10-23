@@ -21,6 +21,9 @@ pub struct Outcome {
     pub invariants: Vec<ExpId>,
     /// The state afterwards.
     pub after: Condition,
+    /// A fired expectation hands over to another setup: `after` has that setup written over it.
+    /// (The state map goes on from the setup alone; a story still has the rest.)
+    pub handed_over: Option<ExpId>,
 }
 
 /// Perform `action` in `state`.
@@ -88,8 +91,13 @@ pub fn perform_among<'a>(
         }
         then = then.and(&effects[i]);
     }
-    let (after, invariants) = settle(suite, prec, &before.overlay(&then), &fired);
-    Outcome { fired, uncertain, overridden, clashes, invariants, after }
+    let handed_over = fired.iter().copied().find(|&e| suite.exp(e).hands_over.is_some());
+    let mut next = before.overlay(&then);
+    if let Some(setup) = handed_over.and_then(|e| suite.exp(e).hands_over.as_ref()) {
+        next = next.overlay(setup);
+    }
+    let (after, invariants) = settle(suite, prec, &next, &fired);
+    Outcome { fired, uncertain, overridden, clashes, invariants, after, handed_over }
 }
 
 /// The state an expectation with `trigger` checks its Given against when `action` happens in
