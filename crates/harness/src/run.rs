@@ -5,6 +5,8 @@ use crate::service::Services;
 use expectation_model::{Suite, Trigger};
 use expectation_story::{Check, CheckResult, Plan, PlanResult, Report, Status, StepResult};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
 
 #[derive(Clone, Debug)]
 pub struct RunOptions {
@@ -29,23 +31,81 @@ pub fn run(suite: &Suite, plans: &[Plan], driver: &mut dyn Driver, opts: &RunOpt
 /// is up stays, one that died is started again, and when one cannot be had the plan is not
 /// supported yet, with what to do about it.
 pub fn run_with(suite: &Suite, plans: &[Plan], driver: &mut dyn Driver, opts: &RunOptions, services: &mut Services) -> Report {
+    let mut launched = None;
+    Report { results: plans.iter().map(|plan| run_served(suite, plan, driver, opts, services, &mut launched)).collect() }
+}
+
+/// What one worker of [`run_parallel`] runs with: a driver of its own, and the services that
+/// driver needs, which no other worker shares.
+pub struct Worker {
+    pub driver: Box<dyn Driver>,
+    pub services: Services,
+}
+
+impl Worker {
+    pub fn new(driver: impl Driver + 'static) -> Self {
+        Worker { driver: Box::new(driver), services: Services::new() }
+    }
+
+    pub fn with_services(mut self, services: Services) -> Self {
+        self.services = services;
+        self
+    }
+}
+
+/// As [`run_with`], on `workers` threads that take the next plan as they finish one. `make` is
+/// called once on each worker's thread, with the worker's number (from 0), to build its
+/// [`Worker`], so a driver need not be `Send` and two workers never share one: give each its own
+/// app, port, database and screen. Results are in the order of `plans`. `workers` is at least 1
+/// and at most the number of plans.
+pub fn run_parallel<F>(suite: &Suite, plans: &[Plan], workers: usize, opts: &RunOptions, make: F) -> Report
+where
+    F: Fn(usize) -> Worker + Sync,
+{
+    let next = AtomicUsize::new(0);
+    let done: Mutex<Vec<(usize, PlanResult)>> = Mutex::new(Vec::with_capacity(plans.len()));
+    std::thread::scope(|scope| {
+        for n in 0..workers.clamp(1, plans.len().max(1)) {
+            let (next, done, make) = (&next, &done, &make);
+            scope.spawn(move || {
+                let mut worker = None;
+                let mut launched = None;
+                loop {
+                    let i = next.fetch_add(1, Ordering::SeqCst);
+                    let Some(plan) = plans.get(i) else { break };
+                    // Built when there is a plan to run, so a worker with nothing to do starts nothing.
+                    let w = worker.get_or_insert_with(|| make(n));
+                    let result = run_served(suite, plan, &mut *w.driver, opts, &mut w.services, &mut launched);
+                    done.lock().unwrap().push((i, result));
+                }
+            });
+        }
+    });
+    let mut done = done.into_inner().unwrap();
+    done.sort_by_key(|(i, _)| *i);
+    Report { results: done.into_iter().map(|(_, r)| r).collect() }
+}
+
+fn run_served(
+    suite: &Suite,
+    plan: &Plan,
+    driver: &mut dyn Driver,
+    opts: &RunOptions,
+    services: &mut Services,
+    launched: &mut Option<String>,
+) -> PlanResult {
     let needs = driver.needs();
     let names: Vec<&str> = needs.iter().map(String::as_str).collect();
     let fresh = driver.fresh();
     let fresh: Vec<&str> = fresh.iter().map(String::as_str).collect();
-    let mut launched = None;
-    let results = plans
-        .iter()
-        .map(|plan| match unsupported(suite, plan, driver).map_or_else(|| services.restart(&fresh).and_then(|()| services.start(&names)), |_| Ok(())) {
-            Ok(()) => run_plan(suite, plan, driver, opts, &mut launched),
-            Err(why) => {
-                let mut r = PlanResult::with(Status::Unsupported, plan);
-                r.start.error = Some(format!("It needs {why}."));
-                r
-            }
-        })
-        .collect();
-    Report { results }
+    match unsupported(suite, plan, driver).map_or_else(|| services.restart(&fresh).and_then(|()| services.start(&names)), |_| Ok(())) {
+        Ok(()) => run_plan(suite, plan, driver, opts, launched),
+        Err(why) => {
+            let mut r = PlanResult::with(Status::Unsupported, plan);
+            r.start.error = Some(format!("It needs {why}."));
+            r
+        }
+    }
 }
 
 fn needs<'a>(suite: &'a Suite, plan: &Plan) -> Vec<Need<'a>> {

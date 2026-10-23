@@ -17,7 +17,7 @@ pub use expectation_service as service;
 
 pub use bindings::Bindings;
 pub use driver::{Driver, Need, Progress, Screenshot};
-pub use run::{RunOptions, run};
+pub use run::{RunOptions, Worker, run, run_parallel};
 
 use expectation_docs::Docs;
 use expectation_graph::Analysis;
@@ -115,6 +115,15 @@ impl Acceptance {
     /// As [`Acceptance::run`], with what the driver needs from outside started first (see [`service`]).
     pub fn run_with(&self, driver: &mut dyn Driver, opts: &RunOptions, services: &mut service::Services) -> Report {
         run::run_with(&self.suite, &self.plans, driver, opts, services)
+    }
+
+    /// As [`Acceptance::run_with`], on `workers` threads, each with the driver and services
+    /// `make` builds for it (see [`run::run_parallel`]).
+    pub fn run_parallel<F>(&self, workers: usize, opts: &RunOptions, make: F) -> Report
+    where
+        F: Fn(usize) -> Worker + Sync,
+    {
+        run::run_parallel(&self.suite, &self.plans, workers, opts, make)
     }
 
     pub fn docs<'a>(&'a self, report: Option<&'a Report>) -> Docs<'a> {

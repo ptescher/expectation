@@ -136,3 +136,24 @@ fn a_value_the_driver_cant_arrange_is_not_supported_yet() {
     assert!(report.results.iter().all(|r| r.status == Status::Unsupported));
     assert!(report.results.iter().all(|r| r.start.error.as_deref().unwrap().contains("arrange the preset as WARM")));
 }
+
+#[test]
+fn workers_in_parallel_each_get_their_own_driver_and_report_in_plan_order() {
+    use std::sync::Mutex;
+    let a = suite();
+    let serial = a.run(&mut world::driver(false), &RunOptions::default());
+    let built = Mutex::new(vec![]);
+    let report = a.run_parallel(3, &RunOptions::default(), |n| {
+        built.lock().unwrap().push(n);
+        expectation_harness::Worker::new(world::driver(false))
+    });
+    let statuses = |r: &expectation_story::Report| r.results.iter().map(|r| r.status).collect::<Vec<_>>();
+    assert_eq!(statuses(&report), statuses(&serial), "the same results, in the same order");
+    let mut built = built.into_inner().unwrap();
+    built.sort();
+    assert_eq!(built, vec![0, 1, 2], "one driver for each worker");
+
+    // More workers than tests is fine, and a defect is still caught.
+    let leaky = a.run_parallel(1000, &RunOptions::default(), |_| expectation_harness::Worker::new(world::driver(true)));
+    assert!(!leaky.passed());
+}
