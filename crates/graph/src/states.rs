@@ -632,4 +632,20 @@ Feature: Settings
         assert_eq!(map.label(&s, m.to), "open · settings");
         assert_eq!(map.states[m.to].level, 1);
     }
+
+    #[test]
+    fn a_hand_over_is_not_in_the_state_a_story_sees() {
+        let l = expectation_language::load_sources(
+            "t",
+            &[("root.expect", VOCAB), ("01-launcher/l.expect", LAUNCHER), ("02-app/a.expect", APP)],
+        );
+        let s = l.suite;
+        let a = crate::analyze(&s);
+        let launch = s.transitions().find(|e| e.hands_over.is_some()).unwrap();
+        let start = crate::roots(&s).into_iter().next().unwrap().0;
+        let out = crate::semantics::perform(&s, &a.precedence, &start.and(&launch.given), &launch.trigger);
+        assert!(out.handed_over.is_some());
+        let screen = s.vocabulary.find_var("the screen").unwrap().id;
+        assert!(out.after.get(screen).is_none(), "{:?}", out.after);
+    }
 }
