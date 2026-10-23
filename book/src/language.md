@@ -167,6 +167,23 @@ Expectation: <name>
 
 Text before the first step is the expectation's description.
 
+## Backgrounds that follow a setup
+
+A section's Background can say which setup it is reached from:
+
+```gherkin
+Background:
+  Follows: the launcher has just opened
+  Given the station is connected to the TX15
+  And the other plane is silent
+```
+
+The Background's steps (and their `Say:`) are what you do, from that setup, to get here. The
+state map has a move from the setup it follows to the section's start, so the section is
+reached, not a start: only the setup that nothing leads to is. A `Follows:` is a claim about
+how to set up, which nothing tests. `Hands over to:` is the same for what a tested expectation
+does.
+
 ## Stories
 
 ```gherkin

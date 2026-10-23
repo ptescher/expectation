@@ -200,6 +200,13 @@ fn sections(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
                 setup_steps.push(text_of(s, &suite.vocabulary));
             }
         }
+        let mut follows: Option<Condition> = None;
+        for s in files.iter().filter(|f| f.dir == dir).flat_map(|f| &f.follows) {
+            let target = follows.get_or_insert_with(Condition::new);
+            for fact in facts_of(s, &suite.vocabulary, diags) {
+                add(target, &fact, &suite.vocabulary, diags, "this setup can never hold");
+            }
+        }
         let start = match parent {
             Some(p) => suite.section(p).start.overlay(&setup),
             None => setup.clone(),
@@ -216,6 +223,7 @@ fn sections(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
             description: header.map(|h| h.description.clone()).unwrap_or_default(),
             setup,
             setup_steps,
+            follows,
             launch: header.and_then(|h| h.launch.as_ref().map(|(l, _)| l.clone())),
             start,
             span: header.map(|h| h.span.clone()),
