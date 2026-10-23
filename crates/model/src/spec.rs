@@ -159,10 +159,10 @@ pub struct Expectation {
     pub shifts: Vec<(VarId, Shift)>,
     /// Expectations this one is an exception to: where both apply, this one wins.
     pub overrides: Vec<ExpId>,
-    /// `Hands over to:` a setup: afterwards the program under test is in exactly that state, and
-    /// nothing from before carries over (the launcher has started the sim; the launcher's own
-    /// buttons say nothing about it). Not something a test checks: it is how the next section's
-    /// setup is reached.
+    /// `Hands over to:` a setup: afterwards the program under test is in that state (the launcher
+    /// has started the sim). The state map goes on from that setup alone, as the launcher's
+    /// buttons say nothing about the sim. Not something a test checks: it is how the next
+    /// section's setup is reached.
     pub hands_over: Option<Condition>,
     pub steps: Vec<StepText>,
     /// `Docs: hidden`: tested, but left out of the reading pages (it's only in the test report).

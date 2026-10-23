@@ -113,7 +113,11 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
                 continue;
             }
             let pre = cond.and(&e.given);
-            let out = perform_among(suite, prec, &pre, &e.trigger, companions[t].iter().map(|&c| transitions[c]));
+            let mut out = perform_among(suite, prec, &pre, &e.trigger, companions[t].iter().map(|&c| transitions[c]));
+            // After a hand-over the map is in the new program's setup, not in this one's state.
+            if let Some(setup) = out.handed_over.and_then(|h| suite.exp(h).hands_over.as_ref()) {
+                out.after = settle(suite, prec, setup, &out.fired).0;
+            }
             if !out.fired.contains(&e.id) || !out.after.is_satisfiable() {
                 continue;
             }
