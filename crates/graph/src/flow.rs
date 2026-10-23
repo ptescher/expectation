@@ -49,6 +49,8 @@ pub struct Flow {
     pub states: usize,
     /// The search hit its limits, so "unreachable" isn't conclusive.
     pub truncated: bool,
+    /// Per section: some state the search got to has the setup its `Follows:` names in place.
+    pub followed: Vec<bool>,
 }
 
 impl Flow {
@@ -125,7 +127,10 @@ pub fn in_scope(suite: &Suite, section: SectionId) -> Vec<bool> {
 /// taking only the expectations in scope for the root's section.
 pub fn explore(suite: &Suite, prec: &Precedence, roots: &[(Condition, SectionId)], limits: Limits) -> Flow {
     let n = suite.expectations.len();
-    let mut flow = Flow { level: vec![None; n], routes: vec![None; n], ..Flow::default() };
+    let followed = vec![false; suite.sections.len()];
+    let mut flow = Flow { level: vec![None; n], routes: vec![None; n], followed, ..Flow::default() };
+    let follows: Vec<(usize, &Condition)> =
+        suite.sections.iter().filter_map(|s| s.follows.as_ref().map(|f| (s.id.0 as usize, f))).collect();
     let mut states: Vec<State> = vec![];
     let mut seen: HashMap<Condition, usize> = HashMap::new();
 
@@ -156,6 +161,9 @@ pub fn explore(suite: &Suite, prec: &Precedence, roots: &[(Condition, SectionId)
     let companions = companions(&transitions);
     let mut i = 0;
     while i < states.len() {
+        for &(s, f) in &follows {
+            flow.followed[s] |= states[i].cond.implies(f);
+        }
         let scope = &scopes[&states[i].section];
         for (t, e) in transitions.iter().enumerate() {
             let s = &states[i];

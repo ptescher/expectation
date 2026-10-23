@@ -9,10 +9,10 @@
 //! the map has one node per screen and not one per number on it. Without a choice, it's
 //! every enumerated state.
 
-use crate::flow::{Limits, companions, in_scope};
+use crate::flow::{Limits, Route, companions, in_scope};
 use crate::precedence::Precedence;
 use crate::semantics::{perform_among, settle};
-use expectation_model::{Condition, ExpId, Expectation, SectionId, Suite, Trigger, VarId, VarKind};
+use expectation_model::{Condition, ExpId, Expectation, Section, SectionId, Suite, Trigger, VarId, VarKind};
 use std::collections::HashMap;
 use std::fmt::Write;
 
@@ -38,8 +38,8 @@ pub struct Move {
     /// It hands over to another program or setup (`Hands over to:`): the state it leaves is
     /// where that one starts, not a change to this one.
     pub hands_over: bool,
-    /// Not an action of the app but a section's setup (`Follows:`): what its Background says
-    /// to do, from the setup it follows, to get here.
+    /// Not an action of the app but a section's setup (`Follows:`) that no expectations get to:
+    /// what its Background says to do, from the setup it follows, to get here.
     pub setup: Option<SectionId>,
 }
 
@@ -104,6 +104,13 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
 
     let transitions: Vec<&Expectation> = suite.transitions().collect();
     let companions = companions(&transitions);
+    // The sections that follow a setup, and the route the expectations take there, if any.
+    let follows: Vec<(&Section, Option<Route>)> = suite
+        .sections
+        .iter()
+        .filter(|s| s.follows.is_some())
+        .map(|s| (s, crate::section_route(suite, prec, s, limits)))
+        .collect();
     let mut i = 0;
     while i < queue.len() {
         let (cond, section, level) = queue[i].clone();
@@ -150,18 +157,57 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
             seen.insert((out.after.clone(), section), ());
             queue.push((out.after, section, level + 1));
         }
-        // The sections whose setup follows this state: their Background gets from here to there.
-        for s in suite.sections.iter().filter(|s| s.follows.as_ref().is_some_and(|f| cond.implies(f))) {
+        // The sections whose setup follows this state. Where the expectations get there, the
+        // route's own moves do; otherwise one move, named by the section, for its Background.
+        for (s, route) in &follows {
+            if !s.follows.as_ref().is_some_and(|f| cond.implies(f)) {
+                continue;
+            }
             let after = settle(suite, prec, &s.start, &[]).0;
             if !after.is_satisfiable() {
                 continue;
             }
             let to = node(&mut map, &after, level + 1, false);
-            moves.entry((from, to, Trigger::default(), Some(s.id))).or_insert_with(|| {
-                let action = Trigger::default();
-                map.moves.push(Move { from, to, action, fired: vec![], hands_over: false, setup: Some(s.id) });
-                map.moves.len() - 1
-            });
+            // (from, to, action, what fires) for each move on the way.
+            let mut walked: Vec<(usize, usize, Trigger, Vec<ExpId>)> = vec![];
+            match route {
+                // Each step from the state the last one left, if the route works from here.
+                Some(r) => {
+                    let (mut at, mut at_node) = (cond.clone(), from);
+                    for (k, &id) in r.steps.iter().enumerate() {
+                        let Some(t) = transitions.iter().position(|e| e.id == id) else { break };
+                        let e = transitions[t];
+                        if !at.implies(&e.given) {
+                            break;
+                        }
+                        let candidates = companions[t].iter().map(|&c| transitions[c]);
+                        let out = perform_among(suite, prec, &at, &e.trigger, candidates);
+                        if !out.fired.contains(&id) || !out.after.is_satisfiable() {
+                            break;
+                        }
+                        let last = k + 1 == r.steps.len();
+                        let next = if last { to } else { node(&mut map, &out.after, level + 1 + k as u32, false) };
+                        walked.push((at_node, next, e.trigger.clone(), out.fired));
+                        (at, at_node) = (out.after, next);
+                    }
+                    if walked.len() < r.steps.len() {
+                        continue;
+                    }
+                }
+                None => walked.push((from, to, Trigger::default(), vec![])),
+            }
+            let setup = route.is_none().then_some(s.id);
+            for (a, b, action, fired) in walked {
+                let m = *moves.entry((a, b, action.clone(), setup)).or_insert_with(|| {
+                    map.moves.push(Move { from: a, to: b, action, fired: vec![], hands_over: false, setup });
+                    map.moves.len() - 1
+                });
+                for f in fired {
+                    if !map.moves[m].fired.contains(&f) {
+                        map.moves[m].fired.push(f);
+                    }
+                }
+            }
             if seen.contains_key(&(after.clone(), s.id)) {
                 continue;
             }

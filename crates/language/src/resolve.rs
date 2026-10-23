@@ -201,11 +201,13 @@ fn sections(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
             }
         }
         let mut follows: Option<Condition> = None;
+        let mut follows_steps = vec![];
         for s in files.iter().filter(|f| f.dir == dir).flat_map(|f| &f.follows) {
             let target = follows.get_or_insert_with(Condition::new);
             for fact in facts_of(s, &suite.vocabulary, diags) {
                 add(target, &fact, &suite.vocabulary, diags, "this setup can never hold");
             }
+            follows_steps.push(text_of(s, &suite.vocabulary));
         }
         let start = match parent {
             Some(p) => suite.section(p).start.overlay(&setup),
@@ -224,6 +226,7 @@ fn sections(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
             setup,
             setup_steps,
             follows,
+            follows_steps,
             launch: header.and_then(|h| h.launch.as_ref().map(|(l, _)| l.clone())),
             start,
             span: header.map(|h| h.span.clone()),

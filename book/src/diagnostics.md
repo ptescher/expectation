@@ -50,6 +50,8 @@ error[bad-value]: `boiling` isn't a value of the kettle
 | `unneeded-override` | warning | An override between two expectations that never disagree. |
 | `unreachable` | warning | No chain of expectations gets the system into this expectation's Given, so nothing can test it. |
 | `no-way-in` | warning | Nothing leads from a section's parent into the section, so the docs can't say how to get there. |
+| `follows-no-way-in` | error | A section `Follows:` a setup, the expectations change every state its own setup needs, and still no chain of them gets there. The route it claims is broken. |
+| `follows-unreached` | warning | Nothing gets to the setup a section `Follows:`: no section's setup has it, and no chain of expectations leads there. |
 
 ## Stories
 

@@ -299,6 +299,7 @@ impl Report {
                         Because::Arranged => "arranged".to_string(),
                         Because::Expectation(e) => format!("«{}»", suite.exp(*e).name),
                         Because::Story(span) => format!("the story, {span}"),
+                        Because::Setup(x) => format!("the setup of «{}»", suite.section(*x).name),
                     };
                     let seen = match (&cr.observed, &cr.error) {
                         (_, Some(e)) => format!("couldn't observe it: {e}"),
