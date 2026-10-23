@@ -57,7 +57,9 @@ warning[untested]: no story exercises «Running dry stops the kettle»
 ```
 
 `Acceptance::with_coverage()` (and `expectation plan --coverage`) adds a generated test for
-each one, following that route from the expectation's own section setup. Generated tests are
+each one, following that route from the expectation's own section setup. It also adds a test for
+each section that `Follows:` a setup the expectations get from, taking that route in and
+checking the section's setup at the end. Generated tests are
 named "Reaching «…»". They appear in the test report, but not as tutorials.
 
 With coverage, every expectation gets a **verdict**:

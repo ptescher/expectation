@@ -17,13 +17,14 @@ pub use flow::{Flow, Limits, Node, Route};
 pub use precedence::Precedence;
 pub use states::StateMap;
 
-use expectation_model::{Condition, Diagnostic, ExpId, FeatureId, SectionId, Suite};
+use expectation_model::{Condition, Diagnostic, ExpId, FeatureId, Section, SectionId, Suite, VarId};
 
 pub struct Analysis {
     pub precedence: Precedence,
     pub conflicts: Vec<Conflict>,
     pub flow: Flow,
-    /// Per section: the expectations that lead from its parent's start into its own.
+    /// Per section: the expectations that lead into its start, from the setup it follows or its
+    /// parent's start.
     pub section_routes: Vec<Option<Route>>,
     pub diagnostics: Vec<Diagnostic>,
 }
@@ -98,21 +99,42 @@ pub fn roots(suite: &Suite) -> Vec<(Condition, SectionId)> {
     roots
 }
 
-/// For each section, how its setup is reached from its parent's start: the chain of
-/// expectations that gets there. `None` for the root, for a section that adds no setup, and
-/// for one nothing leads into.
-pub fn section_routes(suite: &Suite, prec: &Precedence, limits: Limits) -> Vec<Option<Route>> {
+/// The section whose start a `Follows:` names: of the sections with tests in them whose start
+/// has the followed setup in place, the one that says least besides. The route starts there,
+/// so it can use what else that setup says.
+pub fn followed(suite: &Suite, section: &Section) -> Option<SectionId> {
+    let follows = section.follows.as_ref()?;
     suite
         .sections
         .iter()
-        .map(|s| {
-            let parent = s.parent.map(|p| &suite.section(p).start)?;
-            if s.setup.is_unconstrained() || parent.implies(&s.start) {
-                return None;
-            }
-            flow::route_to(suite, prec, parent, &s.start, limits)
-        })
-        .collect()
+        .filter(|s| s.id != section.id && (!s.features.is_empty() || !s.stories.is_empty()) && s.start.implies(follows))
+        .min_by_key(|s| s.start.iter().count())
+        .map(|s| s.id)
+}
+
+/// Where a section's setup is reached from: the setup its `Follows:` names (as the section it
+/// names has it, if one does), or else its parent's start.
+pub fn reached_from<'a>(suite: &'a Suite, section: &'a Section) -> Option<&'a Condition> {
+    match &section.follows {
+        Some(f) => Some(followed(suite, section).map_or(f, |s| &suite.section(s).start)),
+        None => section.parent.map(|p| &suite.section(p).start),
+    }
+}
+
+/// How a section's setup is reached from where it is reached from ([`reached_from`]): the chain
+/// of expectations that gets there. `None` for the root, for a section that adds no setup to
+/// its parent's, and for one nothing leads into.
+pub fn section_route(suite: &Suite, prec: &Precedence, section: &Section, limits: Limits) -> Option<Route> {
+    let from = reached_from(suite, section)?;
+    if (section.follows.is_none() && section.setup.is_unconstrained()) || from.implies(&section.start) {
+        return None;
+    }
+    flow::route_to(suite, prec, from, &section.start, limits)
+}
+
+/// For each section, how its setup is reached: see [`section_route`].
+pub fn section_routes(suite: &Suite, prec: &Precedence, limits: Limits) -> Vec<Option<Route>> {
+    suite.sections.iter().map(|s| section_route(suite, prec, s, limits)).collect()
 }
 
 pub fn analyze(suite: &Suite) -> Analysis {
@@ -140,6 +162,10 @@ pub fn analyze_with(suite: &Suite, limits: Limits) -> Analysis {
     }
     let section_routes = section_routes(suite, &precedence, limits);
     for (s, route) in suite.sections.iter().zip(&section_routes) {
+        if s.follows.is_some() {
+            diagnostics.extend(follows(suite, &precedence, &flow, s, route.as_ref()));
+            continue;
+        }
         let Some(parent) = s.parent.map(|p| suite.section(p)) else { continue };
         // From a parent with no setup there's nothing to route from: getting there is starting
         // the program, which happens outside the suite.
@@ -157,6 +183,44 @@ pub fn analyze_with(suite: &Suite, limits: Limits) -> Analysis {
         }
     }
     Analysis { precedence, conflicts, flow, section_routes, diagnostics }
+}
+
+/// What's wrong with a section's `Follows:`. Nothing gets to the setup it follows (a warning,
+/// and nothing more to say), or the expectations change every state the section's setup needs
+/// and still nothing gets there from it (an error: the route it claims is broken). Where some
+/// of those states nothing changes, the Background's steps are a claim about how to set up
+/// that the expectations can't check, so there's nothing to say.
+fn follows(suite: &Suite, prec: &Precedence, flow: &Flow, s: &Section, route: Option<&Route>) -> Vec<Diagnostic> {
+    let (Some(f), Some(from)) = (s.follows.as_ref(), reached_from(suite, s)) else { return vec![] };
+    let span = s.follows_steps.first().map(|t| &t.span).or(s.span.as_ref());
+    let at = |d: Diagnostic| match span {
+        Some(span) => d.at(span, ""),
+        None => d,
+    };
+    if !flow.truncated && !flow.followed[s.id.0 as usize] {
+        let what = format!("nothing gets to {}, which «{}» follows", suite.describe(f), s.name);
+        let d = Diagnostic::warning("follows-unreached", what)
+            .help("no section's setup has it in place and no chain of expectations gets there; check the `Follows:`");
+        return vec![at(d)];
+    }
+    if route.is_some() || from.implies(&s.start) {
+        return vec![];
+    }
+    let (settled, _) = semantics::settle(suite, prec, from, &[]);
+    let needed: Vec<VarId> =
+        s.start.iter().filter(|(v, c)| !settled.get(*v).is_some_and(|x| x.within(c))).map(|(v, _)| v).collect();
+    if !needed.iter().all(|v| suite.transitions().any(|e| e.sets().any(|x| x == *v))) {
+        return vec![];
+    }
+    let what = format!("nothing leads from {} into «{}»", suite.describe(f), s.name);
+    let d = Diagnostic::error("follows-no-way-in", what)
+        .note_that(format!(
+            "«{}» starts with {}, and expectations change all of that, but no chain of them gets there",
+            s.name,
+            suite.describe(&settled.unproven(&s.start))
+        ))
+        .help("the route it follows is broken: fix the expectations that get there, or the `Follows:`");
+    vec![at(d)]
 }
 
 #[cfg(test)]
@@ -201,6 +265,42 @@ Feature: Heating
   Expectation: Reset turns the kettle off
     When the user presses reset
     Then the kettle is off
+";
+
+    /// A website: the home page links to billing, and the billing section follows the home page.
+    const SITE_ROOT: &str = "
+Suite: Site
+Vocabulary:
+  State: the page is home | billing | settings
+  State: the session is in | out
+  Event: the user clicks Billing
+  Event: the user clicks Settings
+";
+
+    const SITE_HOME: &str = "
+Section: Home
+  The home page.
+Background:
+  Given the page is home
+  And the session is in
+Feature: Navigation
+  Expectation: The Billing link opens billing
+    Given the page is home
+    When the user clicks Billing
+    Then the page is billing
+";
+
+    const SITE_BILLING: &str = "
+Section: Billing
+  Paying.
+Background:
+  Follows: the page is home
+  Given the page is billing
+Feature: Billing
+  Expectation: Settings from billing
+    Given the page is billing
+    When the user clicks Settings
+    Then the page is settings
 ";
 
     fn suite(extra: &str) -> Suite {
@@ -348,5 +448,48 @@ Feature: F
         assert!(m.contains("<-. conflict .->"));
         assert!(m.contains("class e1 unreachable"));
         assert!(export::dot(&s, &a).contains("color=red"));
+    }
+
+    fn site(home: &str, billing: &str) -> (Suite, Analysis) {
+        let files = [("root.expect", SITE_ROOT), ("01-home/h.expect", home), ("02-billing/b.expect", billing)];
+        let l = expectation_language::load_sources("t", &files);
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        let a = analyze(&l.suite);
+        (l.suite, a)
+    }
+
+    #[test]
+    fn a_follows_takes_the_route_the_expectations_take() {
+        let (s, a) = site(SITE_HOME, SITE_BILLING);
+        assert!(!a.diagnostics.iter().any(|d| d.code.starts_with("follows")), "{:?}", a.diagnostics);
+        let billing = s.sections.iter().find(|x| x.name == "Billing").unwrap();
+        let route = a.section_routes[billing.id.0 as usize].as_ref().expect("a route from home");
+        assert_eq!(route.steps, vec![named(&s, "The Billing link opens billing")]);
+        // The map takes the link, not a made-up move named after the section.
+        let map = states::explore(&s, &a.precedence, &[], Limits::default());
+        assert!(map.moves.iter().all(|m| m.setup.is_none()), "{:?}", map.moves);
+        let to_billing = map.moves.iter().find(|m| map.label(&s, m.to).contains("billing")).unwrap();
+        assert_eq!(map.describe_move(&s, to_billing), "the user clicks Billing");
+        assert!(!map.states[to_billing.to].start);
+    }
+
+    #[test]
+    fn a_broken_route_into_a_follows_is_an_error() {
+        // The link now goes to settings, and nothing else gets from home to billing.
+        let home = SITE_HOME.replace("Then the page is billing", "Then the page is settings");
+        let (_, a) = site(&home, SITE_BILLING);
+        let d = a.diagnostics.iter().find(|d| d.code == "follows-no-way-in").expect("an error");
+        assert!(d.is_error());
+        assert!(d.message.contains("nothing leads from the page is home into «Billing»"), "{}", d.message);
+    }
+
+    #[test]
+    fn a_follows_nothing_gets_to_is_a_warning() {
+        let billing = SITE_BILLING.replace("Follows: the page is home", "Follows: the session is out");
+        let (_, a) = site(SITE_HOME, &billing);
+        let d = a.diagnostics.iter().find(|d| d.code == "follows-unreached").expect("a warning");
+        assert!(!d.is_error());
+        // A route from a setup nobody gets to isn't worth an error of its own.
+        assert!(!a.diagnostics.iter().any(|d| d.code == "follows-no-way-in"), "{:?}", a.diagnostics);
     }
 }

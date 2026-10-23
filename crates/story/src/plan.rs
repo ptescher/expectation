@@ -20,6 +20,9 @@ pub enum Origin {
     Story { story: StoryId, scenario: usize },
     /// Generated to exercise an expectation no story reaches.
     Coverage { target: ExpId },
+    /// Generated to walk the route into a section that follows a setup, and check that it gets
+    /// to the section's start: the way in that its own tests skip by arranging it.
+    Reaching { section: SectionId },
 }
 
 /// Why a check is there.
@@ -31,6 +34,8 @@ pub enum Because {
     Expectation(ExpId),
     /// The story says so in a Then.
     Story(Span),
+    /// The section's setup, which the route into it gets to.
+    Setup(SectionId),
 }
 
 #[derive(Clone, Debug)]
@@ -336,14 +341,76 @@ fn arranged(suite: &Suite, base: &Condition, start: &Condition) -> Vec<String> {
         .collect()
 }
 
-/// Generated plans for expectations no plan in `plans` exercises, following each one's
-/// shortest route from the flow graph. One the flow graph has no route to is tested on its own:
-/// its Given arranged on its section's start, then its When. Plans that can't be made clean
-/// are skipped.
+/// An expectation's When lines, as one written step.
+fn when_text(x: &expectation_model::Expectation) -> Vec<StepText> {
+    x.when_steps()
+        .cloned()
+        .enumerate()
+        .map(|(i, mut t)| {
+            t.keyword = if i == 0 { Keyword::When } else { Keyword::And };
+            t
+        })
+        .collect()
+}
+
+/// A plan for each section that follows a setup the expectations get from: arrange that setup,
+/// take the route, and check everything the section's setup says. Its own tests arrange the
+/// section's setup directly, so this is what shows the way in gets there too.
+pub fn reaching_plans(suite: &Suite, analysis: &Analysis) -> Vec<Plan> {
+    let mut out = vec![];
+    for s in suite.sections.iter().filter(|s| s.follows.is_some()) {
+        let Some(route) = analysis.section_routes[s.id.0 as usize].as_ref().filter(|r| !r.steps.is_empty()) else {
+            continue;
+        };
+        // It runs where the setup it follows is: that section's launch and expectations.
+        let from = expectation_graph::followed(suite, s);
+        let mut given: Vec<StepText> = match from {
+            Some(f) => suite.chain(f).iter().flat_map(|x| x.setup_steps.iter().cloned()).collect(),
+            None => s.follows_steps.clone(),
+        };
+        given.iter_mut().for_each(|t| t.keyword = Keyword::Given);
+        let inputs = route.steps.iter().enumerate().map(|(n, &id)| {
+            let x = suite.exp(id);
+            let text = when_text(x);
+            let (action, span) = (x.trigger.clone(), x.span.clone());
+            Input { action, checks: &[], written: text.clone(), text, span, group: n + 1 }
+        });
+        let head = Head {
+            origin: Origin::Reaching { section: s.id },
+            section: from.unwrap_or(s.id),
+            title: format!("Reaching «{}»", s.name),
+            slug: prefixed(&s.slug, "reaching"),
+            start: route.start.clone(),
+            given,
+        };
+        let mut diags = vec![];
+        let mut plan = build(suite, &analysis.precedence, head, inputs, &mut diags);
+        if diags.iter().any(|d| d.is_error()) || plan.steps.len() < route.steps.len() {
+            continue;
+        }
+        // What the expectations promise is checked already; the rest of the setup isn't.
+        let last = plan.steps.last_mut().expect("a route has steps");
+        for (var, c) in s.start.iter() {
+            if !last.checks.iter().any(|k| k.var == var && k.expect == *c) {
+                last.checks.push(Check { var, expect: *c, because: Because::Setup(s.id) });
+            }
+        }
+        out.push(plan);
+    }
+    out
+}
+
+/// Generated plans: [`reaching_plans`], then plans for the expectations that no plan in `plans`
+/// (or those) exercises, following each one's shortest route from the flow graph. One the flow
+/// graph has no route to is tested on its own: its Given arranged on its section's start, then
+/// its When. Plans that can't be made clean are skipped.
 pub fn coverage_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec<Plan> {
+    let mut out = reaching_plans(suite, analysis);
     let cov = coverage(suite, plans);
     let mut covered: Vec<bool> = cov.iter().map(|c| !c.is_empty()).collect();
-    let mut out = vec![];
+    for (e, by) in coverage(suite, &out).iter().enumerate() {
+        covered[e] |= !by.is_empty();
+    }
     // Routes from each section's own start, so a generated test starts where the section does.
     let mut flows: Vec<Option<expectation_graph::Flow>> = suite.sections.iter().map(|_| None).collect();
     for e in &suite.expectations {
@@ -368,15 +435,7 @@ pub fn coverage_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec
         };
         let inputs = steps.iter().enumerate().map(|(n, &s)| {
             let x = suite.exp(s);
-            let text: Vec<StepText> = x
-                .when_steps()
-                .cloned()
-                .enumerate()
-                .map(|(i, mut t)| {
-                    t.keyword = if i == 0 { Keyword::When } else { Keyword::And };
-                    t
-                })
-                .collect();
+            let text = when_text(x);
             Input {
                 action: x.trigger.clone(),
                 checks: &[],
@@ -439,15 +498,7 @@ pub fn visit_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec<Pl
         }
         let e = suite.exp(m.rule);
         let section = suite.sections.iter().find(|s| s.id == m.section).expect("a move's section");
-        let text: Vec<StepText> = e
-            .when_steps()
-            .cloned()
-            .enumerate()
-            .map(|(i, mut t)| {
-                t.keyword = if i == 0 { Keyword::When } else { Keyword::And };
-                t
-            })
-            .collect();
+        let text = when_text(e);
         let input = Input { action: e.trigger.clone(), checks: &[], written: text.clone(), text, span: e.span.clone(), group: 1 };
         let mut given: Vec<StepText> =
             suite.chain(section.id).iter().flat_map(|s| s.setup_steps.iter().cloned()).collect();

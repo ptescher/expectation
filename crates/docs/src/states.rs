@@ -207,7 +207,7 @@ pub fn html(
             cond_facts[i].iter().map(|(_, p)| p.as_str()).collect::<Vec<_>>().join(" · ")
         }
     };
-    let action = |k: usize| s.describe_trigger(&map.moves[k].action);
+    let action = |k: usize| map.describe_move(s, &map.moves[k]);
 
     // The data.
     let (mut facts, mut actions, mut exps, mut tests, mut paths) =

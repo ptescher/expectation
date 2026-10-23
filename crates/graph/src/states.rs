@@ -9,10 +9,10 @@
 //! the map has one node per screen and not one per number on it. Without a choice, it's
 //! every enumerated state.
 
-use crate::flow::{Limits, companions, in_scope};
+use crate::flow::{Limits, Route, companions, in_scope};
 use crate::precedence::Precedence;
 use crate::semantics::{perform_among, settle};
-use expectation_model::{Condition, ExpId, Expectation, SectionId, Suite, Trigger, VarId, VarKind};
+use expectation_model::{Condition, ExpId, Expectation, Section, SectionId, Suite, Trigger, VarId, VarKind};
 use std::collections::HashMap;
 use std::fmt::Write;
 
@@ -38,6 +38,9 @@ pub struct Move {
     /// It hands over to another program or setup (`Hands over to:`): the state it leaves is
     /// where that one starts, not a change to this one.
     pub hands_over: bool,
+    /// Not an action of the app but a section's setup (`Follows:`) that no expectations get to:
+    /// what its Background says to do, from the setup it follows, to get here.
+    pub setup: Option<SectionId>,
 }
 
 impl Move {
@@ -81,7 +84,7 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
         s.start |= start;
         i
     };
-    let mut moves: HashMap<(usize, usize, Trigger), usize> = HashMap::new();
+    let mut moves: HashMap<(usize, usize, Trigger, Option<SectionId>), usize> = HashMap::new();
 
     // (full state, its section, level)
     let mut queue: Vec<(Condition, SectionId, u32)> = vec![];
@@ -101,6 +104,13 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
 
     let transitions: Vec<&Expectation> = suite.transitions().collect();
     let companions = companions(&transitions);
+    // The sections that follow a setup, and the route the expectations take there, if any.
+    let follows: Vec<(&Section, Option<Route>)> = suite
+        .sections
+        .iter()
+        .filter(|s| s.follows.is_some())
+        .map(|s| (s, crate::section_route(suite, prec, s, limits)))
+        .collect();
     let mut i = 0;
     while i < queue.len() {
         let (cond, section, level) = queue[i].clone();
@@ -120,8 +130,8 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
                 continue;
             }
             let to = node(&mut map, &out.after, level + 1, false);
-            let m = *moves.entry((from, to, e.trigger.clone())).or_insert_with(|| {
-                map.moves.push(Move { from, to, action: e.trigger.clone(), fired: vec![], hands_over: false });
+            let m = *moves.entry((from, to, e.trigger.clone(), None)).or_insert_with(|| {
+                map.moves.push(Move { from, to, action: e.trigger.clone(), fired: vec![], hands_over: false, setup: None });
                 map.moves.len() - 1
             });
             for f in out.fired.iter().filter(|f| scope[f.0 as usize]) {
@@ -146,6 +156,68 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
             }
             seen.insert((out.after.clone(), section), ());
             queue.push((out.after, section, level + 1));
+        }
+        // The sections whose setup follows this state. Where the expectations get there, the
+        // route's own moves do; otherwise one move, named by the section, for its Background.
+        for (s, route) in &follows {
+            if !s.follows.as_ref().is_some_and(|f| cond.implies(f)) {
+                continue;
+            }
+            let after = settle(suite, prec, &s.start, &[]).0;
+            if !after.is_satisfiable() {
+                continue;
+            }
+            let to = node(&mut map, &after, level + 1, false);
+            // (from, to, action, what fires) for each move on the way.
+            let mut walked: Vec<(usize, usize, Trigger, Vec<ExpId>)> = vec![];
+            match route {
+                // Each step from the state the last one left, if the route works from here.
+                Some(r) => {
+                    let (mut at, mut at_node) = (cond.clone(), from);
+                    for (k, &id) in r.steps.iter().enumerate() {
+                        let Some(t) = transitions.iter().position(|e| e.id == id) else { break };
+                        let e = transitions[t];
+                        if !at.implies(&e.given) {
+                            break;
+                        }
+                        let candidates = companions[t].iter().map(|&c| transitions[c]);
+                        let out = perform_among(suite, prec, &at, &e.trigger, candidates);
+                        if !out.fired.contains(&id) || !out.after.is_satisfiable() {
+                            break;
+                        }
+                        let last = k + 1 == r.steps.len();
+                        let next = if last { to } else { node(&mut map, &out.after, level + 1 + k as u32, false) };
+                        walked.push((at_node, next, e.trigger.clone(), out.fired));
+                        (at, at_node) = (out.after, next);
+                    }
+                    if walked.len() < r.steps.len() {
+                        continue;
+                    }
+                }
+                None => walked.push((from, to, Trigger::default(), vec![])),
+            }
+            let setup = route.is_none().then_some(s.id);
+            for (a, b, action, fired) in walked {
+                let m = *moves.entry((a, b, action.clone(), setup)).or_insert_with(|| {
+                    map.moves.push(Move { from: a, to: b, action, fired: vec![], hands_over: false, setup });
+                    map.moves.len() - 1
+                });
+                for f in fired {
+                    if !map.moves[m].fired.contains(&f) {
+                        map.moves[m].fired.push(f);
+                    }
+                }
+            }
+            if seen.contains_key(&(after.clone(), s.id)) {
+                continue;
+            }
+            if level + 1 > limits.depth || queue.len() >= limits.states {
+                map.truncated = true;
+                continue;
+            }
+            seen.insert((after.clone(), s.id), ());
+            scopes.entry(s.id).or_insert_with(|| in_scope(suite, s.id));
+            queue.push((after, s.id, level + 1));
         }
         i += 1;
     }
@@ -282,6 +354,14 @@ impl StateMap {
             .join(" · ")
     }
 
+    /// What doing `m` is called: the action, or for a setup the name of the section it starts.
+    pub fn describe_move(&self, suite: &Suite, m: &Move) -> String {
+        match m.setup {
+            Some(s) => suite.section(s).name.clone(),
+            None => suite.describe_trigger(&m.action),
+        }
+    }
+
     pub fn moves_from(&self, i: usize) -> impl Iterator<Item = &Move> {
         self.moves.iter().filter(move |m| m.from == i)
     }
@@ -307,7 +387,7 @@ pub fn mermaid(suite: &Suite, map: &StateMap) -> String {
         }
     }
     for m in &map.moves {
-        let _ = writeln!(s, "  s{} --> s{} : {}", m.from, m.to, quoted(&suite.describe_trigger(&m.action)));
+        let _ = writeln!(s, "  s{} --> s{} : {}", m.from, m.to, quoted(&map.describe_move(suite, m)));
     }
     s
 }
@@ -321,7 +401,7 @@ pub fn dot(suite: &Suite, map: &StateMap) -> String {
         let _ = writeln!(s, "  s{i} [label=\"{}\"{periph}];", map.facts(suite, i).iter().map(|f| q(f)).collect::<Vec<_>>().join("\\n"));
     }
     for m in &map.moves {
-        let _ = writeln!(s, "  s{} -> s{} [label=\"{}\"];", m.from, m.to, q(&suite.describe_trigger(&m.action)));
+        let _ = writeln!(s, "  s{} -> s{} [label=\"{}\"];", m.from, m.to, q(&map.describe_move(suite, m)));
     }
     s.push_str("}\n");
     s
@@ -501,5 +581,55 @@ Vocabulary:
                 .vars()
                 .all(|v| s.vocabulary.var(v).subject.contains("screen"))
         );
+    }
+
+    #[test]
+    fn a_section_that_follows_a_setup_is_reached_by_its_background() {
+        let vocab = "
+Suite: Two setups
+Vocabulary:
+  State: the app is closed | open
+  State: the screen is home | settings
+  Event: the user opens settings
+";
+        let closed = "
+Section: Closed
+  Nothing yet.
+Background:
+  Given the app is closed
+Feature: Closed
+  Expectation: Opening settings
+    Given the app is closed
+    When the user opens settings
+    Then the screen is settings
+";
+        let settings = "
+Section: Settings
+  The settings.
+Background:
+  Follows: the app is closed
+  Given the app is open
+  And the screen is settings
+Feature: Settings
+  Expectation: Opening again
+    Given the screen is settings
+    When the user opens settings
+    Then the screen is settings
+";
+        let l = expectation_language::load_sources(
+            "t",
+            &[("root.expect", vocab), ("01-closed/c.expect", closed), ("02-settings/s.expect", settings)],
+        );
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        let s = l.suite;
+        let a = crate::analyze(&s);
+        let map = explore(&s, &a.precedence, &[], Limits::default());
+        let starts: Vec<usize> = (0..map.states.len()).filter(|&i| map.states[i].start).collect();
+        assert_eq!(starts.len(), 1, "{:?}", map.states);
+        assert_eq!(map.label(&s, starts[0]), "closed");
+        let m = map.moves.iter().find(|m| m.setup.is_some()).unwrap();
+        assert_eq!(map.describe_move(&s, m), "Settings");
+        assert_eq!(map.label(&s, m.to), "open · settings");
+        assert_eq!(map.states[m.to].level, 1);
     }
 }
