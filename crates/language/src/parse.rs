@@ -150,7 +150,15 @@ enum Block {
     Term,
 }
 
-const HEADERS: &[&str] = &["Vocabulary:", "Background:", "Feature:", "Expectation:", "Story:", "Scenario:", "Term:"];
+const HEADERS: &[&str] = &[
+    "Vocabulary:",
+    "Background:",
+    "Feature:",
+    "Expectation:",
+    "Story:",
+    "Scenario:",
+    "Term:",
+];
 
 /// `Say: …` or `Say[iOS]: …`: the platform tag, if any, and the text after the colon.
 fn tagged<'a>(line: &'a str, word: &str) -> Option<(Option<String>, &'a str)> {
@@ -199,7 +207,10 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
             desc.push(text);
         };
 
-        if let Some((h, name)) = ["Suite:", "Section:"].iter().find_map(|h| Some((*h, line.strip_prefix(h)?.trim()))) {
+        if let Some((h, name)) = ["Suite:", "Section:"]
+            .iter()
+            .find_map(|h| Some((*h, line.strip_prefix(h)?.trim())))
+        {
             if h == "Suite:" {
                 out.name = Some((name.to_string(), span.clone()));
             }
@@ -210,7 +221,13 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                         .at(&prev.span, "named here first"),
                 );
             }
-            out.section = Some(RawSection { name: name.to_string(), span, description: vec![], launch: None, launch_variants: vec![] });
+            out.section = Some(RawSection {
+                name: name.to_string(),
+                span,
+                description: vec![],
+                launch: None,
+                launch_variants: vec![],
+            });
             block = Block::Section;
             continue;
         }
@@ -218,13 +235,20 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
             let title = line[h.len()..].trim().to_string();
             let needs_title = !matches!(*h, "Vocabulary:" | "Background:");
             if needs_title && title.is_empty() {
-                diags.push(Diagnostic::error("syntax", format!("`{h}` needs a name")).at(&span, ""));
+                diags
+                    .push(Diagnostic::error("syntax", format!("`{h}` needs a name")).at(&span, ""));
             }
             block = match *h {
                 "Vocabulary:" => Block::Vocabulary,
                 "Background:" => Block::Background,
                 "Feature:" => {
-                    out.features.push(RawFeature { name: title, span, on: None, description: vec![], expectations: vec![] });
+                    out.features.push(RawFeature {
+                        name: title,
+                        span,
+                        on: None,
+                        description: vec![],
+                        expectations: vec![],
+                    });
                     Block::Feature
                 }
                 "Expectation:" => match out.features.last_mut() {
@@ -262,12 +286,21 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                     Block::Story
                 }
                 "Term:" => {
-                    out.terms.push(RawTerm { name: title, span, description: vec![] });
+                    out.terms.push(RawTerm {
+                        name: title,
+                        span,
+                        description: vec![],
+                    });
                     Block::Term
                 }
                 _ => match out.stories.last_mut() {
                     Some(s) if matches!(block, Block::Story | Block::Scenario) => {
-                        s.scenarios.push(RawScenario { name: title, span, description: vec![], steps: vec![] });
+                        s.scenarios.push(RawScenario {
+                            name: title,
+                            span,
+                            description: vec![],
+                            steps: vec![],
+                        });
                         Block::Scenario
                     }
                     _ => {
@@ -285,19 +318,37 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
 
         if let Some(rest) = line.strip_prefix("Platform:") {
             if block != Block::Vocabulary {
-                diags.push(Diagnostic::error("syntax", "`Platform:` belongs in a Vocabulary block").at(&span, ""));
+                diags.push(
+                    Diagnostic::error("syntax", "`Platform:` belongs in a Vocabulary block")
+                        .at(&span, ""),
+                );
             }
-            out.platforms.extend(rest.split('|').map(|p| (p.trim().to_string(), span.clone())).filter(|(p, _)| !p.is_empty()));
+            out.platforms.extend(
+                rest.split('|')
+                    .map(|p| (p.trim().to_string(), span.clone()))
+                    .filter(|(p, _)| !p.is_empty()),
+            );
             continue;
         }
         if let Some((prefix, tag, rest)) = ["State", "Event", "Phrase"].iter().find_map(|p| {
             let (tag, rest) = tagged(line, p)?;
             Some((*p, tag, rest))
         }) {
-            let decl = RawDecl { text: rest.trim().to_string(), span: span.clone(), say: None, sets: vec![], shows: vec![], variants: vec![] };
+            let decl = RawDecl {
+                text: rest.trim().to_string(),
+                span: span.clone(),
+                say: None,
+                sets: vec![],
+                shows: vec![],
+                variants: vec![],
+            };
             if !matches!(block, Block::Vocabulary | Block::Phrase) {
                 diags.push(
-                    Diagnostic::error("syntax", format!("`{prefix}:` belongs in a Vocabulary block")).at(&span, ""),
+                    Diagnostic::error(
+                        "syntax",
+                        format!("`{prefix}:` belongs in a Vocabulary block"),
+                    )
+                    .at(&span, ""),
                 );
             } else if prefix != "Phrase" && tag.is_some() {
                 diags.push(Diagnostic::error("syntax", format!("`{prefix}:` has no platform variants: tag its `Say:` or `Shows:` lines instead")).at(&span, ""));
@@ -336,29 +387,49 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                     None => sec.launch = Some((rest.trim().to_string(), span)),
                 },
                 _ => diags.push(
-                    Diagnostic::error("syntax", "`Launch:` goes right under the `Section:` it is for")
-                        .at(&span, "")
-                        .help("`Section: <name>` then `Launch: run cargo run`"),
+                    Diagnostic::error(
+                        "syntax",
+                        "`Launch:` goes right under the `Section:` it is for",
+                    )
+                    .at(&span, "")
+                    .help("`Section: <name>` then `Launch: run cargo run`"),
                 ),
             }
             continue;
         }
 
         if let Some(rest) = line.strip_prefix("On:") {
-            let on: Vec<(String, Span)> = rest.split(',').map(|p| (p.trim().to_string(), span.clone())).filter(|(p, _)| !p.is_empty()).collect();
+            let on: Vec<(String, Span)> = rest
+                .split(',')
+                .map(|p| (p.trim().to_string(), span.clone()))
+                .filter(|(p, _)| !p.is_empty())
+                .collect();
             let slot = match block {
                 Block::Section => Some(&mut out.on),
                 Block::Feature => out.features.last_mut().map(|f| &mut f.on),
-                Block::Expectation => out.features.last_mut().and_then(|f| f.expectations.last_mut()).map(|e| &mut e.on),
+                Block::Expectation => out
+                    .features
+                    .last_mut()
+                    .and_then(|f| f.expectations.last_mut())
+                    .map(|e| &mut e.on),
                 Block::Story => out.stories.last_mut().map(|s| &mut s.on),
                 _ => None,
             };
             match slot {
                 Some(slot) if !on.is_empty() => *slot = Some(on),
-                Some(_) => diags.push(Diagnostic::error("syntax", "`On:` needs platforms: `On: iOS` or `On: desktop, iOS`").at(&span, "")),
+                Some(_) => diags.push(
+                    Diagnostic::error(
+                        "syntax",
+                        "`On:` needs platforms: `On: iOS` or `On: desktop, iOS`",
+                    )
+                    .at(&span, ""),
+                ),
                 None => diags.push(
-                    Diagnostic::error("syntax", "`On:` goes right under a Section, Feature, Expectation or Story")
-                        .at(&span, ""),
+                    Diagnostic::error(
+                        "syntax",
+                        "`On:` goes right under a Section, Feature, Expectation or Story",
+                    )
+                    .at(&span, ""),
                 ),
             }
             continue;
@@ -366,12 +437,23 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
 
         if let Some((tag, rest)) = tagged(line, "Shows") {
             match (block, last, out.states.last_mut(), tag) {
-                (Block::Vocabulary, Last::State, Some(d), None) => d.shows.push((rest.trim().to_string(), span)),
+                (Block::Vocabulary, Last::State, Some(d), None) => {
+                    d.shows.push((rest.trim().to_string(), span))
+                }
                 (Block::Vocabulary, Last::State, Some(d), Some(platform)) => {
-                    d.variants.push(Variant { platform, shows: true, text: rest.trim().to_string(), span })
+                    d.variants.push(Variant {
+                        platform,
+                        shows: true,
+                        text: rest.trim().to_string(),
+                        span,
+                    })
                 }
                 _ => diags.push(
-                    Diagnostic::error("syntax", "`Shows:` goes right under the `State:` it describes").at(&span, ""),
+                    Diagnostic::error(
+                        "syntax",
+                        "`Shows:` goes right under the `State:` it describes",
+                    )
+                    .at(&span, ""),
                 ),
             }
             continue;
@@ -381,17 +463,30 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
             Some((*p, tag, rest))
         }) {
             let said = Some((rest.trim().to_string(), span.clone()));
-            let ok = matches!((block, last, prefix), (Block::Vocabulary, Last::State, "Set") | (Block::Vocabulary, Last::Event, "Say") | (Block::Phrase, _, "Say"));
+            let ok = matches!(
+                (block, last, prefix),
+                (Block::Vocabulary, Last::State, "Set")
+                    | (Block::Vocabulary, Last::Event, "Say")
+                    | (Block::Phrase, _, "Say")
+            );
             if !ok {
                 diags.push(
-                    Diagnostic::error("syntax", format!("`{prefix}:` goes right under the thing it describes"))
-                        .at(&span, "")
-                        .help("`Set:` under a `State:`, and `Say:` under an `Event:` or a `Phrase:`"),
+                    Diagnostic::error(
+                        "syntax",
+                        format!("`{prefix}:` goes right under the thing it describes"),
+                    )
+                    .at(&span, "")
+                    .help("`Set:` under a `State:`, and `Say:` under an `Event:` or a `Phrase:`"),
                 );
                 continue;
             }
             if let Some(platform) = tag {
-                let variant = Variant { platform, shows: false, text: rest.trim().to_string(), span };
+                let variant = Variant {
+                    platform,
+                    shows: false,
+                    text: rest.trim().to_string(),
+                    span,
+                };
                 match (block, last) {
                     (Block::Phrase, _) => out.phrases.last_mut().unwrap().variants.push(variant),
                     (_, Last::State) => out.states.last_mut().unwrap().variants.push(variant),
@@ -400,7 +495,8 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                 continue;
             }
             // A state can have a `Set:` for each value; the resolver sorts them out.
-            if let (Block::Vocabulary, Last::State, Some(d)) = (block, last, out.states.last_mut()) {
+            if let (Block::Vocabulary, Last::State, Some(d)) = (block, last, out.states.last_mut())
+            {
                 d.sets.push((rest.trim().to_string(), span));
                 continue;
             }
@@ -416,30 +512,55 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
         }
 
         if let Some(rest) = line.strip_prefix("Docs:") {
-            match (block, out.features.last_mut().and_then(|f| f.expectations.last_mut())) {
+            match (
+                block,
+                out.features
+                    .last_mut()
+                    .and_then(|f| f.expectations.last_mut()),
+            ) {
                 (Block::Expectation, Some(e)) if rest.trim() == "hidden" => e.hidden = true,
                 (Block::Expectation, Some(_)) => diags.push(
                     Diagnostic::error("syntax", "`Docs:` can only say `hidden`")
                         .at(&span, "")
                         .help("`Docs: hidden` keeps an expectation out of the reading pages"),
                 ),
-                _ => diags.push(Diagnostic::error("syntax", "`Docs:` belongs in an Expectation").at(&span, "")),
+                _ => diags.push(
+                    Diagnostic::error("syntax", "`Docs:` belongs in an Expectation").at(&span, ""),
+                ),
             }
             continue;
         }
         if let Some(rest) = line.strip_prefix("Hands over to:") {
-            match (block, out.features.last_mut().and_then(|f| f.expectations.last_mut())) {
-                (Block::Expectation, Some(e)) => {
-                    e.hands_over.push(RawStep { keyword: Keyword::Given, text: rest.trim().to_string(), span })
-                }
-                _ => diags.push(Diagnostic::error("syntax", "`Hands over to:` belongs in an Expectation").at(&span, "")),
+            match (
+                block,
+                out.features
+                    .last_mut()
+                    .and_then(|f| f.expectations.last_mut()),
+            ) {
+                (Block::Expectation, Some(e)) => e.hands_over.push(RawStep {
+                    keyword: Keyword::Given,
+                    text: rest.trim().to_string(),
+                    span,
+                }),
+                _ => diags.push(
+                    Diagnostic::error("syntax", "`Hands over to:` belongs in an Expectation")
+                        .at(&span, ""),
+                ),
             }
             continue;
         }
         if let Some(rest) = line.strip_prefix("Overrides:") {
-            match (block, out.features.last_mut().and_then(|f| f.expectations.last_mut())) {
+            match (
+                block,
+                out.features
+                    .last_mut()
+                    .and_then(|f| f.expectations.last_mut()),
+            ) {
                 (Block::Expectation, Some(e)) => e.overrides.push((rest.trim().to_string(), span)),
-                _ => diags.push(Diagnostic::error("syntax", "`Overrides:` belongs in an Expectation").at(&span, "")),
+                _ => diags.push(
+                    Diagnostic::error("syntax", "`Overrides:` belongs in an Expectation")
+                        .at(&span, ""),
+                ),
             }
             continue;
         }
@@ -448,14 +569,32 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
         // or "Then" is prose: "When PEN is selected, each click adds a shape".
         let prose = matches!(block, Block::Feature | Block::Section | Block::Term);
         if let Some((keyword, text)) = step_keyword(line).filter(|_| !prose) {
-            let step = RawStep { keyword, text: text.to_string(), span: span.clone() };
+            let step = RawStep {
+                keyword,
+                text: text.to_string(),
+                span: span.clone(),
+            };
             match block {
                 Block::Phrase => out.phrases.last_mut().unwrap().steps.push(step),
                 Block::Background => out.background.push(step),
-                Block::Expectation => {
-                    out.features.last_mut().unwrap().expectations.last_mut().unwrap().steps.push(step)
-                }
-                Block::Scenario => out.stories.last_mut().unwrap().scenarios.last_mut().unwrap().steps.push(step),
+                Block::Expectation => out
+                    .features
+                    .last_mut()
+                    .unwrap()
+                    .expectations
+                    .last_mut()
+                    .unwrap()
+                    .steps
+                    .push(step),
+                Block::Scenario => out
+                    .stories
+                    .last_mut()
+                    .unwrap()
+                    .scenarios
+                    .last_mut()
+                    .unwrap()
+                    .steps
+                    .push(step),
                 Block::Story => {
                     // Steps straight under a Story form one scenario named after it.
                     let story = out.stories.last_mut().unwrap();
@@ -468,8 +607,11 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                     block = Block::Scenario;
                 }
                 _ => diags.push(
-                    Diagnostic::error("syntax", "a step must be inside a Background, Expectation, Story or Scenario")
-                        .at(&span, ""),
+                    Diagnostic::error(
+                        "syntax",
+                        "a step must be inside a Background, Expectation, Story or Scenario",
+                    )
+                    .at(&span, ""),
                 ),
             }
             continue;
@@ -482,7 +624,13 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
             Block::Feature => push(&mut out.features.last_mut().unwrap().description, text),
             Block::Term => push(&mut out.terms.last_mut().unwrap().description, text),
             Block::Expectation => {
-                let e = out.features.last_mut().unwrap().expectations.last_mut().unwrap();
+                let e = out
+                    .features
+                    .last_mut()
+                    .unwrap()
+                    .expectations
+                    .last_mut()
+                    .unwrap();
                 if e.steps.is_empty() {
                     diags.extend(near_keyword(&span, line));
                     push(&mut e.description, text);
@@ -493,12 +641,23 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
             Block::Story => {
                 // The user story's own lines are the narrative; anything else introduces it.
                 let story = out.stories.last_mut().unwrap();
-                let narrative =
-                    ["As a ", "As an ", "I want", "So that", "In order to"].iter().any(|p| line.starts_with(p));
-                if narrative { story.narrative.push(text) } else { push(&mut story.description, text) }
+                let narrative = ["As a ", "As an ", "I want", "So that", "In order to"]
+                    .iter()
+                    .any(|p| line.starts_with(p));
+                if narrative {
+                    story.narrative.push(text)
+                } else {
+                    push(&mut story.description, text)
+                }
             }
             Block::Scenario => {
-                let s = out.stories.last_mut().unwrap().scenarios.last_mut().unwrap();
+                let s = out
+                    .stories
+                    .last_mut()
+                    .unwrap()
+                    .scenarios
+                    .last_mut()
+                    .unwrap();
                 if s.steps.is_empty() {
                     diags.extend(near_keyword(&span, line));
                     push(&mut s.description, text);
@@ -521,21 +680,27 @@ fn near_keyword(span: &Span, line: &str) -> Option<Diagnostic> {
     if !word.starts_with(|c: char| c.is_uppercase()) {
         return None;
     }
-    let common = ["The", "This", "That", "Than", "They", "There", "Gives", "Wen"];
+    let common = [
+        "The", "This", "That", "Than", "They", "There", "Gives", "Wen",
+    ];
     if common.contains(&word) || step_keyword(line).is_some() {
         return None;
     }
     let k = expectation_model::text::closest(word, ["Given", "When", "Then"])?;
     Some(
-        Diagnostic::warning("maybe-step", format!("this reads as description text; did you mean `{k}`?"))
-            .at(span, "")
-            .help("descriptions are the free text before the first step"),
+        Diagnostic::warning(
+            "maybe-step",
+            format!("this reads as description text; did you mean `{k}`?"),
+        )
+        .at(span, "")
+        .help("descriptions are the free text before the first step"),
     )
 }
 
 fn unexpected(span: &Span, line: &str) -> Diagnostic {
     let word = line.split_whitespace().next().unwrap_or("");
-    let d = Diagnostic::error("syntax", "expected a step (Given, When, Then, And or But)").at(span, "");
+    let d =
+        Diagnostic::error("syntax", "expected a step (Given, When, Then, And or But)").at(span, "");
     match expectation_model::text::closest(word, ["Given", "When", "Then", "And", "But"]) {
         Some(k) if k != word => d.help(format!("did you mean `{k}`?")),
         _ => d,

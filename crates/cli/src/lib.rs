@@ -42,7 +42,10 @@ fn load_for(dir: &str, platform: &str) -> Checked {
 }
 
 fn load_platform(dir: &str, platform: Option<&str>) -> Checked {
-    let Loaded { suite, mut diagnostics } = expectation_language::load_dir_for(Path::new(dir), platform).unwrap_or_else(|e| {
+    let Loaded {
+        suite,
+        mut diagnostics,
+    } = expectation_language::load_dir_for(Path::new(dir), platform).unwrap_or_else(|e| {
         eprintln!("error: couldn't read {dir}: {e}");
         exit(2)
     });
@@ -54,8 +57,17 @@ fn load_platform(dir: &str, platform: Option<&str>) -> Checked {
     diagnostics.extend(analysis.diagnostics.iter().cloned());
     let planned = expectation_story::plan_stories(&suite, &analysis);
     diagnostics.extend(planned.diagnostics);
-    diagnostics.extend(expectation_story::untested(&suite, &analysis, &planned.plans));
-    Checked { suite, analysis, plans: planned.plans, diagnostics }
+    diagnostics.extend(expectation_story::untested(
+        &suite,
+        &analysis,
+        &planned.plans,
+    ));
+    Checked {
+        suite,
+        analysis,
+        plans: planned.plans,
+        diagnostics,
+    }
 }
 
 /// Runs the command with the process's arguments, and exits with its status: 0, 1 for errors in
@@ -70,7 +82,11 @@ pub fn main() {
         v
     });
     let flag = |f: &str| args.iter().any(|a| a == f);
-    let pos: Vec<&str> = args.iter().filter(|a| !a.starts_with("--")).map(|s| s.as_str()).collect();
+    let pos: Vec<&str> = args
+        .iter()
+        .filter(|a| !a.starts_with("--"))
+        .map(|s| s.as_str())
+        .collect();
     match pos.as_slice() {
         ["check", dir] => {
             // Every platform the suite declares reads as a suite of its own, and must check clean.
@@ -85,13 +101,21 @@ pub fn main() {
             if flag("--dot") {
                 print!("{}", expectation_graph::export::dot(&c.suite, &c.analysis));
             } else {
-                print!("{}", expectation_graph::export::mermaid(&c.suite, &c.analysis, &|_| None));
+                print!(
+                    "{}",
+                    expectation_graph::export::mermaid(&c.suite, &c.analysis, &|_| None)
+                );
             }
         }
         ["states", dir] => {
             let c = load(dir);
             let by = states_by(&c.suite, by.as_deref());
-            let map = expectation_graph::states::explore(&c.suite, &c.analysis.precedence, &by, Default::default());
+            let map = expectation_graph::states::explore(
+                &c.suite,
+                &c.analysis.precedence,
+                &by,
+                Default::default(),
+            );
             if flag("--dot") {
                 print!("{}", expectation_graph::states::dot(&c.suite, &map));
             } else {
@@ -130,7 +154,11 @@ pub fn main() {
 fn docs(dir: &str, out: &str) {
     let first = load(dir);
     let platforms = first.suite.platforms.clone();
-    let names: Vec<Option<String>> = if platforms.is_empty() { vec![None] } else { platforms.into_iter().map(Some).collect() };
+    let names: Vec<Option<String>> = if platforms.is_empty() {
+        vec![None]
+    } else {
+        platforms.into_iter().map(Some).collect()
+    };
     // Every platform's tests and results, then the pages: each one's dropdown knows the others' pages.
     let mut manuals = vec![];
     for name in &names {
@@ -148,7 +176,11 @@ fn docs(dir: &str, out: &str) {
         c.plans.extend(extra);
         let visits = expectation_story::visit_plans(&c.suite, &c.analysis, &c.plans);
         c.plans.extend(visits);
-        let report = expectation_story::load_results_for(&Path::new(out).join("results"), &c.plans, name.as_deref());
+        let report = expectation_story::load_results_for(
+            &Path::new(out).join("results"),
+            &c.plans,
+            name.as_deref(),
+        );
         manuals.push((c, report));
     }
     let docs_of = |i: usize, siblings: &[expectation_docs::Sibling]| {
@@ -163,7 +195,9 @@ fn docs(dir: &str, out: &str) {
             outline: None,
         };
         let tree = match &names[i] {
-            Some(n) if i > 0 => Path::new(out).join("platforms").join(expectation_model::text::slug(n)),
+            Some(n) if i > 0 => Path::new(out)
+                .join("platforms")
+                .join(expectation_model::text::slug(n)),
             _ => Path::new(out).to_path_buf(),
         };
         docs.write(&tree)
@@ -171,13 +205,29 @@ fn docs(dir: &str, out: &str) {
     let all: Vec<expectation_docs::Sibling> = (0..manuals.len())
         .map(|i| {
             let (c, report) = &manuals[i];
-            expectation_docs::Docs { suite: &c.suite, analysis: &c.analysis, plans: &c.plans, report: Some(report), suite_dir: None, siblings: &[], outline: None }
-                .sibling()
+            expectation_docs::Docs {
+                suite: &c.suite,
+                analysis: &c.analysis,
+                plans: &c.plans,
+                report: Some(report),
+                suite_dir: None,
+                siblings: &[],
+                outline: None,
+            }
+            .sibling()
         })
         .collect();
     for i in 0..manuals.len() {
         match docs_of(i, &all) {
-            Ok(files) => println!("wrote {} pages to {out}{}", files.len(), names[i].as_ref().filter(|_| i > 0).map(|n| format!(" ({n})")).unwrap_or_default()),
+            Ok(files) => println!(
+                "wrote {} pages to {out}{}",
+                files.len(),
+                names[i]
+                    .as_ref()
+                    .filter(|_| i > 0)
+                    .map(|n| format!(" ({n})"))
+                    .unwrap_or_default()
+            ),
             Err(e) => {
                 eprintln!("error: couldn't write {out}: {e}");
                 exit(2);
@@ -195,8 +245,16 @@ fn states_by(suite: &Suite, by: Option<&str>) -> Vec<expectation_model::VarId> {
         .map(|n| match suite.vocabulary.find_var(n) {
             Some(v) => v.id,
             None => {
-                let known: Vec<&str> = suite.vocabulary.variables.iter().map(|v| v.subject.as_str()).collect();
-                eprintln!("error: --by: no state called «{n}» (the states are: {})", known.join(", "));
+                let known: Vec<&str> = suite
+                    .vocabulary
+                    .variables
+                    .iter()
+                    .map(|v| v.subject.as_str())
+                    .collect();
+                eprintln!(
+                    "error: --by: no state called «{n}» (the states are: {})",
+                    known.join(", ")
+                );
                 exit(2)
             }
         })
@@ -209,7 +267,15 @@ fn check(dir: &str, platform: Option<&str>) {
         eprint!("{}", render_all(&c.diagnostics, &c.suite.sources));
     }
     let s = &c.suite;
-    let deepest = c.analysis.flow.level.iter().flatten().max().copied().unwrap_or(0);
+    let deepest = c
+        .analysis
+        .flow
+        .level
+        .iter()
+        .flatten()
+        .max()
+        .copied()
+        .unwrap_or(0);
     let n = |k: usize, one: &str, many: &str| format!("{k} {}", if k == 1 { one } else { many });
     println!(
         "{}{}: {} in {}, {} ({}); {}; flow DAG {}, {} deep{}",
@@ -222,7 +288,11 @@ fn check(dir: &str, platform: Option<&str>) {
         n(c.analysis.exceptions().count(), "exception", "exceptions"),
         n(c.analysis.flow.edges.len(), "edge", "edges"),
         n(deepest as usize + 1, "level", "levels"),
-        if c.analysis.flow.truncated { " (search truncated)" } else { "" }
+        if c.analysis.flow.truncated {
+            " (search truncated)"
+        } else {
+            ""
+        }
     );
     if has_errors(&c.diagnostics) {
         exit(1);
@@ -250,7 +320,10 @@ fn print_plan(s: &Suite, p: &Plan) {
                 Because::Expectation(e) => format!("«{}»", s.exp(*e).name),
                 Because::Story(span) => format!("story, {span}"),
             };
-            println!("       check  {}  ({why})", v.var(c.var).describe(&c.expect));
+            println!(
+                "       check  {}  ({why})",
+                v.var(c.var).describe(&c.expect)
+            );
         }
     }
     println!();

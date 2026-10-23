@@ -6,7 +6,14 @@
 use expectation_model::{Event, Keyword, Phrase, Said, StepText, Suite, VarKind, Variable};
 
 /// Who does things in specs; docs talk to them directly instead.
-const ACTORS: &[&str] = &["the pilot ", "the operator ", "the user ", "the reader ", "you ", "i "];
+const ACTORS: &[&str] = &[
+    "the pilot ",
+    "the operator ",
+    "the user ",
+    "the reader ",
+    "you ",
+    "i ",
+];
 
 /// What a When line asks of the reader.
 pub enum Action {
@@ -39,7 +46,11 @@ fn from_wording(text: &str) -> Action {
             let rest = &text[actor.len()..];
             let (verb, tail) = rest.split_once(' ').unwrap_or((rest, ""));
             let verb = imperative(verb);
-            return Action::Do(if tail.is_empty() { verb } else { format!("{verb} {tail}") });
+            return Action::Do(if tail.is_empty() {
+                verb
+            } else {
+                format!("{verb} {tail}")
+            });
         }
     }
     Action::Happens(text.to_string())
@@ -67,12 +78,25 @@ fn set(var: &Variable, c: &expectation_model::Constraint) -> String {
         }
     }
     let v = value(var, c);
-    let comparison = ["above", "below", "at least", "at most", "between", "more than", "fewer than", "not "]
-        .iter()
-        .any(|w| v.starts_with(w));
+    let comparison = [
+        "above",
+        "below",
+        "at least",
+        "at most",
+        "between",
+        "more than",
+        "fewer than",
+        "not ",
+    ]
+    .iter()
+    .any(|w| v.starts_with(w));
     if let Some(template) = &var.set {
         // "open the dial to {value}" with "above 55 %": "open the dial above 55 %".
-        let template = if comparison { template.replace("to {value}", "{value}") } else { template.clone() };
+        let template = if comparison {
+            template.replace("to {value}", "{value}")
+        } else {
+            template.clone()
+        };
         return template.replace("{value}", &v);
     }
     let numeric = matches!(var.kind, VarKind::Number { .. });
@@ -118,8 +142,16 @@ pub fn action(suite: &Suite, step: &StepText) -> Action {
 /// HEATING"), or else the state itself.
 pub fn seen(suite: &Suite, step: &StepText) -> String {
     match step.meaning {
-        Some(Said::Fact(var, c)) => suite.vocabulary.var(var).shown(&c).unwrap_or_else(|| state(suite, step)),
-        Some(Said::Shift(var, s)) => suite.vocabulary.var(var).shown_shift(s).unwrap_or_else(|| state(suite, step)),
+        Some(Said::Fact(var, c)) => suite
+            .vocabulary
+            .var(var)
+            .shown(&c)
+            .unwrap_or_else(|| state(suite, step)),
+        Some(Said::Shift(var, s)) => suite
+            .vocabulary
+            .var(var)
+            .shown_shift(s)
+            .unwrap_or_else(|| state(suite, step)),
         _ => state(suite, step),
     }
 }
@@ -146,13 +178,25 @@ pub fn state(suite: &Suite, step: &StepText) -> String {
                 expectation_model::Shift::Same => format!("{} does not change", var.subject),
                 expectation_model::Shift::By(d) => {
                     let n = expectation_model::text::number(d.abs());
-                    let unit = if d.abs() == 1.0 { unit.trim_end_matches('s').to_string() } else { unit };
-                    let unit = if unit.is_empty() { unit } else { format!(" {unit}") };
+                    let unit = if d.abs() == 1.0 {
+                        unit.trim_end_matches('s').to_string()
+                    } else {
+                        unit
+                    };
+                    let unit = if unit.is_empty() {
+                        unit
+                    } else {
+                        format!(" {unit}")
+                    };
                     if counts {
                         let more = if d > 0.0 { "more" } else { "fewer" };
                         format!("{} {} {n} {more}{unit}", var.subject, var.verb)
                     } else {
-                        format!("{} goes {} by {n}{unit}", var.subject, if d > 0.0 { "up" } else { "down" })
+                        format!(
+                            "{} goes {} by {n}{unit}",
+                            var.subject,
+                            if d > 0.0 { "up" } else { "down" }
+                        )
                     }
                 }
             }
@@ -186,7 +230,12 @@ pub fn outcome(suite: &Suite, thens: &[&StepText]) -> String {
 /// One sentence per clause, as STE likes them short: "A new shape appears. The counter
 /// reads UPLOAD 3."
 pub fn sentences(clauses: &[String]) -> String {
-    clauses.iter().map(|c| sentence(c)).filter(|c| !c.is_empty()).collect::<Vec<_>>().join(" ")
+    clauses
+        .iter()
+        .map(|c| sentence(c))
+        .filter(|c| !c.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Steps split into their Givens, Whens and Thens, each And or But with the part it continues.
@@ -249,8 +298,15 @@ pub fn instruction(suite: &Suite, whens: &[&StepText]) -> String {
     }
     let mut out = sequence(&parts);
     if !waits.is_empty() {
-        let wait = sentence(&format!("wait until {}", expectation_model::text::join_and(&waits)));
-        out = if out.is_empty() { wait } else { format!("{out} Then {}", clause(&wait)) };
+        let wait = sentence(&format!(
+            "wait until {}",
+            expectation_model::text::join_and(&waits)
+        ));
+        out = if out.is_empty() {
+            wait
+        } else {
+            format!("{out} Then {}", clause(&wait))
+        };
     }
     out
 }
@@ -259,7 +315,11 @@ pub fn instruction(suite: &Suite, whens: &[&StepText]) -> String {
 fn sequence(actions: &[String]) -> String {
     let mut out: Vec<String> = vec![];
     for (i, a) in actions.iter().enumerate() {
-        out.push(if i == 0 { sentence(a) } else { sentence(&format!("then {}", clause(a))) });
+        out.push(if i == 0 {
+            sentence(a)
+        } else {
+            sentence(&format!("then {}", clause(a)))
+        });
     }
     out.join(" ")
 }
@@ -274,11 +334,20 @@ pub fn how(suite: &Suite, steps: &[StepText]) -> String {
         Some((f, rest)) => (f.clone(), sentences(rest)),
         None => (String::new(), String::new()),
     };
-    let with_more = |s: String| if more.is_empty() { s } else { format!("{s} {more}") };
+    let with_more = |s: String| {
+        if more.is_empty() {
+            s
+        } else {
+            format!("{s} {more}")
+        }
+    };
     if whens.is_empty() {
         // An invariant: it holds whenever its Given does.
         let when: Vec<String> = givens.iter().map(|g| state(suite, g)).collect();
-        return with_more(sentence(&format!("whenever {}, {first}", expectation_model::text::join_and(&when))));
+        return with_more(sentence(&format!(
+            "whenever {}, {first}",
+            expectation_model::text::join_and(&when)
+        )));
     }
     let lead = conditions(suite, &givens);
     let mut does = vec![];
@@ -301,8 +370,15 @@ pub fn how(suite: &Suite, steps: &[StepText]) -> String {
     let doing = match does.split_first() {
         Some((first, rest)) if !lead.is_empty() => {
             let first = sentence(&format!("{lead}{}", clause(first)));
-            let then: Vec<String> = rest.iter().map(|a| sentence(&format!("then {}", clause(a)))).collect();
-            if then.is_empty() { first } else { format!("{first} {}", then.join(" ")) }
+            let then: Vec<String> = rest
+                .iter()
+                .map(|a| sentence(&format!("then {}", clause(a))))
+                .collect();
+            if then.is_empty() {
+                first
+            } else {
+                format!("{first} {}", then.join(" "))
+            }
         }
         _ => sequence(&does),
     };
@@ -320,8 +396,13 @@ mod tests {
         assert_eq!(imperative("carries"), "carry");
         assert_eq!(imperative("launches"), "launch");
         assert_eq!(imperative("goes"), "go");
-        assert!(matches!(from_wording("the user clicks the canvas"), Action::Do(s) if s == "click the canvas"));
-        assert!(matches!(from_wording("the timer runs out"), Action::Happens(_)));
+        assert!(
+            matches!(from_wording("the user clicks the canvas"), Action::Do(s) if s == "click the canvas")
+        );
+        assert!(matches!(
+            from_wording("the timer runs out"),
+            Action::Happens(_)
+        ));
     }
 
     #[test]

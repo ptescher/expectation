@@ -185,7 +185,10 @@ impl RemoteDriver {
 
     /// Screenshots from outside the app (a simulator's or the window's), for apps that can't
     /// take their own.
-    pub fn screenshot_with(mut self, f: impl FnMut() -> Result<Option<Screenshot>, String> + 'static) -> Self {
+    pub fn screenshot_with(
+        mut self,
+        f: impl FnMut() -> Result<Option<Screenshot>, String> + 'static,
+    ) -> Self {
         self.screenshot = Some(Box::new(f));
         self
     }
@@ -228,9 +231,18 @@ impl RemoteDriver {
             }
             let left = deadline.saturating_duration_since(Instant::now());
             if left.is_zero() {
-                return Err(format!("no app connected to {} within {:?}", self.url(), timeout));
+                return Err(format!(
+                    "no app connected to {} within {:?}",
+                    self.url(),
+                    timeout
+                ));
             }
-            st = self.shared.changed.wait_timeout(st, left).unwrap_or_else(|e| e.into_inner()).0;
+            st = self
+                .shared
+                .changed
+                .wait_timeout(st, left)
+                .unwrap_or_else(|e| e.into_inner())
+                .0;
         }
     }
 
@@ -259,16 +271,30 @@ impl RemoteDriver {
             if left.is_zero() {
                 return Err(format!("the app didn't answer within {:?}", self.answer));
             }
-            st = self.shared.changed.wait_timeout(st, left).unwrap_or_else(|e| e.into_inner()).0;
+            st = self
+                .shared
+                .changed
+                .wait_timeout(st, left)
+                .unwrap_or_else(|e| e.into_inner())
+                .0;
         }
     }
 
     fn term(&self, list: fn(&App) -> &Vec<String>, wanted: &str) -> Option<String> {
-        self.shared.lock().app.as_ref().and_then(|a| App::term(list(a), wanted).map(String::from))
+        self.shared
+            .lock()
+            .app
+            .as_ref()
+            .and_then(|a| App::term(list(a), wanted).map(String::from))
     }
 
     fn change(&mut self, op: &'static str, subject: String, value: &Value) -> Result<(), String> {
-        self.call(vec![("op", op.into()), ("subject", subject.into()), ("value", to_json(value))]).map(|_| ())
+        self.call(vec![
+            ("op", op.into()),
+            ("subject", subject.into()),
+            ("value", to_json(value)),
+        ])
+        .map(|_| ())
     }
 }
 
@@ -290,7 +316,11 @@ impl Driver for RemoteDriver {
 
     fn reset(&mut self) -> Result<(), String> {
         let resets = self.shared.lock().app.as_ref().is_some_and(|a| a.reset);
-        if resets { self.call(vec![("op", "reset".into())]).map(|_| ()) } else { Ok(()) }
+        if resets {
+            self.call(vec![("op", "reset".into())]).map(|_| ())
+        } else {
+            Ok(())
+        }
     }
 
     fn arrange(&mut self, var: &Variable, value: &Value) -> Result<(), String> {
@@ -301,19 +331,24 @@ impl Driver for RemoteDriver {
     }
 
     fn set(&mut self, var: &Variable, value: &Value) -> Result<(), String> {
-        let subject = self.term(|a| &a.set, &var.key).ok_or_else(|| format!("the app can't set {}", var.subject))?;
+        let subject = self
+            .term(|a| &a.set, &var.key)
+            .ok_or_else(|| format!("the app can't set {}", var.subject))?;
         self.change("set", subject, value)
     }
 
     fn perform(&mut self, event: &Event) -> Result<(), String> {
-        let name =
-            self.term(|a| &a.events, &event.key).ok_or_else(|| format!("the app can't make {} happen", event.text))?;
-        self.call(vec![("op", "perform".into()), ("event", name.into())]).map(|_| ())
+        let name = self
+            .term(|a| &a.events, &event.key)
+            .ok_or_else(|| format!("the app can't make {} happen", event.text))?;
+        self.call(vec![("op", "perform".into()), ("event", name.into())])
+            .map(|_| ())
     }
 
     fn observe(&mut self, var: &Variable) -> Result<Value, String> {
-        let subject =
-            self.term(|a| &a.observe, &var.key).ok_or_else(|| format!("the app can't observe {}", var.subject))?;
+        let subject = self
+            .term(|a| &a.observe, &var.key)
+            .ok_or_else(|| format!("the app can't observe {}", var.subject))?;
         let reply = self.call(vec![("op", "observe".into()), ("subject", subject.into())])?;
         match reply.get("value") {
             Some(Json::Str(s)) => Ok(Value::Enum(s.clone())),
@@ -347,7 +382,12 @@ impl Driver for RemoteDriver {
 
 impl RemoteDriver {
     fn take_screenshot(&mut self) -> Result<Option<Screenshot>, String> {
-        let own = self.shared.lock().app.as_ref().is_some_and(|a| a.screenshot);
+        let own = self
+            .shared
+            .lock()
+            .app
+            .as_ref()
+            .is_some_and(|a| a.screenshot);
         if own {
             let reply = self.call(vec![("op", "screenshot".into())])?;
             if let Some(png) = reply.get("png").and_then(Json::as_str) {
@@ -367,7 +407,9 @@ impl RemoteDriver {
         let st = self.shared.lock();
         let Some(app) = &st.app else { return false };
         match need {
-            Need::Arrange(v) => App::term(&app.arrange, &v.key).or(App::term(&app.set, &v.key)).is_some(),
+            Need::Arrange(v) => App::term(&app.arrange, &v.key)
+                .or(App::term(&app.set, &v.key))
+                .is_some(),
             Need::Set(v) => App::term(&app.set, &v.key).is_some(),
             Need::Perform(e) => App::term(&app.events, &e.key).is_some(),
             Need::Observe(v) => App::term(&app.observe, &v.key).is_some(),
@@ -389,7 +431,10 @@ fn serve(shared: &Shared, stream: std::net::TcpStream) {
             let mut st = shared.lock();
             if let Some(p) = &st.platform {
                 if key(p) != key(&app.platform) {
-                    let body = Json::obj([("error", format!("this runner is for {p}, not {}", app.platform).into())]);
+                    let body = Json::obj([(
+                        "error",
+                        format!("this runner is for {p}, not {}", app.platform).into(),
+                    )]);
                     drop(st);
                     return http::respond(&stream, 409, &body.to_string());
                 }
@@ -420,7 +465,11 @@ fn serve(shared: &Shared, stream: std::net::TcpStream) {
                     drop(st);
                     return http::respond(&stream, 204, "");
                 }
-                st = shared.changed.wait_timeout(st, left).unwrap_or_else(|e| e.into_inner()).0;
+                st = shared
+                    .changed
+                    .wait_timeout(st, left)
+                    .unwrap_or_else(|e| e.into_inner())
+                    .0;
             }
         }
         ("POST", "/reply") => {

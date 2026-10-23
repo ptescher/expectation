@@ -26,7 +26,11 @@ use expectation_model::{Diagnostic, Span};
 
 /// Apply `want` (a platform name, or `None` for the default) to `files`. Returns the declared
 /// platforms and the one the suite is now read for (`None` when it declares none).
-pub fn apply(files: &mut [RawFile], want: Option<&str>, diags: &mut Vec<Diagnostic>) -> (Vec<String>, Option<String>) {
+pub fn apply(
+    files: &mut [RawFile],
+    want: Option<&str>,
+    diags: &mut Vec<Diagnostic>,
+) -> (Vec<String>, Option<String>) {
     let mut platforms: Vec<String> = vec![];
     for (p, _) in files.iter().flat_map(|f| &f.platforms) {
         if !platforms.contains(p) {
@@ -37,9 +41,12 @@ pub fn apply(files: &mut [RawFile], want: Option<&str>, diags: &mut Vec<Diagnost
     let known = |name: &str, span: &Span, tag: bool, diags: &mut Vec<Diagnostic>| -> bool {
         if platforms.is_empty() {
             diags.push(
-                Diagnostic::error("unknown-platform", format!("`{name}` is a platform, but the suite declares none"))
-                    .at(span, "")
-                    .help("declare them in a Vocabulary block: `Platform: desktop | iOS`"),
+                Diagnostic::error(
+                    "unknown-platform",
+                    format!("`{name}` is a platform, but the suite declares none"),
+                )
+                .at(span, "")
+                .help("declare them in a Vocabulary block: `Platform: desktop | iOS`"),
             );
             false
         } else if !platforms.iter().any(|p| p == name) {
@@ -51,9 +58,12 @@ pub fn apply(files: &mut [RawFile], want: Option<&str>, diags: &mut Vec<Diagnost
             false
         } else if tag && name == platforms[0] {
             diags.push(
-                Diagnostic::error("default-platform", format!("`{name}` is the default platform: write its lines plainly"))
-                    .at(span, "")
-                    .help("a tag is for the platforms that differ from the default"),
+                Diagnostic::error(
+                    "default-platform",
+                    format!("`{name}` is the default platform: write its lines plainly"),
+                )
+                .at(span, "")
+                .help("a tag is for the platforms that differ from the default"),
             );
             false
         } else {
@@ -64,13 +74,23 @@ pub fn apply(files: &mut [RawFile], want: Option<&str>, diags: &mut Vec<Diagnost
     // Every name used must be declared, whichever platform this is.
     for f in files.iter() {
         let mut names: Vec<(&str, &Span, bool)> = vec![];
-        let ons = f.on.iter().chain(f.features.iter().filter_map(|x| x.on.as_ref())).chain(
-            f.features.iter().flat_map(|x| x.expectations.iter().filter_map(|e| e.on.as_ref())),
-        ).chain(f.stories.iter().filter_map(|x| x.on.as_ref()));
+        let ons =
+            f.on.iter()
+                .chain(f.features.iter().filter_map(|x| x.on.as_ref()))
+                .chain(
+                    f.features
+                        .iter()
+                        .flat_map(|x| x.expectations.iter().filter_map(|e| e.on.as_ref())),
+                )
+                .chain(f.stories.iter().filter_map(|x| x.on.as_ref()));
         for on in ons {
             names.extend(on.iter().map(|(p, s)| (p.as_str(), s, false)));
         }
-        let variants = |v: &[Variant]| v.iter().map(|v| (v.platform.clone(), v.span.clone())).collect::<Vec<_>>();
+        let variants = |v: &[Variant]| {
+            v.iter()
+                .map(|v| (v.platform.clone(), v.span.clone()))
+                .collect::<Vec<_>>()
+        };
         let mut tagged: Vec<(String, Span)> = vec![];
         for d in f.states.iter().chain(&f.events) {
             tagged.extend(variants(&d.variants));
@@ -79,27 +99,39 @@ pub fn apply(files: &mut [RawFile], want: Option<&str>, diags: &mut Vec<Diagnost
             tagged.extend(variants(&p.variants));
             tagged.extend(p.platform.iter().cloned());
         }
-        for (name, span, tag) in names.into_iter().chain(tagged.iter().map(|(p, s)| (p.as_str(), s, true))) {
+        for (name, span, tag) in names
+            .into_iter()
+            .chain(tagged.iter().map(|(p, s)| (p.as_str(), s, true)))
+        {
             known(name, span, tag, diags);
         }
     }
 
     if platforms.is_empty() {
         if let Some(want) = want {
-            diags.push(Diagnostic::error("unknown-platform", format!("no platforms are declared, so there is no `{want}`")));
+            diags.push(Diagnostic::error(
+                "unknown-platform",
+                format!("no platforms are declared, so there is no `{want}`"),
+            ));
         }
         return (platforms, None);
     }
     let current = match want {
         Some(w) if platforms.iter().any(|p| p == w) => w.to_string(),
         Some(w) => {
-            diags.push(Diagnostic::error("unknown-platform", format!("no platform called `{w}`")).help(format!("the platforms are {list}")));
+            diags.push(
+                Diagnostic::error("unknown-platform", format!("no platform called `{w}`"))
+                    .help(format!("the platforms are {list}")),
+            );
             platforms[0].clone()
         }
         None => platforms[0].clone(),
     };
     let other = current != platforms[0];
-    let here = |on: &Option<Vec<(String, Span)>>| on.as_ref().is_none_or(|on| on.iter().any(|(p, _)| *p == current));
+    let here = |on: &Option<Vec<(String, Span)>>| {
+        on.as_ref()
+            .is_none_or(|on| on.iter().any(|(p, _)| *p == current))
+    };
 
     // Phrases: the platform's own version replaces the plain one of the same name.
     let own: Vec<String> = files
@@ -109,12 +141,26 @@ pub fn apply(files: &mut [RawFile], want: Option<&str>, diags: &mut Vec<Diagnost
         .map(|p| p.name.clone())
         .collect();
     // A section is a directory: an `On:` under its `Section:` is about every file in it.
-    let left_out: Vec<String> = files.iter().filter(|f| f.on.is_some() && !here(&f.on)).map(|f| f.dir.clone()).collect();
-    let skipped = |dir: &str| left_out.iter().any(|d| d.is_empty() || dir == d || dir.starts_with(&format!("{d}/")));
+    let left_out: Vec<String> = files
+        .iter()
+        .filter(|f| f.on.is_some() && !here(&f.on))
+        .map(|f| f.dir.clone())
+        .collect();
+    let skipped = |dir: &str| {
+        left_out
+            .iter()
+            .any(|d| d.is_empty() || dir == d || dir.starts_with(&format!("{d}/")))
+    };
     let mut left_out_names: Vec<String> = vec![];
     for f in files.iter_mut() {
         if let Some(sec) = &mut f.section {
-            if other && let Some(v) = sec.launch_variants.iter().rev().find(|v| v.platform == current) {
+            if other
+                && let Some(v) = sec
+                    .launch_variants
+                    .iter()
+                    .rev()
+                    .find(|v| v.platform == current)
+            {
                 sec.launch = Some((v.text.clone(), v.span.clone()));
             }
             sec.launch_variants.clear();
@@ -131,31 +177,63 @@ pub fn apply(files: &mut [RawFile], want: Option<&str>, diags: &mut Vec<Diagnost
         }
         for d in f.states.iter_mut().chain(f.events.iter_mut()) {
             if other {
-                if let Some(v) = d.variants.iter().rev().find(|v| v.platform == current && !v.shows) {
+                if let Some(v) = d
+                    .variants
+                    .iter()
+                    .rev()
+                    .find(|v| v.platform == current && !v.shows)
+                {
                     d.say = Some((v.text.clone(), v.span.clone()));
                 }
-                let shows: Vec<_> = d.variants.iter().filter(|v| v.platform == current && v.shows).collect();
+                let shows: Vec<_> = d
+                    .variants
+                    .iter()
+                    .filter(|v| v.platform == current && v.shows)
+                    .collect();
                 if !shows.is_empty() {
-                    d.shows = shows.iter().map(|v| (v.text.clone(), v.span.clone())).collect();
+                    d.shows = shows
+                        .iter()
+                        .map(|v| (v.text.clone(), v.span.clone()))
+                        .collect();
                 }
             }
             d.variants.clear();
         }
         // `On:` leaves things out.
         if skipped(&f.dir) {
-            left_out_names.extend(f.features.iter().flat_map(|x| &x.expectations).map(|e| e.name.clone()));
+            left_out_names.extend(
+                f.features
+                    .iter()
+                    .flat_map(|x| &x.expectations)
+                    .map(|e| e.name.clone()),
+            );
             f.features.clear();
             f.stories.clear();
         }
-        f.features.retain(|x| here(&x.on) || { left_out_names.extend(x.expectations.iter().map(|e| e.name.clone())); false });
+        f.features.retain(|x| {
+            here(&x.on) || {
+                left_out_names.extend(x.expectations.iter().map(|e| e.name.clone()));
+                false
+            }
+        });
         for x in &mut f.features {
-            x.expectations.retain(|e| here(&e.on) || { left_out_names.push(e.name.clone()); false });
+            x.expectations.retain(|e| {
+                here(&e.on) || {
+                    left_out_names.push(e.name.clone());
+                    false
+                }
+            });
         }
         f.stories.retain(|x| here(&x.on));
     }
     // An exception to an expectation that isn't on this platform has nothing to override.
-    for e in files.iter_mut().flat_map(|f| &mut f.features).flat_map(|x| &mut x.expectations) {
-        e.overrides.retain(|(name, _)| !left_out_names.contains(name));
+    for e in files
+        .iter_mut()
+        .flat_map(|f| &mut f.features)
+        .flat_map(|x| &mut x.expectations)
+    {
+        e.overrides
+            .retain(|(name, _)| !left_out_names.contains(name));
     }
     (platforms, Some(current))
 }

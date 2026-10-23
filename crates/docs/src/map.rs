@@ -54,7 +54,11 @@ pub fn svg(d: &Docs, f: &Facts, exps: &[ExpId], link: &dyn Fn(ExpId) -> String) 
     let own = exps.len();
     let exps: Vec<ExpId> = exps.iter().copied().chain(outside).collect();
     let exps = &exps[..];
-    let deepest = exps.iter().filter_map(|e| flow.level[e.0 as usize]).max().unwrap_or(0) as usize;
+    let deepest = exps
+        .iter()
+        .filter_map(|e| flow.level[e.0 as usize])
+        .max()
+        .unwrap_or(0) as usize;
     // Column 0 is the start; unreachable expectations go in a column of their own at the end.
     let col_of = |e: ExpId| flow.level[e.0 as usize].map_or(deepest + 2, |l| l as usize + 1);
     let mut rows: HashMap<usize, usize> = HashMap::new();
@@ -70,7 +74,10 @@ pub fn svg(d: &Docs, f: &Facts, exps: &[ExpId], link: &dyn Fn(ExpId) -> String) 
     let tallest = rows.values().copied().max().unwrap_or(1).max(1);
     let width = x_of(cols) + W + PAD;
     let height = PAD * 2.0 + tallest as f32 * (H + GAP_Y) - GAP_Y;
-    let start = (PAD, PAD + ((tallest as f32 * (H + GAP_Y) - GAP_Y) / 2.0 - H / 2.0).max(0.0));
+    let start = (
+        PAD,
+        PAD + ((tallest as f32 * (H + GAP_Y) - GAP_Y) / 2.0 - H / 2.0).max(0.0),
+    );
 
     let mut s = String::new();
     let _ = write!(
@@ -194,7 +201,13 @@ mod tests {
     #[test]
     fn names_wrap_onto_two_lines() {
         assert_eq!(lines("Short"), vec!["Short"]);
-        assert_eq!(lines("The child lock holds the kettle while the dial turns").len(), 2);
-        assert!(lines("one two three four five six seven eight nine ten eleven twelve")[1].ends_with('…'));
+        assert_eq!(
+            lines("The child lock holds the kettle while the dial turns").len(),
+            2
+        );
+        assert!(
+            lines("one two three four five six seven eight nine ten eleven twelve")[1]
+                .ends_with('…')
+        );
     }
 }

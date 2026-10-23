@@ -7,13 +7,15 @@ mod world;
 use expectation_harness::service::{Running, Service, Services};
 use expectation_harness::{Acceptance, RunOptions};
 use expectation_story::Status;
-use std::sync::Mutex;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 fn suite() -> Acceptance {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/kettle");
-    Acceptance::load(dir).unwrap_or_else(|e| panic!("{e}")).with_coverage()
+    Acceptance::load(dir)
+        .unwrap_or_else(|e| panic!("{e}"))
+        .with_coverage()
 }
 
 struct Database {
@@ -29,7 +31,8 @@ impl Service for Database {
         "database"
     }
     fn unavailable(&self) -> Option<String> {
-        self.missing.then(|| "install PostgreSQL with `brew install postgresql`".to_string())
+        self.missing
+            .then(|| "install PostgreSQL with `brew install postgresql`".to_string())
     }
     fn start(&self) -> Result<Box<dyn Running>, String> {
         *self.up.lock().unwrap() = true;
@@ -51,13 +54,30 @@ fn tests_that_need_what_is_missing_are_not_supported_yet_and_say_how_to_get_it()
     let a = suite();
     let up = Arc::new(Mutex::new(false));
     let mut services = Services::new();
-    services.add(Database { up: up.clone(), starts: Arc::default(), missing: true });
+    services.add(Database {
+        up: up.clone(),
+        starts: Arc::default(),
+        missing: true,
+    });
     let mut driver = world::driver(false).needs(&["database"]);
     let report = a.run_with(&mut driver, &RunOptions::default(), &mut services);
-    assert!(report.results.iter().all(|r| r.status == Status::Unsupported), "{:?}", report.results.iter().map(|r| r.status).collect::<Vec<_>>());
+    assert!(
+        report
+            .results
+            .iter()
+            .all(|r| r.status == Status::Unsupported),
+        "{:?}",
+        report.results.iter().map(|r| r.status).collect::<Vec<_>>()
+    );
     let why = report.results[0].start.error.clone().unwrap();
-    assert!(why.contains("database") && why.contains("brew install postgresql"), "{why}");
-    assert!(report.passed(), "a test that cannot run is not a failed test");
+    assert!(
+        why.contains("database") && why.contains("brew install postgresql"),
+        "{why}"
+    );
+    assert!(
+        report.passed(),
+        "a test that cannot run is not a failed test"
+    );
     assert!(!*up.lock().unwrap(), "nothing was started");
 }
 
@@ -66,13 +86,23 @@ fn what_is_available_is_started_once_for_all_the_tests_and_stopped_after() {
     let a = suite();
     let (up, starts) = (Arc::new(Mutex::new(false)), Arc::new(Mutex::new(0)));
     let mut services = Services::new();
-    services.add(Database { up: up.clone(), starts: starts.clone(), missing: false });
+    services.add(Database {
+        up: up.clone(),
+        starts: starts.clone(),
+        missing: false,
+    });
     let mut driver = world::driver(false).needs(&["database"]);
     let report = a.run_with(&mut driver, &RunOptions::default(), &mut services);
-    assert!(report.results.iter().any(|r| r.status == Status::Passed), "the tests ran");
+    assert!(
+        report.results.iter().any(|r| r.status == Status::Passed),
+        "the tests ran"
+    );
     assert!(report.passed());
     assert_eq!(*starts.lock().unwrap(), 1);
-    assert!(*up.lock().unwrap(), "still up until the run's services are dropped");
+    assert!(
+        *up.lock().unwrap(),
+        "still up until the run's services are dropped"
+    );
     drop(services);
     assert!(!*up.lock().unwrap(), "stopped with the run");
 }
@@ -81,7 +111,11 @@ fn what_is_available_is_started_once_for_all_the_tests_and_stopped_after() {
 fn a_driver_that_needs_nothing_runs_as_before() {
     let a = suite();
     let mut services = Services::new();
-    let report = a.run_with(&mut world::driver(false), &RunOptions::default(), &mut services);
+    let report = a.run_with(
+        &mut world::driver(false),
+        &RunOptions::default(),
+        &mut services,
+    );
     assert!(report.passed());
     assert!(report.results.iter().any(|r| r.status == Status::Passed));
 }
@@ -91,10 +125,24 @@ fn a_service_the_driver_wants_fresh_is_started_afresh_for_each_test() {
     let a = suite();
     let (up, starts) = (Arc::new(Mutex::new(false)), Arc::new(Mutex::new(0)));
     let mut services = Services::new();
-    services.add(Database { up, starts: starts.clone(), missing: false });
-    let mut driver = world::driver(false).needs(&["database"]).fresh(&["database"]);
+    services.add(Database {
+        up,
+        starts: starts.clone(),
+        missing: false,
+    });
+    let mut driver = world::driver(false)
+        .needs(&["database"])
+        .fresh(&["database"]);
     let report = a.run_with(&mut driver, &RunOptions::default(), &mut services);
-    let ran = report.results.iter().filter(|r| r.status != Status::Unsupported).count() as u32;
+    let ran = report
+        .results
+        .iter()
+        .filter(|r| r.status != Status::Unsupported)
+        .count() as u32;
     assert!(ran > 3);
-    assert_eq!(*starts.lock().unwrap(), ran, "one fresh start for every test that ran");
+    assert_eq!(
+        *starts.lock().unwrap(),
+        ran,
+        "one fresh start for every test that ran"
+    );
 }

@@ -6,7 +6,8 @@
 
 use expectation_model::text;
 use expectation_model::{
-    Constraint, Diagnostic, EventId, Fact, Interval, PhraseId, Said, Shift, Span, VarId, VarKind, Variable, Vocabulary,
+    Constraint, Diagnostic, EventId, Fact, Interval, PhraseId, Said, Shift, Span, VarId, VarKind,
+    Variable, Vocabulary,
 };
 
 pub enum Meaning {
@@ -57,15 +58,22 @@ pub fn resolve(raw: &str, span: &Span, vocab: &Vocabulary) -> Result<Meaning, Di
     }
     let mut best: Option<(&Variable, bool, &str)> = None;
     for v in &vocab.variables {
-        let Some(rest) = k.strip_prefix(&v.key) else { continue };
-        let Some((neg, pred)) = COPULAS.iter().find_map(|(c, neg)| Some((*neg, rest.strip_prefix(c)?))) else {
+        let Some(rest) = k.strip_prefix(&v.key) else {
+            continue;
+        };
+        let Some((neg, pred)) = COPULAS
+            .iter()
+            .find_map(|(c, neg)| Some((*neg, rest.strip_prefix(c)?)))
+        else {
             continue;
         };
         if best.is_none_or(|(b, ..)| v.key.len() > b.key.len()) {
             best = Some((v, neg, pred));
         }
     }
-    let Some((var, neg, pred)) = best else { return Err(unknown_step(raw, &k, span, vocab)) };
+    let Some((var, neg, pred)) = best else {
+        return Err(unknown_step(raw, &k, span, vocab));
+    };
     let constraint = match &var.kind {
         VarKind::Enum(values) => enum_constraint(var, values, pred, neg),
         VarKind::Number { min, max, unit } => number_constraint(pred, neg, *min, *max, unit),
@@ -74,12 +82,21 @@ pub fn resolve(raw: &str, span: &Span, vocab: &Vocabulary) -> Result<Meaning, Di
         let d = Diagnostic::error("bad-value", msg).at(span, "");
         if let Some(h) = help { d.help(h) } else { d }
     })?;
-    Ok(Meaning::Fact(Fact { var: var.id, constraint, span: span.clone() }))
+    Ok(Meaning::Fact(Fact {
+        var: var.id,
+        constraint,
+        span: span.clone(),
+    }))
 }
 
 /// "the drawing goes up by 1", "the selected item stays the same", for the longest subject
 /// it starts with.
-fn shift(raw: &str, k: &str, span: &Span, vocab: &Vocabulary) -> Option<Result<Meaning, Diagnostic>> {
+fn shift(
+    raw: &str,
+    k: &str,
+    span: &Span,
+    vocab: &Vocabulary,
+) -> Option<Result<Meaning, Diagnostic>> {
     let (var, rest) = vocab
         .variables
         .iter()
@@ -95,36 +112,61 @@ fn shift(raw: &str, k: &str, span: &Span, vocab: &Vocabulary) -> Option<Result<M
     } else if let Some(n) = rest.strip_prefix(" goes down by ") {
         (-1.0, n)
     } else {
-        return bad(format!("`{raw}`: expected `goes up by <n>` or `goes down by <n>`"));
+        return bad(format!(
+            "`{raw}`: expected `goes up by <n>` or `goes down by <n>`"
+        ));
     };
     let VarKind::Number { unit, .. } = &var.kind else {
-        return bad(format!("{} isn't a number, so it can't go up or down", var.subject));
+        return bad(format!(
+            "{} isn't a number, so it can't go up or down",
+            var.subject
+        ));
     };
     match parse_number(n, unit) {
         Some(v) => Some(Ok(Meaning::Shift(var.id, Shift::By(sign * v)))),
-        None => bad(format!("expected a number after `goes {} by`", if sign > 0.0 { "up" } else { "down" })),
+        None => bad(format!(
+            "expected a number after `goes {} by`",
+            if sign > 0.0 { "up" } else { "down" }
+        )),
     }
 }
 
 type Problem = (String, Option<String>);
 
-fn enum_constraint(var: &Variable, values: &[String], pred: &str, neg: bool) -> Result<Constraint, Problem> {
+fn enum_constraint(
+    var: &Variable,
+    values: &[String],
+    pred: &str,
+    neg: bool,
+) -> Result<Constraint, Problem> {
     let mut mask = 0u64;
     for part in pred.split(" or ") {
         let Some(i) = var.value_index(part) else {
-            let help = match text::closest(&text::normalize(part), values.iter().map(|v| v.as_str())) {
-                Some(c) => format!("did you mean `{c}`?"),
-                None => format!("{} is one of: {}", var.subject, values.join(", ")),
-            };
-            return Err((format!("`{part}` isn't a value of {}", var.subject), Some(help)));
+            let help =
+                match text::closest(&text::normalize(part), values.iter().map(|v| v.as_str())) {
+                    Some(c) => format!("did you mean `{c}`?"),
+                    None => format!("{} is one of: {}", var.subject, values.join(", ")),
+                };
+            return Err((
+                format!("`{part}` isn't a value of {}", var.subject),
+                Some(help),
+            ));
         };
         mask |= 1 << i;
     }
-    let Constraint::OneOf(all) = var.full() else { unreachable!() };
+    let Constraint::OneOf(all) = var.full() else {
+        unreachable!()
+    };
     Ok(Constraint::OneOf(if neg { all & !mask } else { mask }))
 }
 
-fn number_constraint(pred: &str, neg: bool, min: f64, max: f64, unit: &Option<String>) -> Result<Constraint, Problem> {
+fn number_constraint(
+    pred: &str,
+    neg: bool,
+    min: f64,
+    max: f64,
+    unit: &Option<String>,
+) -> Result<Constraint, Problem> {
     if neg {
         return Err((
             "a number can't be negated".into(),
@@ -141,23 +183,70 @@ fn number_constraint(pred: &str, neg: bool, min: f64, max: f64, unit: &Option<St
         })
     };
     let range = if let Some(rest) = pred.strip_prefix("between ") {
-        let (a, b) = rest.split_once(" and ").ok_or_else(|| ("expected `between <a> and <b>`".to_string(), None))?;
+        let (a, b) = rest
+            .split_once(" and ")
+            .ok_or_else(|| ("expected `between <a> and <b>`".to_string(), None))?;
         Interval::closed(num(a)?, num(b)?)
-    } else if let Some(v) = strip_any(pred, &["above ", "over ", "more than ", "greater than ", "higher than "]) {
-        Interval { lo: num(v)?, lo_open: true, hi: max, hi_open: false }
-    } else if let Some(v) = strip_any(pred, &["below ", "under ", "less than ", "fewer than ", "lower than "]) {
-        Interval { lo: min, lo_open: false, hi: num(v)?, hi_open: true }
+    } else if let Some(v) = strip_any(
+        pred,
+        &[
+            "above ",
+            "over ",
+            "more than ",
+            "greater than ",
+            "higher than ",
+        ],
+    ) {
+        Interval {
+            lo: num(v)?,
+            lo_open: true,
+            hi: max,
+            hi_open: false,
+        }
+    } else if let Some(v) = strip_any(
+        pred,
+        &[
+            "below ",
+            "under ",
+            "less than ",
+            "fewer than ",
+            "lower than ",
+        ],
+    ) {
+        Interval {
+            lo: min,
+            lo_open: false,
+            hi: num(v)?,
+            hi_open: true,
+        }
     } else if let Some(v) = pred.strip_prefix("at least ") {
-        Interval { lo: num(v)?, lo_open: false, hi: max, hi_open: false }
+        Interval {
+            lo: num(v)?,
+            lo_open: false,
+            hi: max,
+            hi_open: false,
+        }
     } else if let Some(v) = pred.strip_prefix("at most ") {
-        Interval { lo: min, lo_open: false, hi: num(v)?, hi_open: false }
+        Interval {
+            lo: min,
+            lo_open: false,
+            hi: num(v)?,
+            hi_open: false,
+        }
     } else {
         Interval::point(num(pred)?)
     };
     let clipped = range.intersect(&Interval::closed(min, max));
     if clipped.is_empty() {
         let u = unit.as_deref().map(|u| format!(" {u}")).unwrap_or_default();
-        return Err((format!("no value in {}..{}{u} satisfies this", text::number(min), text::number(max)), None));
+        return Err((
+            format!(
+                "no value in {}..{}{u} satisfies this",
+                text::number(min),
+                text::number(max)
+            ),
+            None,
+        ));
     }
     Ok(Constraint::Range(clipped))
 }
@@ -169,18 +258,26 @@ fn strip_any<'a>(s: &'a str, prefixes: &[&str]) -> Option<&'a str> {
 /// "55", "55%", "55 %", "-3.5 m".
 fn parse_number(s: &str, unit: &Option<String>) -> Option<f64> {
     let s = s.trim();
-    let end = s.find(|c: char| !(c.is_ascii_digit() || matches!(c, '.' | '-' | '+'))).unwrap_or(s.len());
+    let end = s
+        .find(|c: char| !(c.is_ascii_digit() || matches!(c, '.' | '-' | '+')))
+        .unwrap_or(s.len());
     let v: f64 = s[..end].parse().ok()?;
     let rest = s[end..].trim();
     // Units match either way round in number: "1 item" and "3 items" are both items.
     let singular = |s: &str| text::normalize(s).trim_end_matches('s').to_string();
-    let unit_ok = rest.is_empty() || unit.as_deref().is_some_and(|u| singular(u) == singular(rest));
+    let unit_ok = rest.is_empty()
+        || unit
+            .as_deref()
+            .is_some_and(|u| singular(u) == singular(rest));
     unit_ok.then_some(v)
 }
 
 fn unknown_step(raw: &str, k: &str, span: &Span, vocab: &Vocabulary) -> Diagnostic {
-    let d = Diagnostic::error("unknown-step", format!("`{raw}` isn't in the vocabulary")).at(span, "");
-    let subject = COPULAS.iter().find_map(|(c, _)| k.split_once(c).map(|(s, _)| s));
+    let d =
+        Diagnostic::error("unknown-step", format!("`{raw}` isn't in the vocabulary")).at(span, "");
+    let subject = COPULAS
+        .iter()
+        .find_map(|(c, _)| k.split_once(c).map(|(s, _)| s));
     let suggestion = match subject {
         Some(s) => text::closest(s, vocab.variables.iter().map(|v| v.key.as_str()))
             .and_then(|key| vocab.variables.iter().find(|v| v.key == key))
@@ -189,7 +286,11 @@ fn unknown_step(raw: &str, k: &str, span: &Span, vocab: &Vocabulary) -> Diagnost
             .and_then(|key| vocab.events.iter().find(|e| e.key == key))
             .map(|e| format!("did you mean the event `{}`?", e.text)),
     };
-    d.help(suggestion.unwrap_or_else(|| "declare it in a `Vocabulary:` block, with `State:` or `Event:`".into()))
+    d.help(
+        suggestion.unwrap_or_else(|| {
+            "declare it in a `Vocabulary:` block, with `State:` or `Event:`".into()
+        }),
+    )
 }
 
 fn describe_kind(v: &Variable) -> String {
@@ -221,17 +322,28 @@ pub fn declare_state(decl: &str, span: &Span, id: VarId) -> Result<Variable, Dia
     let subject = decl[..at].trim().to_string();
     let values = decl[at + len..].trim();
     let kind = if let Some((lo, hi)) = values.split_once("..") {
-        let lo: f64 = lo.trim().parse().map_err(|_| bad("expected a number before `..`"))?;
+        let lo: f64 = lo
+            .trim()
+            .parse()
+            .map_err(|_| bad("expected a number before `..`"))?;
         let hi = hi.trim();
-        let end = hi.find(|c: char| !(c.is_ascii_digit() || matches!(c, '.' | '-' | '+'))).unwrap_or(hi.len());
-        let max: f64 = hi[..end].parse().map_err(|_| bad("expected a number after `..`"))?;
+        let end = hi
+            .find(|c: char| !(c.is_ascii_digit() || matches!(c, '.' | '-' | '+')))
+            .unwrap_or(hi.len());
+        let max: f64 = hi[..end]
+            .parse()
+            .map_err(|_| bad("expected a number after `..`"))?;
         let unit = Some(hi[end..].trim().to_string()).filter(|u| !u.is_empty());
         if lo >= max {
             return Err(bad("the range is empty"));
         }
         VarKind::Number { min: lo, max, unit }
     } else {
-        let names: Vec<String> = values.split('|').map(|v| v.trim().to_string()).filter(|v| !v.is_empty()).collect();
+        let names: Vec<String> = values
+            .split('|')
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .collect();
         if names.len() < 2 {
             return Err(bad("a state needs at least two values, separated by `|`"));
         }
@@ -239,17 +351,32 @@ pub fn declare_state(decl: &str, span: &Span, id: VarId) -> Result<Variable, Dia
             return Err(bad("a state can have at most 64 values"));
         }
         for (i, n) in names.iter().enumerate() {
-            if names[..i].iter().any(|m| text::normalize(m) == text::normalize(n)) {
+            if names[..i]
+                .iter()
+                .any(|m| text::normalize(m) == text::normalize(n))
+            {
                 return Err(bad(&format!("`{n}` is listed twice")));
             }
             if n.contains(" or ") {
-                return Err(bad(&format!("`{n}` contains ` or `, which steps use to list values")));
+                return Err(bad(&format!(
+                    "`{n}` contains ` or `, which steps use to list values"
+                )));
             }
         }
         VarKind::Enum(names)
     };
     let verb = decl[at + 1..at + len - 1].to_string();
-    Ok(Variable { id, key: text::key(&subject), subject, kind, verb, span: span.clone(), set: None, sets: vec![], shows: vec![] })
+    Ok(Variable {
+        id,
+        key: text::key(&subject),
+        subject,
+        kind,
+        verb,
+        span: span.clone(),
+        set: None,
+        sets: vec![],
+        shows: vec![],
+    })
 }
 
 #[cfg(test)]
@@ -259,8 +386,12 @@ mod tests {
 
     fn vocab() -> Vocabulary {
         let span = Span::new("t", 1);
-        let kettle = declare_state("the kettle is off | heating | dry", &span, VarId(0)).ok().unwrap();
-        let dial = declare_state("the dial is 0..100 %", &span, VarId(1)).ok().unwrap();
+        let kettle = declare_state("the kettle is off | heating | dry", &span, VarId(0))
+            .ok()
+            .unwrap();
+        let dial = declare_state("the dial is 0..100 %", &span, VarId(1))
+            .ok()
+            .unwrap();
         let reset = Event {
             id: EventId(0),
             text: "the user presses reset".into(),
@@ -268,13 +399,19 @@ mod tests {
             span: span.clone(),
             say: None,
         };
-        Vocabulary { variables: vec![kettle, dial], events: vec![reset], phrases: vec![] }
+        Vocabulary {
+            variables: vec![kettle, dial],
+            events: vec![reset],
+            phrases: vec![],
+        }
     }
 
     fn fact(s: &str) -> Constraint {
         match resolve(s, &Span::new("t", 1), &vocab()) {
             Ok(Meaning::Fact(f)) => f.constraint,
-            Ok(Meaning::Event(_) | Meaning::Shift(..) | Meaning::Phrase(_)) => panic!("{s}: not a fact"),
+            Ok(Meaning::Event(_) | Meaning::Shift(..) | Meaning::Phrase(_)) => {
+                panic!("{s}: not a fact")
+            }
             Err(d) => panic!("{s}: {}", d.message),
         }
     }
@@ -289,26 +426,51 @@ mod tests {
 
     #[test]
     fn number_facts() {
-        let r = |lo, lo_open, hi, hi_open| Constraint::Range(Interval { lo, lo_open, hi, hi_open });
+        let r = |lo, lo_open, hi, hi_open| {
+            Constraint::Range(Interval {
+                lo,
+                lo_open,
+                hi,
+                hi_open,
+            })
+        };
         assert_eq!(fact("the dial is above 55 %"), r(55.0, true, 100.0, false));
         assert_eq!(fact("the dial is 0%"), r(0.0, false, 0.0, false));
         assert_eq!(fact("the dial is at most 10"), r(0.0, false, 10.0, false));
-        assert_eq!(fact("the dial is between 20 and 40 %"), r(20.0, false, 40.0, false));
+        assert_eq!(
+            fact("the dial is between 20 and 40 %"),
+            r(20.0, false, 40.0, false)
+        );
     }
 
     #[test]
     fn has_reads_like_has() {
         let span = Span::new("t", 1);
-        let plan = declare_state("the drawing has 0..100 shapes", &span, VarId(0)).ok().unwrap();
-        let v = Vocabulary { variables: vec![plan], events: vec![], phrases: vec![] };
+        let plan = declare_state("the drawing has 0..100 shapes", &span, VarId(0))
+            .ok()
+            .unwrap();
+        let v = Vocabulary {
+            variables: vec![plan],
+            events: vec![],
+            phrases: vec![],
+        };
         let c = |s: &str| match resolve(s, &span, &v) {
             Ok(Meaning::Fact(f)) => f.constraint,
             _ => panic!("{s}"),
         };
         let p = &v.variables[0];
-        assert_eq!(p.describe(&c("the drawing has 1 shape")), "the drawing has 1 shape");
-        assert_eq!(p.describe(&c("the drawing has more than 3 shapes")), "the drawing has more than 3 shapes");
-        assert_eq!(p.describe(&c("the drawing has at least 1 shape")), "the drawing has at least 1 shape");
+        assert_eq!(
+            p.describe(&c("the drawing has 1 shape")),
+            "the drawing has 1 shape"
+        );
+        assert_eq!(
+            p.describe(&c("the drawing has more than 3 shapes")),
+            "the drawing has more than 3 shapes"
+        );
+        assert_eq!(
+            p.describe(&c("the drawing has at least 1 shape")),
+            "the drawing has at least 1 shape"
+        );
     }
 
     #[test]
@@ -330,10 +492,18 @@ mod tests {
     fn events_and_errors() {
         let v = vocab();
         let span = Span::new("t", 1);
-        assert!(matches!(resolve("The user presses reset.", &span, &v), Ok(Meaning::Event(EventId(0)))));
+        assert!(matches!(
+            resolve("The user presses reset.", &span, &v),
+            Ok(Meaning::Event(EventId(0)))
+        ));
         let err = |s| resolve(s, &span, &v).err().unwrap();
         assert_eq!(err("the kettle is boiling").code, "bad-value");
-        assert!(err("the kettel is heating").help.unwrap().contains("the kettle"));
+        assert!(
+            err("the kettel is heating")
+                .help
+                .unwrap()
+                .contains("the kettle")
+        );
         assert!(err("the user presses rest").help.unwrap().contains("reset"));
         assert_eq!(err("the dial is above 120 %").code, "bad-value");
         assert_eq!(err("the dial is not 5").code, "bad-value");

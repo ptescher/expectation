@@ -6,8 +6,8 @@
 //! zooming, and works without it.
 
 use crate::{
-    Docs, Facts, NO_SCREENSHOT, NOT_SUPPORTED, Page, action_heading, feature_slug, missing_shot, narrative,
-    status_label, values, verdict_label,
+    Docs, Facts, NO_SCREENSHOT, NOT_SUPPORTED, Page, action_heading, feature_slug, missing_shot,
+    narrative, status_label, values, verdict_label,
 };
 use crate::{manual, voice};
 use expectation_graph::Node;
@@ -17,7 +17,10 @@ use expectation_story::{Because, Check, CheckResult, Origin, Status, StepResult,
 use std::fmt::Write;
 
 pub fn esc(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -57,7 +60,10 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
         });
     }
     for i in 0..d.outline.map_or(0, |o| o.pages.len()) {
-        pages.push(Page { path: format!("site/{}", site.page_url(i)), content: site.authored_page(i) });
+        pages.push(Page {
+            path: format!("site/{}", site.page_url(i)),
+            content: site.authored_page(i),
+        });
     }
     for feature in &s.features {
         pages.push(Page {
@@ -66,26 +72,62 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
         });
     }
     for i in 0..d.plans.len() {
-        pages.push(Page { path: format!("site/{}", site.test_url(i)), content: site.test_page(i) });
+        pages.push(Page {
+            path: format!("site/{}", site.test_url(i)),
+            content: site.test_page(i),
+        });
         if matches!(d.plans[i].origin, Origin::Story { .. }) {
-            pages.push(Page { path: format!("site/{}", site.tutorial_url(i)), content: site.tutorial_page(i) });
+            pages.push(Page {
+                path: format!("site/{}", site.tutorial_url(i)),
+                content: site.tutorial_page(i),
+            });
         }
     }
-    pages.push(Page { path: "site/tests.html".into(), content: site.tests_page() });
-    pages.push(Page { path: "site/map.html".into(), content: site.map_page() });
-    pages.push(Page { path: "site/states.html".into(), content: site.states_page() });
-    pages.push(Page { path: "site/vocabulary.html".into(), content: site.vocabulary_page() });
-    pages.push(Page { path: "site/glossary.html".into(), content: site.glossary_page() });
-    pages.push(Page { path: "site/assets/theme.css".into(), content: expectation_theme::css::stylesheet() });
-    pages.push(Page { path: "site/assets/style.css".into(), content: STYLE.into() });
-    pages.push(Page { path: "site/theme.html".into(), content: site.theme_page() });
+    pages.push(Page {
+        path: "site/tests.html".into(),
+        content: site.tests_page(),
+    });
+    pages.push(Page {
+        path: "site/map.html".into(),
+        content: site.map_page(),
+    });
+    pages.push(Page {
+        path: "site/states.html".into(),
+        content: site.states_page(),
+    });
+    pages.push(Page {
+        path: "site/vocabulary.html".into(),
+        content: site.vocabulary_page(),
+    });
+    pages.push(Page {
+        path: "site/glossary.html".into(),
+        content: site.glossary_page(),
+    });
+    pages.push(Page {
+        path: "site/assets/theme.css".into(),
+        content: expectation_theme::css::stylesheet(),
+    });
+    pages.push(Page {
+        path: "site/assets/style.css".into(),
+        content: STYLE.into(),
+    });
+    pages.push(Page {
+        path: "site/theme.html".into(),
+        content: site.theme_page(),
+    });
     pages.push(Page {
         path: NOT_SUPPORTED.into(),
-        content: placeholder("Not supported yet", "The test driver cannot do this step yet"),
+        content: placeholder(
+            "Not supported yet",
+            "The test driver cannot do this step yet",
+        ),
     });
     pages.push(Page {
         path: NO_SCREENSHOT.into(),
-        content: placeholder("No screenshot", "This step did not run, or it took no picture"),
+        content: placeholder(
+            "No screenshot",
+            "This step did not run, or it took no picture",
+        ),
     });
     pages
 }
@@ -97,11 +139,18 @@ impl Site<'_> {
 
     fn section_url(&self, id: SectionId) -> String {
         let s = self.suite().section(id);
-        if s.parent.is_none() { "index.html".into() } else { format!("section-{}.html", s.slug) }
+        if s.parent.is_none() {
+            "index.html".into()
+        } else {
+            format!("section-{}.html", s.slug)
+        }
     }
 
     fn feature_url(&self, id: FeatureId) -> String {
-        format!("feature-{}.html", feature_slug(self.suite(), self.suite().feature(id)))
+        format!(
+            "feature-{}.html",
+            feature_slug(self.suite(), self.suite().feature(id))
+        )
     }
 
     fn exp_url(&self, e: ExpId) -> String {
@@ -118,7 +167,11 @@ impl Site<'_> {
     }
 
     fn tutorial_link(&self, i: usize) -> String {
-        format!(r#"<a href="{}">{}</a>"#, esc(&self.tutorial_url(i)), esc(&self.short_title(i)))
+        format!(
+            r#"<a href="{}">{}</a>"#,
+            esc(&self.tutorial_url(i)),
+            esc(&self.short_title(i))
+        )
     }
 
     /// Where a test is read about: its tutorial for a story, its report otherwise.
@@ -130,11 +183,19 @@ impl Site<'_> {
     }
 
     fn exp_link(&self, e: ExpId) -> String {
-        format!(r#"<a href="{}">{}</a>"#, esc(&self.exp_url(e)), esc(&self.suite().exp(e).name))
+        format!(
+            r#"<a href="{}">{}</a>"#,
+            esc(&self.exp_url(e)),
+            esc(&self.suite().exp(e).name)
+        )
     }
 
     fn test_link(&self, i: usize) -> String {
-        format!(r#"<a href="{}">{}</a>"#, esc(&self.test_url(i)), esc(&self.d.plans[i].title))
+        format!(
+            r#"<a href="{}">{}</a>"#,
+            esc(&self.test_url(i)),
+            esc(&self.d.plans[i].title)
+        )
     }
 
     fn page_url(&self, i: usize) -> String {
@@ -143,11 +204,17 @@ impl Site<'_> {
 
     /// The outline; only called when there are hand-written pages to link to.
     fn outline(&self) -> &crate::outline::Outline {
-        self.d.outline.expect("hand-written pages come from the outline")
+        self.d
+            .outline
+            .expect("hand-written pages come from the outline")
     }
 
     fn section_link(&self, id: SectionId) -> String {
-        format!(r#"<a href="{}">{}</a>"#, esc(&self.section_url(id)), esc(&self.suite().section(id).name))
+        format!(
+            r#"<a href="{}">{}</a>"#,
+            esc(&self.section_url(id)),
+            esc(&self.suite().section(id).name)
+        )
     }
 
     fn verdict_badge(&self, e: ExpId) -> String {
@@ -195,7 +262,12 @@ impl Site<'_> {
                 }
                 manual::Inline::Link(name) => match manual::find(self.d, name) {
                     Some(r) => {
-                        let _ = write!(o, r#"<a href="{}">{}</a>"#, esc(&self.ref_url(r)), esc(name));
+                        let _ = write!(
+                            o,
+                            r#"<a href="{}">{}</a>"#,
+                            esc(&self.ref_url(r)),
+                            esc(name)
+                        );
                     }
                     None => o.push_str(&esc(name)),
                 },
@@ -218,7 +290,10 @@ impl Site<'_> {
     /// The written stories' tests in a section (not the generated ones).
     fn stories_in(&self, id: SectionId) -> Vec<usize> {
         (0..self.d.plans.len())
-            .filter(|&i| self.d.plans[i].section == id && matches!(self.d.plans[i].origin, Origin::Story { .. }))
+            .filter(|&i| {
+                self.d.plans[i].section == id
+                    && matches!(self.d.plans[i].origin, Origin::Story { .. })
+            })
             .collect()
     }
 
@@ -253,8 +328,10 @@ impl Site<'_> {
     }
 
     fn nav(&self, here: Here) -> String {
-        let open: Vec<SectionId> =
-            self.section_of(here).map(|s| self.suite().chain(s).iter().map(|x| x.id).collect()).unwrap_or_default();
+        let open: Vec<SectionId> = self
+            .section_of(here)
+            .map(|s| self.suite().chain(s).iter().map(|x| x.id).collect())
+            .unwrap_or_default();
         let mut o = String::from(r#"<nav class="side" aria-label="Contents"><ul class="tree">"#);
         self.nav_section(&mut o, SectionId(0), &open, here);
         o.push_str("</ul>");
@@ -271,8 +348,12 @@ impl Site<'_> {
     fn nav_section(&self, o: &mut String, id: SectionId, open: &[SectionId], here: Here) {
         let s = self.suite().section(id);
         let cur = |h: Here| if h == here { r#" class="current""# } else { "" };
-        let title =
-            format!(r#"<a href="{}"{}>{}</a>"#, esc(&self.section_url(id)), cur(Here::Section(id)), esc(&s.name));
+        let title = format!(
+            r#"<a href="{}"{}>{}</a>"#,
+            esc(&self.section_url(id)),
+            cur(Here::Section(id)),
+            esc(&s.name)
+        );
         let mut inner = String::new();
         let stories = self.stories_in(id);
         if !stories.is_empty() {
@@ -320,7 +401,11 @@ impl Site<'_> {
 
     fn glossary_link(&self, here: Here) -> String {
         let (url, name) = self.here_link(Here::Glossary);
-        let cur = if here == Here::Glossary { r#" class="current""# } else { "" };
+        let cur = if here == Here::Glossary {
+            r#" class="current""#
+        } else {
+            ""
+        };
         format!(r#"<li><a href="{url}"{cur}>{name}</a></li>"#)
     }
 
@@ -334,7 +419,11 @@ impl Site<'_> {
                 match *item {
                     crate::outline::Item::Section(id) => self.nav_section(&mut o, id, open, here),
                     crate::outline::Item::Page(i) => {
-                        let cur = if here == Here::Page(i) { r#" class="current""# } else { "" };
+                        let cur = if here == Here::Page(i) {
+                            r#" class="current""#
+                        } else {
+                            ""
+                        };
                         let _ = write!(
                             o,
                             r#"<li><a href="{}"{cur}>{}</a></li>"#,
@@ -362,11 +451,16 @@ impl Site<'_> {
             );
         }
         if let Some(sec) = self.section_of(here) {
-            let anchor = self.d.outline.and_then(|o| o.anchor(self.suite(), sec).map(|a| (o, a)));
+            let anchor = self
+                .d
+                .outline
+                .and_then(|o| o.anchor(self.suite(), sec).map(|a| (o, a)));
             let chain = self.suite().chain(sec);
             // With an outline, the way back starts at the part and the chapter the section is
             // placed in, not at the parent it has in the specs.
-            let from = anchor.map_or(0, |(_, (_, top))| chain.iter().position(|s| s.id == top).unwrap_or(0));
+            let from = anchor.map_or(0, |(_, (_, top))| {
+                chain.iter().position(|s| s.id == top).unwrap_or(0)
+            });
             if let Some((o, (part, _))) = anchor {
                 parts.push(self.section_link(SectionId(0)));
                 parts.push(esc(&o.parts[part].name));
@@ -382,17 +476,25 @@ impl Site<'_> {
         if parts.is_empty() {
             return String::new();
         }
-        format!(r#"<p class="crumbs">{}</p>"#, parts.join(r#" <span>›</span> "#))
+        format!(
+            r#"<p class="crumbs">{}</p>"#,
+            parts.join(r#" <span>›</span> "#)
+        )
     }
 
     fn summary(&self) -> String {
-        let Some(r) = self.d.report else { return "Tests not run".into() };
+        let Some(r) = self.d.report else {
+            return "Tests not run".into();
+        };
         let mut parts = vec![format!("{} passed", r.count(Status::Passed))];
         if r.count(Status::Failed) > 0 {
             parts.push(format!("{} failed", r.count(Status::Failed)));
         }
         if r.count(Status::Unsupported) > 0 {
-            parts.push(format!("{} not supported yet", r.count(Status::Unsupported)));
+            parts.push(format!(
+                "{} not supported yet",
+                r.count(Status::Unsupported)
+            ));
         }
         if r.count(Status::NotRun) > 0 {
             parts.push(format!("{} not run", r.count(Status::NotRun)));
@@ -404,20 +506,47 @@ impl Site<'_> {
     /// page, if it has none like it). Nothing when the suite has one platform.
     fn platform_picker(&self, file: &str) -> String {
         let s = self.suite();
-        let Some(current) = s.platform.as_deref().filter(|_| s.platforms.len() > 1) else { return String::new() };
-        let root = |p: &str| if s.platforms[0] == p { String::new() } else { format!("platforms/{}/", expectation_model::text::slug(p)) };
+        let Some(current) = s.platform.as_deref().filter(|_| s.platforms.len() > 1) else {
+            return String::new();
+        };
+        let root = |p: &str| {
+            if s.platforms[0] == p {
+                String::new()
+            } else {
+                format!("platforms/{}/", expectation_model::text::slug(p))
+            }
+        };
         // From site/ up to the docs directory.
         let up = "../".repeat(root(current).matches('/').count() + 1);
-        let mut o = String::from(r#"<label class="platform">Platform <select aria-label="Platform" onchange="location.href=this.value">"#);
+        let mut o = String::from(
+            r#"<label class="platform">Platform <select aria-label="Platform" onchange="location.href=this.value">"#,
+        );
         for p in &s.platforms {
             let target = format!("site/{file}");
-            let page = if p == current || self.d.siblings.iter().find(|x| x.platform == *p).is_some_and(|x| x.pages.contains(&target)) {
+            let page = if p == current
+                || self
+                    .d
+                    .siblings
+                    .iter()
+                    .find(|x| x.platform == *p)
+                    .is_some_and(|x| x.pages.contains(&target))
+            {
                 file
             } else {
                 "index.html"
             };
-            let href = if p == current { file.to_string() } else { format!("{up}{}site/{page}", root(p)) };
-            let _ = write!(o, r#"<option value="{}"{}>{}</option>"#, esc(&href), if p == current { " selected" } else { "" }, esc(p));
+            let href = if p == current {
+                file.to_string()
+            } else {
+                format!("{up}{}site/{page}", root(p))
+            };
+            let _ = write!(
+                o,
+                r#"<option value="{}"{}>{}</option>"#,
+                esc(&href),
+                if p == current { " selected" } else { "" },
+                esc(p)
+            );
         }
         o.push_str("</select></label>");
         o
@@ -431,19 +560,32 @@ impl Site<'_> {
             pager.push_str(r#"<nav class="pager">"#);
             if let Some(prev) = p.checked_sub(1).map(|i| order[i]) {
                 let (url, name) = self.here_link(prev);
-                let _ =
-                    write!(pager, r#"<a class="prev" href="{}"><small>Previous</small>{}</a>"#, esc(&url), esc(&name));
+                let _ = write!(
+                    pager,
+                    r#"<a class="prev" href="{}"><small>Previous</small>{}</a>"#,
+                    esc(&url),
+                    esc(&name)
+                );
             }
             if let Some(&next) = order.get(p + 1) {
                 let (url, name) = self.here_link(next);
-                let _ = write!(pager, r#"<a class="next" href="{}"><small>Next</small>{}</a>"#, esc(&url), esc(&name));
+                let _ = write!(
+                    pager,
+                    r#"<a class="next" href="{}"><small>Next</small>{}</a>"#,
+                    esc(&url),
+                    esc(&name)
+                );
             }
             pager.push_str("</nav>");
         }
         let footer = String::new();
         let platforms = self.platform_picker(&self.here_link(here).0);
         let suite = esc(&self.suite().name);
-        let full = if title == self.suite().name { suite.clone() } else { format!("{} · {suite}", esc(title)) };
+        let full = if title == self.suite().name {
+            suite.clone()
+        } else {
+            format!("{} · {suite}", esc(title))
+        };
         format!(
             r#"<!doctype html>
 <html lang="en">
@@ -505,7 +647,11 @@ impl Site<'_> {
     /// `alt` says what the picture shows, for readers who can't see it: the step's outcome.
     fn figure(&self, shot: Option<&str>, status: Status, detail: bool, alt: &str) -> String {
         let alt = manual::plain(alt);
-        let alt = if alt.is_empty() { "Screenshot".to_string() } else { alt };
+        let alt = if alt.is_empty() {
+            "Screenshot".to_string()
+        } else {
+            alt
+        };
         match shot {
             Some(shot) => format!(
                 r#"<figure><a href="../{0}"><img src="../{0}" alt="{1}" loading="lazy"></a></figure>"#,
@@ -513,8 +659,16 @@ impl Site<'_> {
                 esc(&alt)
             ),
             None => {
-                let img = if status == Status::Unsupported { NOT_SUPPORTED } else { NO_SCREENSHOT };
-                let note = if detail { missing_shot(status) } else { manual::missing(status) };
+                let img = if status == Status::Unsupported {
+                    NOT_SUPPORTED
+                } else {
+                    NO_SCREENSHOT
+                };
+                let note = if detail {
+                    missing_shot(status)
+                } else {
+                    manual::missing(status)
+                };
                 format!(
                     r#"<figure class="placeholder"><img src="../{}" alt="{}" loading="lazy"><figcaption>{}</figcaption></figure>"#,
                     esc(img),
@@ -551,11 +705,13 @@ impl Site<'_> {
     /// A test's first screenshot, for a thumbnail.
     fn thumbnail(&self, i: usize) -> (Option<String>, Status) {
         let status = self.f.status[i];
-        let shot = self
-            .d
-            .report
-            .and_then(|r| r.results.get(i))
-            .and_then(|r| r.steps.iter().rev().chain(std::iter::once(&r.start)).find_map(|s| s.screenshot.clone()));
+        let shot = self.d.report.and_then(|r| r.results.get(i)).and_then(|r| {
+            r.steps
+                .iter()
+                .rev()
+                .chain(std::iter::once(&r.start))
+                .find_map(|s| s.screenshot.clone())
+        });
         (shot, status)
     }
 
@@ -576,7 +732,9 @@ impl Site<'_> {
                     None => String::new(),
                 }
             }
-            Origin::Coverage { target } => format!("Generated to reach «{}».", self.suite().exp(target).name),
+            Origin::Coverage { target } => {
+                format!("Generated to reach «{}».", self.suite().exp(target).name)
+            }
         };
         let _ = status;
         format!(
@@ -612,8 +770,16 @@ impl Site<'_> {
         if let Some(before) = manual::before(self.d, id) {
             o.push_str(r#"<aside class="setup" id="before-you-begin"><h2>Before you begin</h2>"#);
             if let Some(parent) = before.parent {
-                let then = if before.route.is_empty() || before.route_is_detail { "" } else { " Then:" };
-                let _ = write!(o, "<p>Start from the setup in {}.{then}</p>", self.section_link(parent));
+                let then = if before.route.is_empty() || before.route_is_detail {
+                    ""
+                } else {
+                    " Then:"
+                };
+                let _ = write!(
+                    o,
+                    "<p>Start from the setup in {}.{then}</p>",
+                    self.section_link(parent)
+                );
             }
             let items: Vec<String> = before.launch.iter().chain(&before.items).cloned().collect();
             if !items.is_empty() {
@@ -622,7 +788,10 @@ impl Site<'_> {
             if !before.route.is_empty() {
                 let route = self.list("route", true, &before.route);
                 if before.route_is_detail {
-                    let _ = write!(o, r#"<details class="route"><summary>Step by step</summary>{route}</details>"#);
+                    let _ = write!(
+                        o,
+                        r#"<details class="route"><summary>Step by step</summary>{route}</details>"#
+                    );
                 } else {
                     o.push_str(&route);
                 }
@@ -630,13 +799,20 @@ impl Site<'_> {
             o.push_str("</aside>");
         }
 
-        let children: Vec<SectionId> =
-            section.children.iter().copied().filter(|&c| !self.d.outline.is_some_and(|o| o.listed(c))).collect();
+        let children: Vec<SectionId> = section
+            .children
+            .iter()
+            .copied()
+            .filter(|&c| !self.d.outline.is_some_and(|o| o.listed(c)))
+            .collect();
         if !children.is_empty() {
             o.push_str(r#"<div class="cards">"#);
             for &c in &children {
                 let child = s.section(c);
-                let about = paragraphs(&child.description).into_iter().next().unwrap_or_default();
+                let about = paragraphs(&child.description)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default();
                 let _ = write!(
                     o,
                     r#"<a class="card" href="{}"><strong>{}</strong><span>{}</span></a>"#,
@@ -650,8 +826,10 @@ impl Site<'_> {
 
         // Tutorials anywhere beneath it, in reading order.
         let under = s.subtree(id);
-        let tutorials: Vec<usize> =
-            manual::tutorials(self.d).into_iter().filter(|&i| under.contains(&self.d.plans[i].section)).collect();
+        let tutorials: Vec<usize> = manual::tutorials(self.d)
+            .into_iter()
+            .filter(|&i| under.contains(&self.d.plans[i].section))
+            .collect();
         if !tutorials.is_empty() {
             o.push_str(r#"<h2>Tutorials</h2><div class="cards stories">"#);
             for i in tutorials {
@@ -663,7 +841,10 @@ impl Site<'_> {
             o.push_str("<h2>Topics</h2><dl class=\"topics\">");
             for &f in &section.features {
                 let feature = s.feature(f);
-                let about = paragraphs(&feature.description).into_iter().next().unwrap_or_default();
+                let about = paragraphs(&feature.description)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default();
                 let _ = write!(
                     o,
                     r#"<dt><a href="{}">{}</a></dt><dd>{}</dd>"#,
@@ -695,33 +876,65 @@ impl Site<'_> {
             .collect();
         match self.d.analysis.flow.level[e.0 as usize] {
             Some(_) => meta.push(("Follows", parents.join(", "))),
-            None if self.d.analysis.flow.truncated => {
-                meta.push(("Follows", "nothing the search found within its limits".into()))
-            }
-            None => meta.push(("Unreachable", "nothing leads to a state where it applies".into())),
+            None if self.d.analysis.flow.truncated => meta.push((
+                "Follows",
+                "nothing the search found within its limits".into(),
+            )),
+            None => meta.push((
+                "Unreachable",
+                "nothing leads to a state where it applies".into(),
+            )),
         }
-        let children: Vec<String> = self.d.analysis.flow.children(Node::Exp(e)).map(|c| self.exp_link(c)).collect();
+        let children: Vec<String> = self
+            .d
+            .analysis
+            .flow
+            .children(Node::Exp(e))
+            .map(|c| self.exp_link(c))
+            .collect();
         if !children.is_empty() {
             meta.push(("Leads to", children.join(", ")));
         }
         for c in self.d.analysis.exceptions() {
             let when = esc(&s.describe(&c.situation));
             if c.winner == Some(e) {
-                meta.push(("Overrides", format!("{} when {when}", self.exp_link(c.loser().unwrap()))));
+                meta.push((
+                    "Overrides",
+                    format!("{} when {when}", self.exp_link(c.loser().unwrap())),
+                ));
             } else if c.loser() == Some(e) {
-                meta.push(("Overridden by", format!("{} when {when}", self.exp_link(c.winner.unwrap()))));
+                meta.push((
+                    "Overridden by",
+                    format!("{} when {when}", self.exp_link(c.winner.unwrap())),
+                ));
             }
         }
         let all = self.f.tested_by(e);
         let mut by: Vec<String> = all
             .iter()
             .take(5)
-            .map(|&p| format!("{} {}", self.test_link(p), self.status_badge(self.f.status[p])))
+            .map(|&p| {
+                format!(
+                    "{} {}",
+                    self.test_link(p),
+                    self.status_badge(self.f.status[p])
+                )
+            })
             .collect();
         if all.len() > 5 {
-            by.push(format!(r#"<a href="tests.html">{} more</a>"#, all.len() - 5));
+            by.push(format!(
+                r#"<a href="tests.html">{} more</a>"#,
+                all.len() - 5
+            ));
         }
-        meta.push(("Tested by", if by.is_empty() { "nothing yet".into() } else { by.join(", ") }));
+        meta.push((
+            "Tested by",
+            if by.is_empty() {
+                "nothing yet".into()
+            } else {
+                by.join(", ")
+            },
+        ));
         meta
     }
 
@@ -733,11 +946,21 @@ impl Site<'_> {
                     format!("<strong>Exception:</strong> see {}.", self.exp_link(see))
                 }
                 manual::Note::Except { when, see } => {
-                    format!("<strong>Except</strong> when {}: see {}.", esc(&when), self.exp_link(see))
+                    format!(
+                        "<strong>Except</strong> when {}: see {}.",
+                        esc(&when),
+                        self.exp_link(see)
+                    )
                 }
-                manual::Note::ExceptionTo(other) => format!("An exception to {}.", self.exp_link(other)),
+                manual::Note::ExceptionTo(other) => {
+                    format!("An exception to {}.", self.exp_link(other))
+                }
                 manual::Note::CanLeave { by, what } => {
-                    format!("<strong>Exception:</strong> {} can leave {}.", self.exp_link(by), esc(&what))
+                    format!(
+                        "<strong>Exception:</strong> {} can leave {}.",
+                        self.exp_link(by),
+                        esc(&what)
+                    )
                 }
             };
             let _ = write!(o, r#"<p class="note">{text}</p>"#);
@@ -753,18 +976,33 @@ impl Site<'_> {
             let _ = write!(o, "<p class=\"lede\">{}</p>", self.prose(p));
         }
         // Expectations marked `Docs: hidden` are only in the test report.
-        let shown: Vec<ExpId> = feature.expectations.iter().copied().filter(|&e| !s.exp(e).hidden).collect();
+        let shown: Vec<ExpId> = feature
+            .expectations
+            .iter()
+            .copied()
+            .filter(|&e| !s.exp(e).hidden)
+            .collect();
         if shown.len() > 2 {
             o.push_str(r#"<nav class="toc"><strong>On this page</strong><ul>"#);
             for &e in &shown {
                 let x = s.exp(e);
-                let _ = write!(o, r##"<li><a href="#{}">{}</a></li>"##, esc(&x.slug), esc(&x.name));
+                let _ = write!(
+                    o,
+                    r##"<li><a href="#{}">{}</a></li>"##,
+                    esc(&x.slug),
+                    esc(&x.name)
+                );
             }
             o.push_str("</ul></nav>");
         }
         for &e in &shown {
             let x = s.exp(e);
-            let _ = write!(o, r#"<section class="exp" id="{}"><h2>{}</h2>"#, esc(&x.slug), esc(&x.name));
+            let _ = write!(
+                o,
+                r#"<section class="exp" id="{}"><h2>{}</h2>"#,
+                esc(&x.slug),
+                esc(&x.name)
+            );
             for p in &paragraphs(&x.description) {
                 let _ = write!(o, "<p>{}</p>", self.prose(p));
             }
@@ -772,16 +1010,28 @@ impl Site<'_> {
             let _ = write!(o, r#"<p class="how">{}</p>"#, self.prose(&how));
             o.push_str(&self.exception_notes(e));
             match self.f.shot_of(self.d, e) {
-                Some((_, _, shot)) => o.push_str(&self.figure(Some(&shot), Status::Passed, false, &how)),
+                Some((_, _, shot)) => {
+                    o.push_str(&self.figure(Some(&shot), Status::Passed, false, &how))
+                }
                 None => {
-                    let status = self.f.tested_by(e).first().map_or(Status::NotRun, |&p| self.f.status[p]);
+                    let status = self
+                        .f
+                        .tested_by(e)
+                        .first()
+                        .map_or(Status::NotRun, |&p| self.f.status[p]);
                     o.push_str(&self.figure(None, status, false, ""));
                 }
             }
-            let tutorials: Vec<String> =
-                manual::shown_in(self.d, self.f, e).into_iter().map(|p| self.tutorial_link(p)).collect();
+            let tutorials: Vec<String> = manual::shown_in(self.d, self.f, e)
+                .into_iter()
+                .map(|p| self.tutorial_link(p))
+                .collect();
             if !tutorials.is_empty() {
-                let _ = write!(o, r#"<p class="see-also">See it in {}.</p>"#, tutorials.join(", "));
+                let _ = write!(
+                    o,
+                    r#"<p class="see-also">See it in {}.</p>"#,
+                    tutorials.join(", ")
+                );
             }
             let _ = write!(
                 o,
@@ -829,7 +1079,11 @@ impl Site<'_> {
             if !step.seen.is_empty() {
                 let _ = write!(o, r#"<p class="see">{}</p>"#, self.prose(&step.seen));
             }
-            let alt = if step.seen.is_empty() { &step.doing } else { &step.seen };
+            let alt = if step.seen.is_empty() {
+                &step.doing
+            } else {
+                &step.seen
+            };
             o.push_str(&self.figure(step.shot.as_deref(), step.status, false, alt));
             o.push_str("</li>");
         }
@@ -837,8 +1091,12 @@ impl Site<'_> {
         if !t.related.is_empty() {
             o.push_str(r#"<h2>Learn more</h2><ul class="related">"#);
             for &f in &t.related {
-                let _ =
-                    write!(o, r#"<li><a href="{}">{}</a></li>"#, esc(&self.feature_url(f)), esc(&s.feature(f).name));
+                let _ = write!(
+                    o,
+                    r#"<li><a href="{}">{}</a></li>"#,
+                    esc(&self.feature_url(f)),
+                    esc(&s.feature(f).name)
+                );
             }
             o.push_str("</ul>");
         }
@@ -864,11 +1122,17 @@ impl Site<'_> {
              reach the behaviour no tutorial does. This is what the last run found.</p>",
         );
         let all: Vec<ExpId> = s.expectations.iter().map(|x| x.id).collect();
-        let _ = write!(o, r#"<p class="tally">{} · expectations: {}</p>"#, esc(&self.summary()), self.tally(&all));
+        let _ = write!(
+            o,
+            r#"<p class="tally">{} · expectations: {}</p>"#,
+            esc(&self.summary()),
+            self.tally(&all)
+        );
         o.push_str(r#"<p>The tests use the states, actions and shorthand of the <a href="vocabulary.html">test vocabulary</a>. <a href="map.html">The map</a> shows which behaviour leads to which, <a href="states.html">the state map</a> shows the states the app gets into and how to get between them, and <a href="theme.html">the theme</a> shows the colours and type the docs are drawn in.</p>"#);
         for section in &s.sections {
-            let tests: Vec<usize> =
-                (0..self.d.plans.len()).filter(|&i| self.d.plans[i].section == section.id).collect();
+            let tests: Vec<usize> = (0..self.d.plans.len())
+                .filter(|&i| self.d.plans[i].section == section.id)
+                .collect();
             if tests.is_empty() {
                 continue;
             }
@@ -880,7 +1144,9 @@ impl Site<'_> {
             );
             for i in tests {
                 let kind = match self.d.plans[i].origin {
-                    Origin::Story { .. } => format!(r#"<a href="{}">tutorial</a>"#, esc(&self.tutorial_url(i))),
+                    Origin::Story { .. } => {
+                        format!(r#"<a href="{}">tutorial</a>"#, esc(&self.tutorial_url(i)))
+                    }
                     Origin::Coverage { .. } => "generated".into(),
                 };
                 let _ = write!(
@@ -892,8 +1158,11 @@ impl Site<'_> {
             }
             o.push_str("</tbody></table>");
         }
-        let open: Vec<ExpId> =
-            all.iter().copied().filter(|&e| self.f.verdict(e).is_some_and(|v| v != Verdict::Verified)).collect();
+        let open: Vec<ExpId> = all
+            .iter()
+            .copied()
+            .filter(|&e| self.f.verdict(e).is_some_and(|v| v != Verdict::Verified))
+            .collect();
         if !open.is_empty() {
             o.push_str("<h2>Not verified yet</h2><ul class=\"exps\">");
             for e in open {
@@ -918,7 +1187,11 @@ impl Site<'_> {
             Origin::Story { story, .. } => {
                 let st = s.story(story);
                 if !st.narrative.is_empty() {
-                    let _ = write!(o, "<blockquote>{}</blockquote>", esc(&narrative(&st.narrative)));
+                    let _ = write!(
+                        o,
+                        "<blockquote>{}</blockquote>",
+                        esc(&narrative(&st.narrative))
+                    );
                 }
                 let _ = write!(
                     o,
@@ -936,7 +1209,11 @@ impl Site<'_> {
             }
         }
         if let Some(e) = result.and_then(|r| r.start.error.as_ref()) {
-            let class = if status == Status::Unsupported { "note warn" } else { "note bad" };
+            let class = if status == Status::Unsupported {
+                "note warn"
+            } else {
+                "note bad"
+            };
             let _ = write!(o, r#"<p class="{class}">{}</p>"#, esc(e));
         }
 
@@ -975,7 +1252,11 @@ impl Site<'_> {
             o.push_str(&self.gherkin(&step.text));
             if !step.fired.is_empty() {
                 let fired: Vec<String> = step.fired.iter().map(|&e| self.exp_link(e)).collect();
-                let _ = write!(o, "<p class=\"muted\">Expected behaviour: {}.</p>", fired.join(", "));
+                let _ = write!(
+                    o,
+                    "<p class=\"muted\">Expected behaviour: {}.</p>",
+                    fired.join(", ")
+                );
             }
             o.push_str(&self.step_body(&step.checks, result.and_then(|r| r.steps.get(n)), status));
             o.push_str("</section>");
@@ -983,10 +1264,23 @@ impl Site<'_> {
         self.page(Here::Test(i), &plan.title, &o)
     }
 
-    fn step_body(&self, checks: &[Check], result: Option<&StepResult>, plan_status: Status) -> String {
+    fn step_body(
+        &self,
+        checks: &[Check],
+        result: Option<&StepResult>,
+        plan_status: Status,
+    ) -> String {
         let status = result.map_or(plan_status, |r| r.status);
-        let mut o = self.figure(result.and_then(|r| r.screenshot.as_deref()), status, true, "");
-        if let Some(e) = result.and_then(|r| r.error.as_ref()).filter(|_| status == Status::Failed) {
+        let mut o = self.figure(
+            result.and_then(|r| r.screenshot.as_deref()),
+            status,
+            true,
+            "",
+        );
+        if let Some(e) = result
+            .and_then(|r| r.error.as_ref())
+            .filter(|_| status == Status::Failed)
+        {
             let _ = write!(o, r#"<p class="note bad">{}</p>"#, esc(e));
         }
         o.push_str("<ul class=\"checks\">");
@@ -1000,7 +1294,10 @@ impl Site<'_> {
             o.push_str(&self.check_item(c, cr));
         }
         if arranged > 0 {
-            let _ = write!(o, r#"<li class="ok">Every arranged state read back as arranged ({arranged})</li>"#);
+            let _ = write!(
+                o,
+                r#"<li class="ok">Every arranged state read back as arranged ({arranged})</li>"#
+            );
         }
         o.push_str("</ul>");
         o
@@ -1039,13 +1336,21 @@ impl Site<'_> {
         );
         o.push_str(r#"<p class="legend"><span class="badge ok">verified</span> <span class="badge bad">failed</span> <span class="badge warn">not supported yet</span> <span class="badge idle">untested</span></p>"#);
         for section in &s.sections {
-            let own: Vec<ExpId> = section.features.iter().flat_map(|&f| s.feature(f).expectations.clone()).collect();
+            let own: Vec<ExpId> = section
+                .features
+                .iter()
+                .flat_map(|&f| s.feature(f).expectations.clone())
+                .collect();
             if own.is_empty() {
                 continue;
             }
             let chain: Vec<String> = s.chain(section.id).iter().map(|x| x.name.clone()).collect();
             let map = crate::map::svg(self.d, self.f, &own, &|e| self.exp_url(e));
-            let _ = write!(o, r#"<h2>{}</h2><div class="map">{map}</div>"#, esc(&chain.join(" › ")));
+            let _ = write!(
+                o,
+                r#"<h2>{}</h2><div class="map">{map}</div>"#,
+                esc(&chain.join(" › "))
+            );
         }
         self.page(Here::Map, "Map", &o)
     }
@@ -1053,8 +1358,17 @@ impl Site<'_> {
     fn states_page(&self) -> String {
         let s = self.suite();
         let by = expectation_graph::states::default_by(s);
-        let map = expectation_graph::states::explore(s, &self.d.analysis.precedence, &by, Default::default());
-        let names: Vec<String> = map.by.iter().map(|&v| s.vocabulary.var(v).subject.clone()).collect();
+        let map = expectation_graph::states::explore(
+            s,
+            &self.d.analysis.precedence,
+            &by,
+            Default::default(),
+        );
+        let names: Vec<String> = map
+            .by
+            .iter()
+            .map(|&v| s.vocabulary.var(v).subject.clone())
+            .collect();
         let mut o = String::from("<h1>State map</h1>");
         let _ = write!(
             o,
@@ -1064,7 +1378,13 @@ impl Site<'_> {
         if map.truncated {
             o.push_str(r#"<p class="note warn">The search stopped at its limits, so some states may be missing.</p>"#);
         }
-        o.push_str(&crate::states::html(self.d, self.f, &map, &|e| self.exp_link(e), &|i| self.test_link(i)));
+        o.push_str(&crate::states::html(
+            self.d,
+            self.f,
+            &map,
+            &|e| self.exp_link(e),
+            &|i| self.test_link(i),
+        ));
         self.page(Here::States, "State map", &o)
     }
 
@@ -1091,7 +1411,9 @@ impl Site<'_> {
             if !vars.is_empty() {
                 o.push_str("<h3>States</h3><table><thead><tr><th>State</th><th>Can be</th><th>To change it</th></tr></thead><tbody>");
                 for var in vars {
-                    let set = voice::how_to_set(var).map(|t| voice::sentence(&t)).unwrap_or_default();
+                    let set = voice::how_to_set(var)
+                        .map(|t| voice::sentence(&t))
+                        .unwrap_or_default();
                     let _ = write!(
                         o,
                         "<tr><td>{}</td><td>{}</td><td>{}</td></tr>",
@@ -1109,7 +1431,12 @@ impl Site<'_> {
                         voice::Action::Do(d) => voice::sentence(&d),
                         voice::Action::Happens(_) => "Nothing: it happens by itself.".into(),
                     };
-                    let _ = write!(o, "<tr><td>{}</td><td>{}</td></tr>", esc(&ev.text), esc(&what));
+                    let _ = write!(
+                        o,
+                        "<tr><td>{}</td><td>{}</td></tr>",
+                        esc(&ev.text),
+                        esc(&what)
+                    );
                 }
                 o.push_str("</tbody></table>");
             }
@@ -1118,11 +1445,15 @@ impl Site<'_> {
                 for p in phrases {
                     let means = match &p.body {
                         PhraseBody::Setup(facts) => {
-                            let f: Vec<String> = facts.iter().map(|f| v.var(f.var).describe(&f.constraint)).collect();
+                            let f: Vec<String> = facts
+                                .iter()
+                                .map(|f| v.var(f.var).describe(&f.constraint))
+                                .collect();
                             expectation_model::text::join_and(&f)
                         }
                         PhraseBody::Actions(actions) => {
-                            let a: Vec<String> = actions.iter().map(|t| s.describe_trigger(t)).collect();
+                            let a: Vec<String> =
+                                actions.iter().map(|t| s.describe_trigger(t)).collect();
                             a.join(", then ")
                         }
                     };
@@ -1158,12 +1489,21 @@ impl Site<'_> {
                 let (url, name, about) = match *item {
                     crate::outline::Item::Section(id) => {
                         let sec = s.section(id);
-                        let about = paragraphs(&sec.description).into_iter().next().unwrap_or_default();
-                        (self.section_url(id), sec.name.clone(), manual::plain(&about))
+                        let about = paragraphs(&sec.description)
+                            .into_iter()
+                            .next()
+                            .unwrap_or_default();
+                        (
+                            self.section_url(id),
+                            sec.name.clone(),
+                            manual::plain(&about),
+                        )
                     }
-                    crate::outline::Item::Page(i) => {
-                        (self.page_url(i), outline.pages[i].title.clone(), manual::plain(&outline.pages[i].about()))
-                    }
+                    crate::outline::Item::Page(i) => (
+                        self.page_url(i),
+                        outline.pages[i].title.clone(),
+                        manual::plain(&outline.pages[i].about()),
+                    ),
                 };
                 let _ = write!(
                     o,
@@ -1220,8 +1560,16 @@ impl Site<'_> {
                 flush(&mut o, &mut para);
                 let mut rows: Vec<Vec<&str>> = vec![];
                 while n < lines.len() && lines[n].starts_with('|') {
-                    let cells: Vec<&str> = lines[n].trim().trim_matches('|').split('|').map(str::trim).collect();
-                    if !cells.iter().all(|c| c.chars().all(|ch| ch == '-' || ch == ':')) {
+                    let cells: Vec<&str> = lines[n]
+                        .trim()
+                        .trim_matches('|')
+                        .split('|')
+                        .map(str::trim)
+                        .collect();
+                    if !cells
+                        .iter()
+                        .all(|c| c.chars().all(|ch| ch == '-' || ch == ':'))
+                    {
                         rows.push(cells);
                     }
                     n += 1;
@@ -1241,14 +1589,20 @@ impl Site<'_> {
                 flush(&mut o, &mut para);
                 let ordered = is_ol(line);
                 o.push_str(if ordered { "<ol>" } else { "<ul>" });
-                while n < lines.len() && (lines[n].starts_with("- ") || is_ol(lines[n]) || lines[n].starts_with("  ")) {
+                while n < lines.len()
+                    && (lines[n].starts_with("- ") || is_ol(lines[n]) || lines[n].starts_with("  "))
+                {
                     let l = lines[n];
                     if l.starts_with("  ") {
                         // A continuation of the item above.
                         o.truncate(o.len() - "</li>".len());
                         let _ = write!(o, " {}</li>", self.rich(l.trim()));
                     } else {
-                        let text = if ordered { &l[l.find(". ").unwrap() + 2..] } else { &l[2..] };
+                        let text = if ordered {
+                            &l[l.find(". ").unwrap() + 2..]
+                        } else {
+                            &l[2..]
+                        };
                         let _ = write!(o, "<li>{}</li>", self.rich(text));
                     }
                     n += 1;
@@ -1270,7 +1624,13 @@ impl Site<'_> {
     fn rich(&self, text: &str) -> String {
         text.split("**")
             .enumerate()
-            .map(|(k, seg)| if k % 2 == 1 { format!("<strong>{}</strong>", self.prose(seg)) } else { self.prose(seg) })
+            .map(|(k, seg)| {
+                if k % 2 == 1 {
+                    format!("<strong>{}</strong>", self.prose(seg))
+                } else {
+                    self.prose(seg)
+                }
+            })
             .collect()
     }
 

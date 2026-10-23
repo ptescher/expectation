@@ -21,7 +21,11 @@ pub enum VarKind {
     /// One of a fixed set of named values.
     Enum(Vec<String>),
     /// A number in `min..=max`, with an optional unit such as `%`.
-    Number { min: f64, max: f64, unit: Option<String> },
+    Number {
+        min: f64,
+        max: f64,
+        unit: Option<String>,
+    },
 }
 
 /// A state of the system: "the kettle is off | heating | dry".
@@ -132,20 +136,32 @@ impl Variable {
                     VarKind::Number { unit: Some(u), .. } => format!(" {u}"),
                     _ => String::new(),
                 };
-                vec![format!("goes {way} by {n}"), format!("goes {way} by {n}{unit}")]
+                vec![
+                    format!("goes {way} by {n}"),
+                    format!("goes {way} by {n}{unit}"),
+                ]
             }
         };
         self.shows
             .iter()
-            .find(|(v, _)| v.as_ref().is_some_and(|v| keys.iter().any(|k| k.eq_ignore_ascii_case(v))))
+            .find(|(v, _)| {
+                v.as_ref()
+                    .is_some_and(|v| keys.iter().any(|k| k.eq_ignore_ascii_case(v)))
+            })
             .map(|(_, t)| t.clone())
     }
 
     pub fn shown(&self, c: &Constraint) -> Option<String> {
         // A line for exactly this constraint first: "dry", or "at least 99 %" for a number.
         let said = self.predicate(c);
-        let said = ["is ", "are ", "has ", "have "].iter().find_map(|v| said.strip_prefix(v)).unwrap_or(&said);
-        if let Some((_, t)) = self.shows.iter().find(|(v, _)| v.as_ref().is_some_and(|v| v.eq_ignore_ascii_case(said)))
+        let said = ["is ", "are ", "has ", "have "]
+            .iter()
+            .find_map(|v| said.strip_prefix(v))
+            .unwrap_or(&said);
+        if let Some((_, t)) = self
+            .shows
+            .iter()
+            .find(|(v, _)| v.as_ref().is_some_and(|v| v.eq_ignore_ascii_case(said)))
         {
             return Some(t.clone());
         }
@@ -153,12 +169,17 @@ impl Variable {
             (VarKind::Enum(values), Constraint::OneOf(mask)) if mask.count_ones() == 1 => {
                 values[mask.trailing_zeros() as usize].clone()
             }
-            (VarKind::Number { .. }, Constraint::Range(r)) if r.lo == r.hi && !r.lo_open && !r.hi_open => {
+            (VarKind::Number { .. }, Constraint::Range(r))
+                if r.lo == r.hi && !r.lo_open && !r.hi_open =>
+            {
                 text::number(r.lo)
             }
             _ => return None,
         };
-        let own = self.shows.iter().find(|(v, _)| v.as_ref().is_some_and(|v| v.eq_ignore_ascii_case(&value)));
+        let own = self
+            .shows
+            .iter()
+            .find(|(v, _)| v.as_ref().is_some_and(|v| v.eq_ignore_ascii_case(&value)));
         let any = || self.shows.iter().find(|(v, _)| v.is_none());
         own.or_else(any).map(|(_, t)| t.replace("{value}", &value))
     }
@@ -172,7 +193,9 @@ impl Variable {
     }
 
     pub fn value_index(&self, name: &str) -> Option<usize> {
-        let VarKind::Enum(values) = &self.kind else { return None };
+        let VarKind::Enum(values) = &self.kind else {
+            return None;
+        };
         let k = text::normalize(name);
         values.iter().position(|v| text::normalize(v) == k)
     }
@@ -181,10 +204,12 @@ impl Variable {
     /// middle of a numeric range.
     pub fn witness(&self, c: &Constraint) -> Option<Value> {
         match (&self.kind, c) {
-            (VarKind::Enum(values), Constraint::OneOf(mask)) => {
-                (0..values.len()).find(|i| mask & (1 << i) != 0).map(|i| Value::Enum(values[i].clone()))
+            (VarKind::Enum(values), Constraint::OneOf(mask)) => (0..values.len())
+                .find(|i| mask & (1 << i) != 0)
+                .map(|i| Value::Enum(values[i].clone())),
+            (VarKind::Number { .. }, Constraint::Range(r)) if !r.is_empty() => {
+                Some(Value::Number(r.midpoint()))
             }
-            (VarKind::Number { .. }, Constraint::Range(r)) if !r.is_empty() => Some(Value::Number(r.midpoint())),
             _ => None,
         }
     }
@@ -212,12 +237,23 @@ impl Variable {
     /// "is heating", "is not dry", "is between 20 and 40 %" ("are …" for a plural subject).
     pub fn predicate(&self, c: &Constraint) -> String {
         let p = self.singular_predicate(c);
-        let Some(rest) = p.strip_prefix("is ") else { return p };
+        let Some(rest) = p.strip_prefix("is ") else {
+            return p;
+        };
         match self.verb.as_str() {
             "has" | "have" => {
-                let rest = rest.replacen("above ", "more than ", 1).replacen("below ", "fewer than ", 1);
+                let rest =
+                    rest.replacen("above ", "more than ", 1)
+                        .replacen("below ", "fewer than ", 1);
                 match rest.strip_prefix("not ") {
-                    Some(r) => format!("{} {r}", if self.verb == "has" { "doesn't have" } else { "don't have" }),
+                    Some(r) => format!(
+                        "{} {r}",
+                        if self.verb == "has" {
+                            "doesn't have"
+                        } else {
+                            "don't have"
+                        }
+                    ),
                     None => format!("{} {rest}", self.verb),
                 }
             }
@@ -230,7 +266,10 @@ impl Variable {
         match (&self.kind, c) {
             (VarKind::Enum(values), Constraint::OneOf(mask)) => {
                 let named = |m: u64| -> Vec<String> {
-                    (0..values.len()).filter(|i| m & (1 << i) != 0).map(|i| values[i].clone()).collect()
+                    (0..values.len())
+                        .filter(|i| m & (1 << i) != 0)
+                        .map(|i| values[i].clone())
+                        .collect()
                 };
                 let yes = named(*mask);
                 let no = named(mask_all(values.len()) & !mask);
@@ -249,7 +288,9 @@ impl Variable {
             (VarKind::Number { min, max, unit }, Constraint::Range(r)) => {
                 let u = |v: f64| match unit {
                     // "1 item", not "1 items".
-                    Some(u) if v == 1.0 && u.len() > 1 && u.ends_with('s') => format!("1 {}", &u[..u.len() - 1]),
+                    Some(u) if v == 1.0 && u.len() > 1 && u.ends_with('s') => {
+                        format!("1 {}", &u[..u.len() - 1])
+                    }
                     Some(u) => format!("{} {u}", text::number(v)),
                     None => text::number(v),
                 };
@@ -262,9 +303,17 @@ impl Variable {
                 } else if open_lo && open_hi {
                     "is anything".into()
                 } else if open_lo {
-                    format!("is {} {}", if r.hi_open { "below" } else { "at most" }, u(r.hi))
+                    format!(
+                        "is {} {}",
+                        if r.hi_open { "below" } else { "at most" },
+                        u(r.hi)
+                    )
                 } else if open_hi {
-                    format!("is {} {}", if r.lo_open { "above" } else { "at least" }, u(r.lo))
+                    format!(
+                        "is {} {}",
+                        if r.lo_open { "above" } else { "at least" },
+                        u(r.lo)
+                    )
                 } else if !r.lo_open && !r.hi_open {
                     format!("is between {} and {}", text::number(r.lo), u(r.hi))
                 } else {
@@ -292,10 +341,15 @@ mod tests {
             id: VarId(0),
             subject: "the dial".into(),
             key: "dial".into(),
-            kind: VarKind::Number { min: 0.0, max: 100.0, unit: Some("%".into()) },
+            kind: VarKind::Number {
+                min: 0.0,
+                max: 100.0,
+                unit: Some("%".into()),
+            },
             verb: "is".into(),
             span: Span::new("t", 1),
-            set: None, sets: vec![],
+            set: None,
+            sets: vec![],
             shows: vec![],
         };
         let eighty = Constraint::Range(Interval::point(80.0));
@@ -342,6 +396,10 @@ impl Vocabulary {
     /// A whole condition as one phrase: "the kettle is off and the dial is 0 %".
     pub fn describe(&self, c: &Condition) -> String {
         let facts = self.facts(c);
-        if facts.is_empty() { "anything".into() } else { text::join_and(&facts) }
+        if facts.is_empty() {
+            "anything".into()
+        } else {
+            text::join_and(&facts)
+        }
     }
 }

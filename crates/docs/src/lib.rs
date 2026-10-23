@@ -70,10 +70,16 @@ fn prune(dir: &Path, written: &[PathBuf]) -> std::io::Result<()> {
         ("features", "md", &[""]),
         ("tutorials", "md", &[""]),
         ("tests", "md", &[""]),
-        ("site", "html", &["feature-", "section-", "test-", "tutorial-"]),
+        (
+            "site",
+            "html",
+            &["feature-", "section-", "test-", "tutorial-"],
+        ),
     ];
     for (sub, ext, prefixes) in kinds {
-        let Ok(entries) = std::fs::read_dir(dir.join(sub)) else { continue };
+        let Ok(entries) = std::fs::read_dir(dir.join(sub)) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().into_owned();
@@ -99,14 +105,21 @@ impl Docs<'_> {
             let mut r = r.clone();
             for result in &mut r.results {
                 for step in std::iter::once(&mut result.start).chain(&mut result.steps) {
-                    if step.screenshot.as_ref().is_some_and(|p| !dir.join(p).exists()) {
+                    if step
+                        .screenshot
+                        .as_ref()
+                        .is_some_and(|p| !dir.join(p).exists())
+                    {
                         step.screenshot = None;
                     }
                 }
             }
             r
         });
-        let docs = Docs { report: checked.as_ref(), ..*self };
+        let docs = Docs {
+            report: checked.as_ref(),
+            ..*self
+        };
         std::fs::create_dir_all(dir)?;
         let source = self.suite_dir.and_then(|s| relative(dir, s));
         let mut written = vec![];
@@ -130,14 +143,22 @@ impl Docs<'_> {
     pub fn sibling(&self) -> Sibling {
         Sibling {
             platform: self.suite.platform.clone().unwrap_or_default(),
-            pages: self.pages().into_iter().map(|p| p.path).filter(|p| p.ends_with(".html")).collect(),
+            pages: self
+                .pages()
+                .into_iter()
+                .map(|p| p.path)
+                .filter(|p| p.ends_with(".html"))
+                .collect(),
         }
     }
 
     /// The pages, with `source` the suite's directory relative to the docs directory.
     fn pages_with(&self, source: Option<String>) -> Vec<Page> {
         let outline = outline::of(self);
-        let docs = Docs { outline: outline.as_ref(), ..*self };
+        let docs = Docs {
+            outline: outline.as_ref(),
+            ..*self
+        };
         let mut facts = Facts::new(&docs);
         facts.source = source;
         let mut pages = markdown::pages(&docs, &facts);
@@ -161,7 +182,11 @@ struct Facts {
 impl Facts {
     fn new(d: &Docs) -> Self {
         let status = (0..d.plans.len())
-            .map(|i| d.report.and_then(|r| r.results.get(i)).map_or(Status::NotRun, |r| r.status))
+            .map(|i| {
+                d.report
+                    .and_then(|r| r.results.get(i))
+                    .map_or(Status::NotRun, |r| r.status)
+            })
             .collect();
         Facts {
             verdicts: d.report.map(|r| r.verdicts(d.suite, d.plans)),
@@ -172,12 +197,17 @@ impl Facts {
     }
 
     fn verdict(&self, e: ExpId) -> Option<Verdict> {
-        self.verdicts.as_ref().map(|v| expectation_story::report::verdict_of(v, e))
+        self.verdicts
+            .as_ref()
+            .map(|v| expectation_story::report::verdict_of(v, e))
     }
 
     /// The tests that exercise `e`, each once.
     fn tested_by(&self, e: ExpId) -> Vec<usize> {
-        let mut by: Vec<usize> = self.coverage[e.0 as usize].iter().map(|(p, _)| *p).collect();
+        let mut by: Vec<usize> = self.coverage[e.0 as usize]
+            .iter()
+            .map(|(p, _)| *p)
+            .collect();
         by.dedup();
         by
     }
@@ -194,8 +224,10 @@ impl Facts {
                 Some(s) => (&result.steps[s], &d.plans[p].steps[s].checks),
             };
             let Some(shot) = &r.screenshot else { continue };
-            let verified =
-                checks.iter().zip(&r.checks).any(|(c, cr)| c.because == Because::Expectation(e) && cr.passed);
+            let verified = checks
+                .iter()
+                .zip(&r.checks)
+                .any(|(c, cr)| c.because == Because::Expectation(e) && cr.passed);
             if verified {
                 return Some((p, step, shot.clone()));
             }
@@ -208,16 +240,32 @@ impl Facts {
 /// `to` relative to `from`, both directories: "../expectations".
 fn relative(from: &Path, to: &Path) -> Option<String> {
     let (from, to) = (from.canonicalize().ok()?, to.canonicalize().ok()?);
-    let common = from.components().zip(to.components()).take_while(|(a, b)| a == b).count();
+    let common = from
+        .components()
+        .zip(to.components())
+        .take_while(|(a, b)| a == b)
+        .count();
     let mut parts: Vec<String> = vec!["..".into(); from.components().count() - common];
-    parts.extend(to.components().skip(common).map(|c| c.as_os_str().to_string_lossy().into_owned()));
-    Some(if parts.is_empty() { ".".into() } else { parts.join("/") })
+    parts.extend(
+        to.components()
+            .skip(common)
+            .map(|c| c.as_os_str().to_string_lossy().into_owned()),
+    );
+    Some(if parts.is_empty() {
+        ".".into()
+    } else {
+        parts.join("/")
+    })
 }
 
 /// A feature's slug, unique in the suite: under its section's.
 fn feature_slug(suite: &Suite, f: &Feature) -> String {
     let section = &suite.section(f.section).slug;
-    if section.is_empty() { f.slug.clone() } else { format!("{section}--{}", f.slug) }
+    if section.is_empty() {
+        f.slug.clone()
+    } else {
+        format!("{section}--{}", f.slug)
+    }
 }
 
 /// "As a tea drinker / I want … / So that …" as one sentence.
@@ -304,19 +352,34 @@ mod tests {
 
     #[test]
     fn narratives_read_as_one_sentence() {
-        let lines = ["As a tea drinker", "I want to boil the kettle.", "So that I can make tea"].map(String::from);
-        assert_eq!(narrative(&lines), "As a tea drinker, I want to boil the kettle, so that I can make tea.");
+        let lines = [
+            "As a tea drinker",
+            "I want to boil the kettle.",
+            "So that I can make tea",
+        ]
+        .map(String::from);
+        assert_eq!(
+            narrative(&lines),
+            "As a tea drinker, I want to boil the kettle, so that I can make tea."
+        );
     }
 
     #[test]
     fn headings_show_the_whole_action() {
-        let step =
-            |keyword, text: &str| StepText { keyword, text: text.into(), span: Span::new("t", 1), meaning: None };
+        let step = |keyword, text: &str| StepText {
+            keyword,
+            text: text.into(),
+            span: Span::new("t", 1),
+            meaning: None,
+        };
         let steps = [
             step(Keyword::When, "the dial is 0 %"),
             step(Keyword::And, "the user presses reset"),
             step(Keyword::Then, "the kettle is off"),
         ];
-        assert_eq!(action_heading(&steps), "When the dial is 0 % and the user presses reset");
+        assert_eq!(
+            action_heading(&steps),
+            "When the dial is 0 % and the user presses reset"
+        );
     }
 }

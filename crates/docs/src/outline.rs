@@ -51,7 +51,11 @@ impl Authored {
         let mut para: Vec<&str> = vec![];
         for line in self.source.lines().skip(1) {
             let line = line.trim();
-            if line.is_empty() || line.starts_with('#') || line.starts_with("```") || line.starts_with('|') {
+            if line.is_empty()
+                || line.starts_with('#')
+                || line.starts_with("```")
+                || line.starts_with('|')
+            {
                 if para.is_empty() {
                     continue;
                 }
@@ -78,26 +82,40 @@ impl Outline {
     pub fn load(suite: &Suite, dir: &Path) -> Option<(Outline, Vec<String>)> {
         let text = std::fs::read_to_string(dir.join("outline.txt")).ok()?;
         let mut warnings = vec![];
-        let mut out = Outline { parts: vec![], pages: vec![] };
+        let mut out = Outline {
+            parts: vec![],
+            pages: vec![],
+        };
         for (n, raw) in text.lines().enumerate() {
             let line = raw.split('#').next().unwrap_or("").trim();
             if line.is_empty() {
                 continue;
             }
             let Some((key, value)) = line.split_once(':') else {
-                warnings.push(format!("outline.txt:{}: expected `Part:`, `Section:` or `Page:`", n + 1));
+                warnings.push(format!(
+                    "outline.txt:{}: expected `Part:`, `Section:` or `Page:`",
+                    n + 1
+                ));
                 continue;
             };
             let value = value.trim();
             match key.trim() {
-                "Part" => out.parts.push(Part { name: value.to_string(), items: vec![] }),
+                "Part" => out.parts.push(Part {
+                    name: value.to_string(),
+                    items: vec![],
+                }),
                 "Section" => {
-                    let found = suite.sections.iter().find(|s| s.parent.is_some() && s.name.eq_ignore_ascii_case(value));
+                    let found = suite
+                        .sections
+                        .iter()
+                        .find(|s| s.parent.is_some() && s.name.eq_ignore_ascii_case(value));
                     // A section below the top level moves, with its subsections, to here.
                     match (found, out.parts.last_mut()) {
                         (Some(s), Some(part)) => part.items.push(Item::Section(s.id)),
-                        (None, _) => warnings.push(format!("outline.txt:{}: no section named «{value}»", n + 1)),
-                        (_, None) => warnings.push(format!("outline.txt:{}: a section before any part", n + 1)),
+                        (None, _) => warnings
+                            .push(format!("outline.txt:{}: no section named «{value}»", n + 1)),
+                        (_, None) => warnings
+                            .push(format!("outline.txt:{}: a section before any part", n + 1)),
                     }
                 }
                 "Page" => {
@@ -112,7 +130,11 @@ impl Outline {
                     }
                     let path = dir.join("manual").join(format!("{name}.md"));
                     let Ok(source) = std::fs::read_to_string(&path) else {
-                        warnings.push(format!("outline.txt:{}: cannot read {}", n + 1, path.display()));
+                        warnings.push(format!(
+                            "outline.txt:{}: cannot read {}",
+                            n + 1,
+                            path.display()
+                        ));
                         continue;
                     };
                     let title = source
@@ -124,7 +146,12 @@ impl Outline {
                         warnings.push(format!("outline.txt:{}: a page before any part", n + 1));
                         continue;
                     };
-                    out.pages.push(Authored { slug: slug(name), title, source, part });
+                    out.pages.push(Authored {
+                        slug: slug(name),
+                        title,
+                        source,
+                        part,
+                    });
                     let i = out.pages.len() - 1;
                     out.parts[part].items.push(Item::Page(i));
                 }
@@ -136,7 +163,13 @@ impl Outline {
             .parts
             .iter()
             .flat_map(|p| p.items.iter())
-            .filter_map(|i| if let Item::Section(s) = i { Some(*s) } else { None })
+            .filter_map(|i| {
+                if let Item::Section(s) = i {
+                    Some(*s)
+                } else {
+                    None
+                }
+            })
             .collect();
         let rest: Vec<Item> = suite
             .section(SectionId(0))
@@ -148,24 +181,35 @@ impl Outline {
         if !rest.is_empty() {
             for item in &rest {
                 if let Item::Section(s) = item {
-                    warnings.push(format!("outline.txt: «{}» is in no part", suite.section(*s).name));
+                    warnings.push(format!(
+                        "outline.txt: «{}» is in no part",
+                        suite.section(*s).name
+                    ));
                 }
             }
-            out.parts.push(Part { name: "More".into(), items: rest });
+            out.parts.push(Part {
+                name: "More".into(),
+                items: rest,
+            });
         }
         Some((out, warnings))
     }
 
     /// Whether the outline places this section itself (rather than under its parent).
     pub fn listed(&self, id: SectionId) -> bool {
-        self.parts.iter().any(|p| p.items.contains(&Item::Section(id)))
+        self.parts
+            .iter()
+            .any(|p| p.items.contains(&Item::Section(id)))
     }
 
     /// The part a section is in, and the chapter it is under: the section itself or its
     /// nearest ancestor that the outline places.
     pub fn anchor(&self, suite: &Suite, id: SectionId) -> Option<(usize, SectionId)> {
         suite.chain(id).into_iter().rev().find_map(|s| {
-            let part = self.parts.iter().position(|p| p.items.contains(&Item::Section(s.id)))?;
+            let part = self
+                .parts
+                .iter()
+                .position(|p| p.items.contains(&Item::Section(s.id)))?;
             Some((part, s.id))
         })
     }

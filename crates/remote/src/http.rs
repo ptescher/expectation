@@ -13,7 +13,10 @@ pub struct Request {
 
 impl Request {
     pub fn param(&self, name: &str) -> Option<&str> {
-        self.query.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str())
+        self.query
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
     }
 }
 
@@ -61,7 +64,12 @@ pub fn read_request(stream: &TcpStream) -> Result<Request, String> {
         })
         .collect();
     let body = read_body(&mut reader, length)?;
-    Ok(Request { method, path: path.to_string(), query, body })
+    Ok(Request {
+        method,
+        path: path.to_string(),
+        query,
+        body,
+    })
 }
 
 pub fn respond(mut stream: &TcpStream, status: u16, body: &str) {
@@ -83,9 +91,17 @@ pub fn respond(mut stream: &TcpStream, status: u16, body: &str) {
 }
 
 /// One request to `addr` ("127.0.0.1:4477"): the status and the body.
-pub fn request(addr: &str, method: &str, path: &str, body: &str, timeout: Duration) -> Result<(u16, String), String> {
+pub fn request(
+    addr: &str,
+    method: &str,
+    path: &str,
+    body: &str,
+    timeout: Duration,
+) -> Result<(u16, String), String> {
     let mut stream = TcpStream::connect(addr).map_err(|e| format!("couldn't reach {addr}: {e}"))?;
-    stream.set_read_timeout(Some(timeout)).map_err(|e| e.to_string())?;
+    stream
+        .set_read_timeout(Some(timeout))
+        .map_err(|e| e.to_string())?;
     write!(
         stream,
         "{method} {path} HTTP/1.1\r\nHost: {addr}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -94,7 +110,10 @@ pub fn request(addr: &str, method: &str, path: &str, body: &str, timeout: Durati
     .map_err(|e| e.to_string())?;
     let mut reader = BufReader::new(stream);
     let (first, length) = read_head(&mut reader)?;
-    let status =
-        first.split(' ').nth(1).and_then(|s| s.parse().ok()).ok_or_else(|| format!("bad response: {first}"))?;
+    let status = first
+        .split(' ')
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .ok_or_else(|| format!("bad response: {first}"))?;
     Ok((status, read_body(&mut reader, length)?))
 }

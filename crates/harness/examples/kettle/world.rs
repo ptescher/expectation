@@ -48,7 +48,11 @@ impl World {
     pub fn tick(&mut self, dt: f64) {
         self.time += dt;
         // The dial doesn't reach the element while the child lock is on.
-        let dial = if self.lock && !self.lock_leaks { 0.0 } else { self.dial };
+        let dial = if self.lock && !self.lock_leaks {
+            0.0
+        } else {
+            self.dial
+        };
         match self.phase {
             Phase::Off if dial > 55.0 => {
                 self.start_hold += dt;
@@ -59,9 +63,15 @@ impl World {
             }
             Phase::Off => self.start_hold = 0.0,
             Phase::Starting { t } => {
-                self.phase = if t + dt >= 0.22 { Phase::Heating } else { Phase::Starting { t: t + dt } };
+                self.phase = if t + dt >= 0.22 {
+                    Phase::Heating
+                } else {
+                    Phase::Starting { t: t + dt }
+                };
             }
-            Phase::Heating => self.temperature = (self.temperature + dt * 8.0).min(TARGET[self.preset]),
+            Phase::Heating => {
+                self.temperature = (self.temperature + dt * 8.0).min(TARGET[self.preset])
+            }
             Phase::Dry => {}
         }
     }
@@ -125,14 +135,21 @@ impl World {
             Phase::Starting { .. } | Phase::Heating => "#ff5a4f",
             _ => "#6b6b6b",
         };
-        let _ = write!(s, r##"<circle cx="300" cy="232" r="7" fill="{light}" stroke="#2c2c2c"/>"##);
+        let _ = write!(
+            s,
+            r##"<circle cx="300" cy="232" r="7" fill="{light}" stroke="#2c2c2c"/>"##
+        );
 
         // Steam while heating, more as it gets hot.
         if self.phase == Phase::Heating {
             let puffs = ((self.temperature - 20.0) / 20.0).clamp(1.0, 4.0) as usize;
             for i in 0..puffs {
                 let (x, y) = (180.0 - 14.0 * i as f64, 78.0 - 16.0 * i as f64);
-                let _ = write!(s, r##"<circle cx="{x}" cy="{y}" r="{}" fill="#fff" fill-opacity="0.7"/>"##, 8 + 3 * i);
+                let _ = write!(
+                    s,
+                    r##"<circle cx="{x}" cy="{y}" r="{}" fill="#fff" fill-opacity="0.7"/>"##,
+                    8 + 3 * i
+                );
             }
         }
 
@@ -143,7 +160,11 @@ impl World {
             Phase::Heating => "HEATING",
             Phase::Dry => "DRY",
         };
-        let status_color = if self.phase == Phase::Dry { "#ff6b5b" } else { "#ffffff" };
+        let status_color = if self.phase == Phase::Dry {
+            "#ff6b5b"
+        } else {
+            "#ffffff"
+        };
         let _ = write!(
             s,
             r##"<rect x="12" y="12" width="196" height="74" rx="8" fill="#000" fill-opacity="0.7"/>
@@ -205,7 +226,9 @@ pub fn driver(lock_leaks: bool) -> Bindings<World> {
             }
             _ => w.phase = Phase::Dry,
         })
-        .arrange("the preset", |w, v| w.preset = PRESETS.iter().position(|p| Some(*p) == v.as_str()).unwrap())
+        .arrange("the preset", |w, v| {
+            w.preset = PRESETS.iter().position(|p| Some(*p) == v.as_str()).unwrap()
+        })
         .arrange("the child lock", |w, v| w.lock = v.as_str() == Some("on"))
         .on("the user presses start", World::start)
         .on("the user presses reset", World::reset)

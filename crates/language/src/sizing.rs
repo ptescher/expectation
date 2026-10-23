@@ -48,9 +48,12 @@ pub fn check(suite: &Suite, diags: &mut Vec<Diagnostic>) {
                 );
             } else if n > MAX_STEPS {
                 diags.push(
-                    Diagnostic::warning("long-story", format!("scenario «{}» has {} steps", sc.name, n))
-                        .at(&sc.span, "")
-                        .help("split it, or fold repeated actions into a phrase"),
+                    Diagnostic::warning(
+                        "long-story",
+                        format!("scenario «{}» has {} steps", sc.name, n),
+                    )
+                    .at(&sc.span, "")
+                    .help("split it, or fold repeated actions into a phrase"),
                 );
             }
         }
@@ -58,7 +61,12 @@ pub fn check(suite: &Suite, diags: &mut Vec<Diagnostic>) {
 
     for section in &suite.sections {
         let shown = |f: &FeatureId| {
-            suite.feature(*f).expectations.iter().filter(|&&e| !suite.expectations[e.0 as usize].hidden).count()
+            suite
+                .feature(*f)
+                .expectations
+                .iter()
+                .filter(|&&e| !suite.expectations[e.0 as usize].hidden)
+                .count()
         };
         for f in &section.features {
             let feature = suite.feature(*f);
@@ -75,7 +83,10 @@ pub fn check(suite: &Suite, diags: &mut Vec<Diagnostic>) {
                 diags.push(
                     Diagnostic::warning(
                         "small-feature",
-                        format!("feature «{}» has only one expectation in the docs", feature.name),
+                        format!(
+                            "feature «{}» has only one expectation in the docs",
+                            feature.name
+                        ),
                     )
                     .at(&feature.span, "")
                     .help("fold it into the closest topic, or add the behaviours around it"),
@@ -89,7 +100,11 @@ pub fn check(suite: &Suite, diags: &mut Vec<Diagnostic>) {
         let Some(span) = section.span.as_ref().or(feature).or(story) else {
             continue;
         };
-        let tutorials: usize = section.stories.iter().map(|s| suite.story(*s).scenarios.len()).sum();
+        let tutorials: usize = section
+            .stories
+            .iter()
+            .map(|s| suite.story(*s).scenarios.len())
+            .sum();
         let topics = section.features.len();
         if tutorials > MAX_TUTORIALS || topics > MAX_TOPICS {
             let mut too_many = vec![];
@@ -112,7 +127,10 @@ pub fn check(suite: &Suite, diags: &mut Vec<Diagnostic>) {
             diags.push(
                 Diagnostic::warning(
                     "no-tutorial",
-                    format!("section «{}» has {} topics and no tutorial", section.name, topics),
+                    format!(
+                        "section «{}» has {} topics and no tutorial",
+                        section.name, topics
+                    ),
                 )
                 .at(span, "")
                 .help("add a story for the reader's main goal in the section"),

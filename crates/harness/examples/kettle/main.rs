@@ -39,19 +39,32 @@ fn main() {
     }
 
     let mut driver = world::driver(bug);
-    let report = acceptance.run(&mut driver, &RunOptions { docs_dir: Some(out.clone()), ..Default::default() });
+    let report = acceptance.run(
+        &mut driver,
+        &RunOptions {
+            docs_dir: Some(out.clone()),
+            ..Default::default()
+        },
+    );
     if let Err(e) = acceptance.docs(Some(&report)).write(&out) {
         eprintln!("couldn't write the docs to {}: {e}", out.display());
         exit(1);
     }
 
     for (plan, r) in acceptance.plans.iter().zip(&report.results) {
-        let mark = if r.status == Status::Passed { "✓" } else { "✗" };
+        let mark = if r.status == Status::Passed {
+            "✓"
+        } else {
+            "✗"
+        };
         println!("{mark} {}", plan.title);
     }
     println!("docs: {}", out.join("README.md").display());
     if !report.passed() {
-        eprint!("\n{}", report.failures(&acceptance.suite, &acceptance.plans));
+        eprint!(
+            "\n{}",
+            report.failures(&acceptance.suite, &acceptance.plans)
+        );
         exit(1);
     }
 }

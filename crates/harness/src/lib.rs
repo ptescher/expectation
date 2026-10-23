@@ -78,7 +78,10 @@ impl Acceptance {
     }
 
     pub fn from_loaded(loaded: Loaded) -> Result<Self, String> {
-        let Loaded { suite, mut diagnostics } = loaded;
+        let Loaded {
+            suite,
+            mut diagnostics,
+        } = loaded;
         if has_errors(&diagnostics) {
             return Err(render_all(&diagnostics, &suite.sources));
         }
@@ -86,11 +89,22 @@ impl Acceptance {
         diagnostics.extend(analysis.diagnostics.iter().cloned());
         let planned = expectation_story::plan_stories(&suite, &analysis);
         diagnostics.extend(planned.diagnostics);
-        diagnostics.extend(expectation_story::untested(&suite, &analysis, &planned.plans));
+        diagnostics.extend(expectation_story::untested(
+            &suite,
+            &analysis,
+            &planned.plans,
+        ));
         if has_errors(&diagnostics) {
             return Err(render_all(&diagnostics, &suite.sources));
         }
-        Ok(Acceptance { suite, analysis, plans: planned.plans, diagnostics, dir: None, platform: None })
+        Ok(Acceptance {
+            suite,
+            analysis,
+            plans: planned.plans,
+            diagnostics,
+            dir: None,
+            platform: None,
+        })
     }
 
     /// Add generated tests for the expectations no story exercises.
@@ -113,7 +127,12 @@ impl Acceptance {
     }
 
     /// As [`Acceptance::run`], with what the driver needs from outside started first (see [`service`]).
-    pub fn run_with(&self, driver: &mut dyn Driver, opts: &RunOptions, services: &mut service::Services) -> Report {
+    pub fn run_with(
+        &self,
+        driver: &mut dyn Driver,
+        opts: &RunOptions,
+        services: &mut service::Services,
+    ) -> Report {
         run::run_with(&self.suite, &self.plans, driver, opts, services)
     }
 
@@ -146,7 +165,11 @@ impl Acceptance {
         std::fs::create_dir_all(&results)?;
         let file = expectation_story::results_file(runner, self.platform.as_deref());
         std::fs::write(results.join(file), report.save(&self.plans))?;
-        let merged = expectation_story::load_results_for(&results, &self.plans, self.suite.platform.as_deref());
+        let merged = expectation_story::load_results_for(
+            &results,
+            &self.plans,
+            self.suite.platform.as_deref(),
+        );
         self.docs(Some(&merged)).write(&self.tree(dir))?;
         Ok(merged)
     }
@@ -156,10 +179,15 @@ impl Acceptance {
     pub fn assert_passes(&self, driver: &mut dyn Driver, opts: &RunOptions) -> Report {
         let report = self.run(driver, opts);
         if let Some(dir) = &opts.docs_dir {
-            self.docs(Some(&report)).write(dir).expect("writing the docs");
+            self.docs(Some(&report))
+                .write(dir)
+                .expect("writing the docs");
         }
         if !report.passed() {
-            panic!("acceptance tests failed:\n{}", report.failures(&self.suite, &self.plans));
+            panic!(
+                "acceptance tests failed:\n{}",
+                report.failures(&self.suite, &self.plans)
+            );
         }
         report
     }

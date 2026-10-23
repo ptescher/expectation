@@ -12,19 +12,29 @@ pub struct Precedence {
 
 impl Precedence {
     pub fn beats(&self, winner: ExpId, loser: ExpId) -> bool {
-        self.beats.get(winner.0 as usize).and_then(|r| r.get(loser.0 as usize)).copied().unwrap_or(false)
+        self.beats
+            .get(winner.0 as usize)
+            .and_then(|r| r.get(loser.0 as usize))
+            .copied()
+            .unwrap_or(false)
     }
 
     /// Expectations that win over `e`.
     pub fn winners_over(&self, e: ExpId) -> Vec<ExpId> {
-        (0..self.beats.len()).filter(|&w| self.beats[w][e.0 as usize]).map(|w| ExpId(w as u32)).collect()
+        (0..self.beats.len())
+            .filter(|&w| self.beats[w][e.0 as usize])
+            .map(|w| ExpId(w as u32))
+            .collect()
     }
 }
 
 pub fn build(suite: &Suite) -> (Precedence, Vec<Diagnostic>) {
     let n = suite.expectations.len();
-    let declared: Vec<(ExpId, ExpId)> =
-        suite.expectations.iter().flat_map(|e| e.overrides.iter().map(move |l| (e.id, *l))).collect();
+    let declared: Vec<(ExpId, ExpId)> = suite
+        .expectations
+        .iter()
+        .flat_map(|e| e.overrides.iter().map(move |l| (e.id, *l)))
+        .collect();
     let mut adj = vec![vec![]; n];
     for (w, l) in &declared {
         adj[w.0 as usize].push(l.0 as usize);
@@ -51,7 +61,10 @@ pub fn build(suite: &Suite) -> (Precedence, Vec<Diagnostic>) {
         for &c in &cycle {
             reported[c] = true;
         }
-        let names: Vec<String> = cycle.iter().map(|&c| format!("«{}»", suite.expectations[c].name)).collect();
+        let names: Vec<String> = cycle
+            .iter()
+            .map(|&c| format!("«{}»", suite.expectations[c].name))
+            .collect();
         let mut d = Diagnostic::error("override-cycle", "these expectations override each other in a circle")
             .note_that(format!("{} → {}", names.join(" → "), names[0]))
             .help("an exception has to be more specific than what it overrides; remove one of the Overrides lines");
@@ -65,7 +78,13 @@ pub fn build(suite: &Suite) -> (Precedence, Vec<Diagnostic>) {
 
 /// The nodes of one cycle through `start`, in order.
 fn find_cycle(adj: &[Vec<usize>], start: usize) -> Vec<usize> {
-    fn walk(adj: &[Vec<usize>], at: usize, start: usize, path: &mut Vec<usize>, seen: &mut [bool]) -> bool {
+    fn walk(
+        adj: &[Vec<usize>],
+        at: usize,
+        start: usize,
+        path: &mut Vec<usize>,
+        seen: &mut [bool],
+    ) -> bool {
         for &next in &adj[at] {
             if next == start {
                 return true;

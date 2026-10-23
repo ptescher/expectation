@@ -64,8 +64,13 @@ impl<W> Bindings<W> {
     }
 
     /// How to read a state. Subjects match the vocabulary ignoring case and a leading "the".
-    pub fn observe<V: Into<Value>>(mut self, subject: &str, mut f: impl FnMut(&W) -> V + 'static) -> Self {
-        self.observers.insert(text::key(subject), Box::new(move |w| f(w).into()));
+    pub fn observe<V: Into<Value>>(
+        mut self,
+        subject: &str,
+        mut f: impl FnMut(&W) -> V + 'static,
+    ) -> Self {
+        self.observers
+            .insert(text::key(subject), Box::new(move |w| f(w).into()));
         self
     }
 
@@ -129,23 +134,30 @@ impl<W> Driver for Bindings<W> {
     }
 
     fn arrange(&mut self, var: &Variable, value: &Value) -> Result<(), String> {
-        let f = self.arrangers.get_mut(&var.key).or_else(|| self.setters.get_mut(&var.key));
-        f.map(|f| f(&mut self.world, value)).ok_or_else(|| unbound("arrange", &var.subject))
+        let f = self
+            .arrangers
+            .get_mut(&var.key)
+            .or_else(|| self.setters.get_mut(&var.key));
+        f.map(|f| f(&mut self.world, value))
+            .ok_or_else(|| unbound("arrange", &var.subject))
     }
 
     fn set(&mut self, var: &Variable, value: &Value) -> Result<(), String> {
         let f = self.setters.get_mut(&var.key);
-        f.map(|f| f(&mut self.world, value)).ok_or_else(|| unbound("set", &var.subject))
+        f.map(|f| f(&mut self.world, value))
+            .ok_or_else(|| unbound("set", &var.subject))
     }
 
     fn perform(&mut self, event: &Event) -> Result<(), String> {
         let f = self.events.get_mut(&event.key);
-        f.map(|f| f(&mut self.world)).ok_or_else(|| unbound("the event", &event.text))
+        f.map(|f| f(&mut self.world))
+            .ok_or_else(|| unbound("the event", &event.text))
     }
 
     fn observe(&mut self, var: &Variable) -> Result<Value, String> {
         let f = self.observers.get_mut(&var.key);
-        f.map(|f| f(&self.world)).ok_or_else(|| unbound("observe", &var.subject))
+        f.map(|f| f(&self.world))
+            .ok_or_else(|| unbound("observe", &var.subject))
     }
 
     fn settle(&mut self) {
@@ -155,7 +167,9 @@ impl<W> Driver for Bindings<W> {
     }
 
     fn advance(&mut self) -> Progress {
-        self.advance.as_mut().map_or(Progress::Static, |f| f(&mut self.world))
+        self.advance
+            .as_mut()
+            .map_or(Progress::Static, |f| f(&mut self.world))
     }
 
     fn screenshot(&mut self) -> Result<Option<Screenshot>, String> {
@@ -164,7 +178,9 @@ impl<W> Driver for Bindings<W> {
 
     fn supports(&self, need: Need<'_>) -> bool {
         match need {
-            Need::Arrange(v) => self.arrangers.contains_key(&v.key) || self.setters.contains_key(&v.key),
+            Need::Arrange(v) => {
+                self.arrangers.contains_key(&v.key) || self.setters.contains_key(&v.key)
+            }
             Need::Set(v) => self.setters.contains_key(&v.key),
             Need::Perform(e) => self.events.contains_key(&e.key),
             Need::Observe(v) => self.observers.contains_key(&v.key),

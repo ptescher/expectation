@@ -14,7 +14,10 @@ pub struct Span {
 
 impl Span {
     pub fn new(file: &str, line: u32) -> Self {
-        Span { file: file.into(), line }
+        Span {
+            file: file.into(),
+            line,
+        }
     }
 }
 
@@ -34,7 +37,10 @@ impl Sources {
     }
 
     pub fn line(&self, span: &Span) -> Option<&str> {
-        self.0.get(&span.file)?.lines().nth(span.line.checked_sub(1)? as usize)
+        self.0
+            .get(&span.file)?
+            .lines()
+            .nth(span.line.checked_sub(1)? as usize)
     }
 
     pub fn files(&self) -> impl Iterator<Item = &str> {
@@ -68,7 +74,14 @@ pub struct Diagnostic {
 
 impl Diagnostic {
     pub fn new(severity: Severity, code: &'static str, message: impl Into<String>) -> Self {
-        Diagnostic { severity, code, message: message.into(), labels: vec![], notes: vec![], help: None }
+        Diagnostic {
+            severity,
+            code,
+            message: message.into(),
+            labels: vec![],
+            notes: vec![],
+            help: None,
+        }
     }
 
     pub fn error(code: &'static str, message: impl Into<String>) -> Self {
@@ -84,7 +97,10 @@ impl Diagnostic {
     }
 
     pub fn at(mut self, span: &Span, message: impl Into<String>) -> Self {
-        self.labels.push(Label { span: span.clone(), message: message.into() });
+        self.labels.push(Label {
+            span: span.clone(),
+            message: message.into(),
+        });
         self
     }
 
@@ -148,9 +164,26 @@ pub fn render_all(diagnostics: &[Diagnostic], sources: &Sources) -> String {
         s.push_str(&d.render(sources));
         s.push('\n');
     }
-    let errors = diagnostics.iter().filter(|d| d.severity == Severity::Error).count();
-    let warnings = diagnostics.iter().filter(|d| d.severity == Severity::Warning).count();
-    let plural = |n: usize, w: &str| if n == 1 { format!("1 {w}") } else { format!("{n} {w}s") };
-    let _ = writeln!(s, "{}, {}", plural(errors, "error"), plural(warnings, "warning"));
+    let errors = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error)
+        .count();
+    let warnings = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Warning)
+        .count();
+    let plural = |n: usize, w: &str| {
+        if n == 1 {
+            format!("1 {w}")
+        } else {
+            format!("{n} {w}s")
+        }
+    };
+    let _ = writeln!(
+        s,
+        "{}, {}",
+        plural(errors, "error"),
+        plural(warnings, "warning")
+    );
     s
 }

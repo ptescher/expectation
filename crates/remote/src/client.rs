@@ -92,17 +92,26 @@ fn run(addr: &str, hello: &App, requests: &Sender<Request>) {
     let short = Duration::from_secs(5);
     loop {
         // Say hello until a runner answers.
-        let session = match http::request(addr, "POST", "/hello", &hello.to_json().to_string(), short) {
-            Ok((200, body)) => Json::parse(&body).ok().and_then(|j| j.get("session").and_then(Json::as_f64)),
-            _ => None,
-        };
+        let session =
+            match http::request(addr, "POST", "/hello", &hello.to_json().to_string(), short) {
+                Ok((200, body)) => Json::parse(&body)
+                    .ok()
+                    .and_then(|j| j.get("session").and_then(Json::as_f64)),
+                _ => None,
+            };
         let Some(session) = session else {
             std::thread::sleep(Duration::from_secs(1));
             continue;
         };
         let session = session as u64;
         loop {
-            let next = http::request(addr, "GET", &format!("/next?session={session}"), "", Duration::from_secs(30));
+            let next = http::request(
+                addr,
+                "GET",
+                &format!("/next?session={session}"),
+                "",
+                Duration::from_secs(30),
+            );
             let command = match next {
                 Ok((200, body)) => match Json::parse(&body) {
                     Ok(c) => c,
@@ -115,10 +124,17 @@ fn run(addr: &str, hello: &App, requests: &Sender<Request>) {
             let reply = match parse(&command) {
                 Ok(command) => {
                     let (tx, rx) = channel();
-                    if requests.send(Request { command, answer: tx }).is_err() {
+                    if requests
+                        .send(Request {
+                            command,
+                            answer: tx,
+                        })
+                        .is_err()
+                    {
                         return; // The app dropped its client.
                     }
-                    rx.recv().unwrap_or_else(|_| Err("the app dropped the request".into()))
+                    rx.recv()
+                        .unwrap_or_else(|_| Err("the app dropped the request".into()))
                 }
                 Err(e) => Err(e),
             };
@@ -131,8 +147,13 @@ fn run(addr: &str, hello: &App, requests: &Sender<Request>) {
                 Ok(Reply::Svg(svg)) => body.push(("svg", Json::Str(svg))),
                 Err(e) => body.push(("error", Json::Str(e))),
             }
-            let posted =
-                http::request(addr, "POST", &format!("/reply?session={session}"), &Json::obj(body).to_string(), short);
+            let posted = http::request(
+                addr,
+                "POST",
+                &format!("/reply?session={session}"),
+                &Json::obj(body).to_string(),
+                short,
+            );
             if !matches!(posted, Ok((204, _))) {
                 break;
             }
@@ -141,7 +162,12 @@ fn run(addr: &str, hello: &App, requests: &Sender<Request>) {
 }
 
 fn parse(c: &Json) -> Result<Command, String> {
-    let text = |k: &str| c.get(k).and_then(Json::as_str).map(String::from).ok_or_else(|| format!("no {k}"));
+    let text = |k: &str| {
+        c.get(k)
+            .and_then(Json::as_str)
+            .map(String::from)
+            .ok_or_else(|| format!("no {k}"))
+    };
     let value = || match c.get("value") {
         Some(Json::Str(s)) => Ok(Value::Enum(s.clone())),
         Some(Json::Num(n)) => Ok(Value::Number(*n)),
@@ -149,10 +175,20 @@ fn parse(c: &Json) -> Result<Command, String> {
     };
     Ok(match c.get("op").and_then(Json::as_str) {
         Some("reset") => Command::Reset,
-        Some("arrange") => Command::Arrange { subject: text("subject")?, value: value()? },
-        Some("set") => Command::Set { subject: text("subject")?, value: value()? },
-        Some("perform") => Command::Perform { event: text("event")? },
-        Some("observe") => Command::Observe { subject: text("subject")? },
+        Some("arrange") => Command::Arrange {
+            subject: text("subject")?,
+            value: value()?,
+        },
+        Some("set") => Command::Set {
+            subject: text("subject")?,
+            value: value()?,
+        },
+        Some("perform") => Command::Perform {
+            event: text("event")?,
+        },
+        Some("observe") => Command::Observe {
+            subject: text("subject")?,
+        },
         Some("screenshot") => Command::Screenshot,
         other => return Err(format!("unknown command {other:?}")),
     })
@@ -192,8 +228,13 @@ impl<W> Handlers<W> {
         Self::default()
     }
 
-    pub fn observe<V: Into<Value>>(mut self, subject: &str, f: impl Fn(&W) -> V + Send + 'static) -> Self {
-        self.observers.push((subject.into(), Box::new(move |w| f(w).into())));
+    pub fn observe<V: Into<Value>>(
+        mut self,
+        subject: &str,
+        f: impl Fn(&W) -> V + Send + 'static,
+    ) -> Self {
+        self.observers
+            .push((subject.into(), Box::new(move |w| f(w).into())));
         self
     }
 
@@ -217,7 +258,10 @@ impl<W> Handlers<W> {
         self
     }
 
-    pub fn on_screenshot(mut self, f: impl Fn(&W) -> Result<Reply, String> + Send + 'static) -> Self {
+    pub fn on_screenshot(
+        mut self,
+        f: impl Fn(&W) -> Result<Reply, String> + Send + 'static,
+    ) -> Self {
         self.screenshot = Some(Box::new(f));
         self
     }
@@ -245,7 +289,10 @@ impl<W> Handlers<W> {
 
     fn run(&self, world: &mut W, command: &Command) -> Result<Reply, String> {
         fn find<'a, T>(list: &'a [(String, T)], name: &str) -> Result<&'a T, String> {
-            list.iter().find(|(k, _)| k == name).map(|(_, f)| f).ok_or_else(|| format!("no handler for {name}"))
+            list.iter()
+                .find(|(k, _)| k == name)
+                .map(|(_, f)| f)
+                .ok_or_else(|| format!("no handler for {name}"))
         }
         match command {
             Command::Reset => {
@@ -259,7 +306,9 @@ impl<W> Handlers<W> {
             },
             Command::Set { subject, value } => find(&self.setters, subject)?(world, value),
             Command::Perform { event } => find(&self.events, event)?(world),
-            Command::Observe { subject } => return Ok(Reply::Value(find(&self.observers, subject)?(world))),
+            Command::Observe { subject } => {
+                return Ok(Reply::Value(find(&self.observers, subject)?(world)));
+            }
             Command::Screenshot => {
                 return match &self.screenshot {
                     Some(f) => f(world),

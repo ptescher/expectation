@@ -65,25 +65,44 @@ fn main() {
         }
     };
 
-    let mut driver = Bindings::new(Turnstile { locked: true, coins: 0 })
-        .observe("the turnstile", |t| if t.locked { "locked" } else { "unlocked" })
-        .observe("the coin box", |t| t.coins as f64)
-        .arrange("the turnstile", |t, v| t.locked = v.as_str() == Some("locked"))
-        .arrange("the coin box", |t, v| t.coins = v.as_f64().unwrap() as u32)
-        .on("a visitor inserts a coin", |t| {
-            t.coins += 1;
-            t.locked = false;
-        })
-        .on("a visitor pushes the arm", |t| t.locked = true)
-        .on_reset(|t| *t = Turnstile { locked: true, coins: 0 });
+    let mut driver = Bindings::new(Turnstile {
+        locked: true,
+        coins: 0,
+    })
+    .observe("the turnstile", |t| {
+        if t.locked { "locked" } else { "unlocked" }
+    })
+    .observe("the coin box", |t| t.coins as f64)
+    .arrange("the turnstile", |t, v| {
+        t.locked = v.as_str() == Some("locked")
+    })
+    .arrange("the coin box", |t, v| t.coins = v.as_f64().unwrap() as u32)
+    .on("a visitor inserts a coin", |t| {
+        t.coins += 1;
+        t.locked = false;
+    })
+    .on("a visitor pushes the arm", |t| t.locked = true)
+    .on_reset(|t| {
+        *t = Turnstile {
+            locked: true,
+            coins: 0,
+        }
+    });
 
     let report = acceptance.run(&mut driver, &RunOptions::default());
     for (plan, r) in acceptance.plans.iter().zip(&report.results) {
-        let mark = if r.status == Status::Passed { "✓" } else { "✗" };
+        let mark = if r.status == Status::Passed {
+            "✓"
+        } else {
+            "✗"
+        };
         println!("{mark} {}", plan.title);
     }
     if !report.passed() {
-        eprint!("\n{}", report.failures(&acceptance.suite, &acceptance.plans));
+        eprint!(
+            "\n{}",
+            report.failures(&acceptance.suite, &acceptance.plans)
+        );
         exit(1);
     }
 }

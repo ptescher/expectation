@@ -57,17 +57,27 @@ impl Analysis {
         for (f, d) in deps.iter_mut().enumerate() {
             d.remove(&f);
         }
-        let dependents: Vec<usize> = (0..n).map(|f| deps.iter().filter(|d| d.contains(&f)).count()).collect();
+        let dependents: Vec<usize> = (0..n)
+            .map(|f| deps.iter().filter(|d| d.contains(&f)).count())
+            .collect();
         let earliest: Vec<u32> = suite
             .features
             .iter()
-            .map(|f| f.expectations.iter().filter_map(|e| self.flow.level[e.0 as usize]).min().unwrap_or(u32::MAX))
+            .map(|f| {
+                f.expectations
+                    .iter()
+                    .filter_map(|e| self.flow.level[e.0 as usize])
+                    .min()
+                    .unwrap_or(u32::MAX)
+            })
             .collect();
         let key = |f: usize| (earliest[f], std::cmp::Reverse(dependents[f]), f);
         let mut placed = vec![false; n];
         let mut order = vec![];
         while order.len() < n {
-            let ready = (0..n).filter(|&f| !placed[f] && deps[f].iter().all(|&d| placed[d])).min_by_key(|&f| key(f));
+            let ready = (0..n)
+                .filter(|&f| !placed[f] && deps[f].iter().all(|&d| placed[d]))
+                .min_by_key(|&f| key(f));
             let next = ready.unwrap_or_else(|| (0..n).find(|&f| !placed[f]).unwrap());
             placed[next] = true;
             order.push(FeatureId(next as u32));
@@ -88,7 +98,10 @@ pub fn roots(suite: &Suite) -> Vec<(Condition, SectionId)> {
         .map(|s| (s.start.clone(), s.id));
     let scenarios = suite.stories.iter().flat_map(|story| {
         let start = &suite.section(story.section).start;
-        story.scenarios.iter().map(move |sc| (start.overlay(&sc.given), story.section))
+        story
+            .scenarios
+            .iter()
+            .map(move |sc| (start.overlay(&sc.given), story.section))
     });
     for r in starts.chain(scenarios) {
         if !roots.contains(&r) {
@@ -125,11 +138,19 @@ pub fn analyze_with(suite: &Suite, limits: Limits) -> Analysis {
     diagnostics.extend(conflict::diagnose(suite, &precedence, &conflicts));
     let flow = flow::explore(suite, &precedence, &roots(suite), limits);
     if !flow.truncated {
-        for e in suite.expectations.iter().filter(|e| flow.level[e.id.0 as usize].is_none()) {
+        for e in suite
+            .expectations
+            .iter()
+            .filter(|e| flow.level[e.id.0 as usize].is_none())
+        {
             let needs = if e.is_invariant() {
                 suite.describe(&e.given)
             } else {
-                format!("{}, and then {}", suite.describe(&e.given), suite.describe_trigger(&e.trigger))
+                format!(
+                    "{}, and then {}",
+                    suite.describe(&e.given),
+                    suite.describe_trigger(&e.trigger)
+                )
             };
             diagnostics.push(
                 Diagnostic::warning("unreachable", format!("«{}» can never happen, starting from any section's setup", e.name))
@@ -140,11 +161,17 @@ pub fn analyze_with(suite: &Suite, limits: Limits) -> Analysis {
     }
     let section_routes = section_routes(suite, &precedence, limits);
     for (s, route) in suite.sections.iter().zip(&section_routes) {
-        let Some(parent) = s.parent.map(|p| suite.section(p)) else { continue };
+        let Some(parent) = s.parent.map(|p| suite.section(p)) else {
+            continue;
+        };
         // From a parent with no setup there's nothing to route from: getting there is starting
         // the program, which happens outside the suite.
         let from_somewhere = !parent.start.is_unconstrained();
-        if from_somewhere && route.is_none() && !s.setup.is_unconstrained() && !parent.start.implies(&s.start) {
+        if from_somewhere
+            && route.is_none()
+            && !s.setup.is_unconstrained()
+            && !parent.start.implies(&s.start)
+        {
             let span = s.setup_steps.first().map(|t| &t.span).or(s.span.as_ref());
             let mut d =
                 Diagnostic::warning("no-way-in", format!("nothing leads from «{}» into «{}»", parent.name, s.name))
@@ -156,7 +183,13 @@ pub fn analyze_with(suite: &Suite, limits: Limits) -> Analysis {
             diagnostics.push(d);
         }
     }
-    Analysis { precedence, conflicts, flow, section_routes, diagnostics }
+    Analysis {
+        precedence,
+        conflicts,
+        flow,
+        section_routes,
+        diagnostics,
+    }
 }
 
 #[cfg(test)]
@@ -218,14 +251,29 @@ Feature: Heating
     fn finds_an_outcome_conflict_and_where_it_happens() {
         let s = suite("");
         let a = analyze(&s);
-        let [c] = &a.conflicts[..] else { panic!("{:?}", a.conflicts) };
-        assert_eq!((c.a, c.b), (named(&s, "Turning the dial up starts the kettle"), named(&s, "The child lock holds the kettle")));
+        let [c] = &a.conflicts[..] else {
+            panic!("{:?}", a.conflicts)
+        };
+        assert_eq!(
+            (c.a, c.b),
+            (
+                named(&s, "Turning the dial up starts the kettle"),
+                named(&s, "The child lock holds the kettle")
+            )
+        );
         assert_eq!(c.winner, None);
         // The triggers overlap above 70 %, and both Givens hold with the child lock on.
         assert_eq!(s.describe_trigger(&c.trigger), "the dial is above 70 %");
         assert!(s.describe(&c.situation).contains("the child lock is on"));
         let d = a.diagnostics.iter().find(|d| d.code == "conflict").unwrap();
-        assert!(d.help.as_ref().unwrap().contains("«The child lock holds the kettle» is the more specific"), "{:?}", d.help);
+        assert!(
+            d.help
+                .as_ref()
+                .unwrap()
+                .contains("«The child lock holds the kettle» is the more specific"),
+            "{:?}",
+            d.help
+        );
     }
 
     #[test]
@@ -234,9 +282,16 @@ Feature: Heating
         let src = format!("{VOCAB}{}", HEATING.replace("    Given the kettle is off\n    And the child", "    Overrides: Turning the dial up starts the kettle\n    Given the kettle is off\n    And the child"));
         let l = expectation_language::load_sources("t", &[("t.expect", &src)]);
         let a = analyze(&l.suite);
-        assert!(!a.has_errors(), "{}", expectation_model::diagnostic::render_all(&a.diagnostics, &l.suite.sources));
+        assert!(
+            !a.has_errors(),
+            "{}",
+            expectation_model::diagnostic::render_all(&a.diagnostics, &l.suite.sources)
+        );
         assert_eq!(a.exceptions().count(), 1);
-        assert_eq!(a.exceptions().next().unwrap().winner, Some(named(&s, "The child lock holds the kettle")));
+        assert_eq!(
+            a.exceptions().next().unwrap().winner,
+            Some(named(&s, "The child lock holds the kettle"))
+        );
     }
 
     #[test]
@@ -255,7 +310,12 @@ Feature: More
 ",
         );
         let a = analyze(&s);
-        assert_eq!(a.conflicts.len(), 1, "only the child lock conflict: {:?}", a.conflicts);
+        assert_eq!(
+            a.conflicts.len(),
+            1,
+            "only the child lock conflict: {:?}",
+            a.conflicts
+        );
     }
 
     #[test]
@@ -273,8 +333,18 @@ Feature: Help
 ",
         );
         let a = analyze(&s);
-        let c = a.conflicts.iter().find(|c| c.kind == ConflictKind::Invariant).expect("help toggles while heating");
-        assert_eq!((c.a, c.b), (named(&s, "Help toggles on"), named(&s, "No help while heating")));
+        let c = a
+            .conflicts
+            .iter()
+            .find(|c| c.kind == ConflictKind::Invariant)
+            .expect("help toggles while heating");
+        assert_eq!(
+            (c.a, c.b),
+            (
+                named(&s, "Help toggles on"),
+                named(&s, "No help while heating")
+            )
+        );
     }
 
     #[test]
@@ -328,10 +398,15 @@ Feature: F
     fn relative_thens_conflict_and_sections_have_a_way_in() {
         let root = "Vocabulary:\n State: the tool is none | PEN\n State: the drawing has 0..100 shapes\n Event: the user presses PEN\n Event: the user clicks the canvas\nBackground:\n Given the tool is none\n And the drawing has 0 shapes\nFeature: Tools\n Expectation: PEN picks the pen\n  Given the tool is none\n  When the user presses PEN\n  Then the tool is PEN\n";
         let drawing = "Background:\n Given the tool is PEN\nFeature: Shapes\n Expectation: A click adds a shape\n  Given the tool is PEN\n  When the user clicks the canvas\n  Then the drawing goes up by 1\n Expectation: A click adds two\n  Given the tool is PEN\n  When the user clicks the canvas\n  Then the drawing goes up by 2\n";
-        let l = expectation_language::load_sources("t", &[("root.expect", root), ("drawing/w.expect", drawing)]);
+        let l = expectation_language::load_sources(
+            "t",
+            &[("root.expect", root), ("drawing/w.expect", drawing)],
+        );
         assert!(!l.has_errors(), "{}", l.render_diagnostics());
         let a = analyze(&l.suite);
-        let [c] = &a.conflicts[..] else { panic!("{:?}", a.conflicts) };
+        let [c] = &a.conflicts[..] else {
+            panic!("{:?}", a.conflicts)
+        };
         assert_eq!((c.a, c.b), (ExpId(1), ExpId(2)));
         // From the root's start, pressing PEN gets into the drawing section.
         let route = a.section_routes[1].as_ref().expect("a way into drawing");

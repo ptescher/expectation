@@ -26,7 +26,9 @@ pub struct Before {
 /// The steps from a section's parent's setup to its own, in the reader's words.
 pub fn route(d: &Docs, id: SectionId) -> Vec<String> {
     let s = d.suite;
-    let Some(route) = d.analysis.section_routes[id.0 as usize].as_ref() else { return vec![] };
+    let Some(route) = d.analysis.section_routes[id.0 as usize].as_ref() else {
+        return vec![];
+    };
     // Step through it, so each outcome can say how things are afterwards ("UPLOAD 3"), not
     // how they changed ("1 more item").
     let prec = &d.analysis.precedence;
@@ -38,11 +40,18 @@ pub fn route(d: &Docs, id: SectionId) -> Vec<String> {
         .map(|&e| {
             let x = s.exp(e);
             let candidates = s.transitions().filter(|t| scope[t.id.0 as usize]);
-            state = expectation_graph::semantics::perform_among(s, prec, &state, &x.trigger, candidates).after;
+            state = expectation_graph::semantics::perform_among(
+                s, prec, &state, &x.trigger, candidates,
+            )
+            .after;
             let [_, whens, _] = voice::parts(&x.steps);
             let seen = shown_after(s, &[e], &state);
             let doing = voice::instruction(s, &whens);
-            if seen.is_empty() { doing } else { format!("{doing} {seen}") }
+            if seen.is_empty() {
+                doing
+            } else {
+                format!("{doing} {seen}")
+            }
         })
         .collect()
 }
@@ -87,19 +96,24 @@ pub fn before(d: &Docs, id: SectionId) -> Option<Before> {
     }
     // The author's own words for the setup come first. Without them, the route there is the
     // instructions, and without a route, the setup is what to have in place.
-    let said = section
-        .setup_steps
-        .iter()
-        .any(|t| matches!(t.meaning, Some(Said::Phrase(p)) if s.vocabulary.phrase(p).say.is_some()));
+    let said = section.setup_steps.iter().any(
+        |t| matches!(t.meaning, Some(Said::Phrase(p)) if s.vocabulary.phrase(p).say.is_some()),
+    );
     let items = if said || route.is_empty() {
-        section.setup_steps.iter().map(|t| voice::setup(s, t)).collect()
+        section
+            .setup_steps
+            .iter()
+            .map(|t| voice::setup(s, t))
+            .collect()
     } else {
         vec![]
     };
     let detail = said && !route.is_empty();
     Some(Before {
         launch,
-        parent: section.parent.filter(|&p| !s.section(p).start.is_unconstrained()),
+        parent: section
+            .parent
+            .filter(|&p| !s.section(p).start.is_unconstrained()),
         items,
         route,
         route_is_detail: detail,
@@ -123,7 +137,9 @@ pub fn notes(d: &Docs, e: ExpId) -> Vec<Note> {
     let s = d.suite;
     let mut out = vec![];
     for c in d.analysis.exceptions() {
-        let (Some(winner), Some(loser)) = (c.winner, c.loser()) else { continue };
+        let (Some(winner), Some(loser)) = (c.winner, c.loser()) else {
+            continue;
+        };
         if loser != e && winner != e {
             continue;
         }
@@ -136,8 +152,14 @@ pub fn notes(d: &Docs, e: ExpId) -> Vec<Note> {
             .collect();
         out.push(match c.kind {
             _ if winner == e => Note::ExceptionTo(loser),
-            ConflictKind::Outcome => Note::Except { when: join_and(&differs), see: winner },
-            ConflictKind::Invariant => Note::CanLeave { by: winner, what: s.describe(&c.situation) },
+            ConflictKind::Outcome => Note::Except {
+                when: join_and(&differs),
+                see: winner,
+            },
+            ConflictKind::Invariant => Note::CanLeave {
+                by: winner,
+                what: s.describe(&c.situation),
+            },
         });
     }
     out
@@ -176,7 +198,11 @@ pub fn short_title(suite: &Suite, plan: &Plan) -> String {
     match plan.origin {
         Origin::Story { story, scenario } => {
             let st = suite.story(story);
-            if st.scenarios.len() == 1 { st.name.clone() } else { st.scenarios[scenario].name.clone() }
+            if st.scenarios.len() == 1 {
+                st.name.clone()
+            } else {
+                st.scenarios[scenario].name.clone()
+            }
         }
         Origin::Coverage { .. } => plan.title.clone(),
     }
@@ -206,18 +232,27 @@ fn outcome(suite: &Suite, plan: &Plan, group: &[usize]) -> String {
         return voice::outcome(suite, &thens);
     }
     let after = &plan.steps[*group.last().unwrap()].state;
-    let fired: Vec<ExpId> = group.iter().flat_map(|&n| plan.steps[n].fired.iter().copied()).collect();
+    let fired: Vec<ExpId> = group
+        .iter()
+        .flat_map(|&n| plan.steps[n].fired.iter().copied())
+        .collect();
     shown_after(suite, &fired, after)
 }
 
 pub fn tutorial(d: &Docs, f: &Facts, i: usize) -> Option<Tutorial> {
     let s = d.suite;
     let plan = &d.plans[i];
-    let Origin::Story { story, scenario } = plan.origin else { return None };
+    let Origin::Story { story, scenario } = plan.origin else {
+        return None;
+    };
     let st = s.story(story);
     let sc = &st.scenarios[scenario];
     let result = d.report.and_then(|r| r.results.get(i));
-    let mut intro = if scenario == 0 { paragraphs(&st.description) } else { vec![] };
+    let mut intro = if scenario == 0 {
+        paragraphs(&st.description)
+    } else {
+        vec![]
+    };
     intro.extend(paragraphs(&sc.description));
 
     let mut steps = vec![];
@@ -225,7 +260,11 @@ pub fn tutorial(d: &Docs, f: &Facts, i: usize) -> Option<Tutorial> {
     let mut written: Vec<StepText> = sc.given_steps.clone();
     for group in groups(plan) {
         let first = &plan.steps[group[0]];
-        let lines = if first.written.is_empty() { &first.text } else { &first.written };
+        let lines = if first.written.is_empty() {
+            &first.text
+        } else {
+            &first.written
+        };
         written.extend(lines.iter().cloned());
         let [_, whens, _] = voice::parts(lines);
         let last = result.and_then(|r| r.steps.get(*group.last().unwrap()));
@@ -277,7 +316,10 @@ pub fn tutorial(d: &Docs, f: &Facts, i: usize) -> Option<Tutorial> {
 
 /// The tutorials that show `e`, each once.
 pub fn shown_in(d: &Docs, f: &Facts, e: ExpId) -> Vec<usize> {
-    f.tested_by(e).into_iter().filter(|&p| matches!(d.plans[p].origin, Origin::Story { .. })).collect()
+    f.tested_by(e)
+        .into_iter()
+        .filter(|&p| matches!(d.plans[p].origin, Origin::Story { .. }))
+        .collect()
 }
 
 /// The top-level section a declaration's file is in (`None` for the suite's own files), so
@@ -294,7 +336,12 @@ pub fn declared_in(suite: &Suite, span: &expectation_model::Span) -> Option<Sect
 
 /// The glossary's groups: the top-level sections in order, then the suite's own terms.
 pub fn glossary_groups(suite: &Suite) -> Vec<Option<SectionId>> {
-    let mut groups: Vec<Option<SectionId>> = suite.section(SectionId(0)).children.iter().map(|&c| Some(c)).collect();
+    let mut groups: Vec<Option<SectionId>> = suite
+        .section(SectionId(0))
+        .children
+        .iter()
+        .map(|&c| Some(c))
+        .collect();
     groups.push(None);
     groups
 }
@@ -318,7 +365,10 @@ pub enum Ref {
 pub fn find(d: &Docs, name: &str) -> Option<Ref> {
     let s = d.suite;
     let is = |n: &str| n.eq_ignore_ascii_case(name.trim());
-    if let Some(i) = d.outline.and_then(|o| o.pages.iter().position(|p| is(&p.title))) {
+    if let Some(i) = d
+        .outline
+        .and_then(|o| o.pages.iter().position(|p| is(&p.title)))
+    {
         return Some(Ref::Page(i));
     }
     if let Some(t) = s.glossary.iter().position(|t| is(&t.name)) {
@@ -336,7 +386,10 @@ pub fn find(d: &Docs, name: &str) -> Option<Ref> {
     }) {
         return Some(Ref::Tutorial(i));
     }
-    s.expectations.iter().find(|x| is(&x.name) && !x.hidden).map(|x| Ref::Exp(x.id))
+    s.expectations
+        .iter()
+        .find(|x| is(&x.name) && !x.hidden)
+        .map(|x| Ref::Exp(x.id))
 }
 
 /// A piece of prose: plain text, `code`, or a `[[link]]`.
@@ -365,7 +418,11 @@ pub fn inline(text: &str) -> Vec<Inline<'_>> {
         if at > 0 {
             out.push(Inline::Text(&rest[..at]));
         }
-        out.push(if is_code { Inline::Code(&after[..end]) } else { Inline::Link(&after[..end]) });
+        out.push(if is_code {
+            Inline::Code(&after[..end])
+        } else {
+            Inline::Link(&after[..end])
+        });
         rest = &after[end + close.len()..];
     }
     if !rest.is_empty() {
@@ -407,7 +464,9 @@ pub fn reading_order(d: &Docs) -> Vec<Reading> {
         out.push(Reading::Section(id));
         out.extend(
             (0..d.plans.len())
-                .filter(|&i| d.plans[i].section == id && matches!(d.plans[i].origin, Origin::Story { .. }))
+                .filter(|&i| {
+                    d.plans[i].section == id && matches!(d.plans[i].origin, Origin::Story { .. })
+                })
                 .map(Reading::Tutorial),
         );
         out.extend(s.features.iter().map(|&f| Reading::Feature(f)));

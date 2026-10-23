@@ -39,7 +39,8 @@ impl Conflict {
     }
 
     pub fn loser(&self) -> Option<ExpId> {
-        self.winner.map(|w| if w == self.a { self.b } else { self.a })
+        self.winner
+            .map(|w| if w == self.a { self.b } else { self.a })
     }
 }
 
@@ -65,7 +66,10 @@ pub fn detect(suite: &Suite, prec: &Precedence) -> Vec<Conflict> {
             if !situation.is_satisfiable() {
                 continue;
             }
-            let trigger = Trigger { event: a.trigger.event, changes: a.trigger.changes.and(&b.trigger.changes) };
+            let trigger = Trigger {
+                event: a.trigger.event,
+                changes: a.trigger.changes.and(&b.trigger.changes),
+            };
             let before = situation.overlay(&trigger.changes);
             let vars = disagree(suite, a, b, &before);
             if vars.is_empty() {
@@ -86,7 +90,11 @@ pub fn detect(suite: &Suite, prec: &Precedence) -> Vec<Conflict> {
     for x in &suite.expectations {
         let after = x.outcome(&suite.vocabulary);
         for inv in suite.invariants() {
-            if inv.id == x.id || out.iter().any(|c| c.kind == Kind::Invariant && c.involves(x.id, inv.id)) {
+            if inv.id == x.id
+                || out
+                    .iter()
+                    .any(|c| c.kind == Kind::Invariant && c.involves(x.id, inv.id))
+            {
                 continue;
             }
             let scope = after.and(&inv.given);
@@ -98,7 +106,10 @@ pub fn detect(suite: &Suite, prec: &Precedence) -> Vec<Conflict> {
             // a state the invariant itself rules out.
             let vars = scope.contradictions(&inv.then);
             let changed: Vec<VarId> = x.sets().chain(x.trigger.changes.vars()).collect();
-            if !changed.iter().any(|v| inv.given.get(*v).is_some() || vars.contains(v)) {
+            if !changed
+                .iter()
+                .any(|v| inv.given.get(*v).is_some() || vars.contains(v))
+            {
                 continue;
             }
             out.push(Conflict {
@@ -123,10 +134,13 @@ fn disagree(suite: &Suite, a: &Expectation, b: &Expectation, before: &Condition)
     let (ea, eb) = (a.effect(v, before), b.effect(v, before));
     let mut vars = ea.contradictions(&eb);
     let shift = |e: &Expectation, x: VarId| {
-        e.shifts.iter().find(|(w, _)| *w == x).map(|(_, s)| match s {
-            Shift::Same => 0.0,
-            Shift::By(d) => *d,
-        })
+        e.shifts
+            .iter()
+            .find(|(w, _)| *w == x)
+            .map(|(_, s)| match s {
+                Shift::Same => 0.0,
+                Shift::By(d) => *d,
+            })
     };
     for x in a.sets().filter(|x| b.sets().any(|y| y == *x)) {
         let differ = match (shift(a, x), shift(b, x)) {
@@ -150,7 +164,8 @@ pub fn diagnose(suite: &Suite, prec: &Precedence, conflicts: &[Conflict]) -> Vec
         let (a, b) = (suite.exp(c.a), suite.exp(c.b));
         let subjects: Vec<String> = c.vars.iter().map(|&x| v.var(x).subject.clone()).collect();
         let before = c.situation.overlay(&c.trigger.changes);
-        let on = |e: &Expectation| v.describe(&e.effect(v, &before).restrict(c.vars.iter().copied()));
+        let on =
+            |e: &Expectation| v.describe(&e.effect(v, &before).restrict(c.vars.iter().copied()));
         let d = match c.kind {
             Kind::Outcome => {
                 let mut when = v.describe(&c.situation);
@@ -204,9 +219,23 @@ pub fn diagnose(suite: &Suite, prec: &Precedence, conflicts: &[Conflict]) -> Vec
                     "conflict",
                     format!("the Background of «{}» breaks «{}»", section.name, inv.name),
                 )
-                .at(&inv.span, format!("whenever {}, {}", v.describe(&inv.given), v.describe(&inv.then)));
+                .at(
+                    &inv.span,
+                    format!(
+                        "whenever {}, {}",
+                        v.describe(&inv.given),
+                        v.describe(&inv.then)
+                    ),
+                );
                 if let Some(s) = section.setup_steps.first() {
-                    d = d.at(&s.span, format!("but «{}» starts with {}", section.name, v.describe(&section.start)));
+                    d = d.at(
+                        &s.span,
+                        format!(
+                            "but «{}» starts with {}",
+                            section.name,
+                            v.describe(&section.start)
+                        ),
+                    );
                 }
                 diags.push(d);
             }
@@ -217,7 +246,11 @@ pub fn diagnose(suite: &Suite, prec: &Precedence, conflicts: &[Conflict]) -> Vec
 
 fn exception_help(a: &Expectation, b: &Expectation) -> String {
     // The more specific one is the likely exception.
-    let (special, general) = if a.given.implies(&b.given) && !b.given.implies(&a.given) { (a, b) } else { (b, a) };
+    let (special, general) = if a.given.implies(&b.given) && !b.given.implies(&a.given) {
+        (a, b)
+    } else {
+        (b, a)
+    };
     let specific = special.given.implies(&general.given) && !general.given.implies(&special.given);
     if specific {
         format!(
