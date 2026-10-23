@@ -14,7 +14,12 @@ pub enum Json {
 
 impl Json {
     pub fn obj(fields: impl IntoIterator<Item = (&'static str, Json)>) -> Json {
-        Json::Obj(fields.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
+        Json::Obj(
+            fields
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect(),
+        )
     }
 
     pub fn get(&self, key: &str) -> Option<&Json> {
@@ -54,11 +59,17 @@ impl Json {
 
     /// The strings in an array, skipping anything else.
     pub fn strings(&self) -> Vec<String> {
-        self.as_array().iter().filter_map(|j| j.as_str().map(String::from)).collect()
+        self.as_array()
+            .iter()
+            .filter_map(|j| j.as_str().map(String::from))
+            .collect()
     }
 
     pub fn parse(s: &str) -> Result<Json, String> {
-        let mut p = Parser { s: s.as_bytes(), i: 0 };
+        let mut p = Parser {
+            s: s.as_bytes(),
+            i: 0,
+        };
         let v = p.value()?;
         p.ws();
         if p.i != p.s.len() {
@@ -234,11 +245,18 @@ impl Parser<'_> {
 
     fn number(&mut self) -> Result<Json, String> {
         let start = self.i;
-        while self.i < self.s.len() && matches!(self.s[self.i], b'-' | b'+' | b'.' | b'e' | b'E' | b'0'..=b'9') {
+        while self.i < self.s.len()
+            && matches!(
+                self.s[self.i],
+                b'-' | b'+' | b'.' | b'e' | b'E' | b'0'..=b'9'
+            )
+        {
             self.i += 1;
         }
         let text = std::str::from_utf8(&self.s[start..self.i]).unwrap_or("");
-        text.parse().map(Json::Num).map_err(|_| format!("bad number at {start}"))
+        text.parse()
+            .map(Json::Num)
+            .map_err(|_| format!("bad number at {start}"))
     }
 
     fn string(&mut self) -> Result<String, String> {
@@ -274,7 +292,9 @@ impl Parser<'_> {
                         b't' => out.push('\t'),
                         b'u' => {
                             let mut code = self.hex4()?;
-                            if (0xd800..0xdc00).contains(&code) && self.s[self.i..].starts_with(b"\\u") {
+                            if (0xd800..0xdc00).contains(&code)
+                                && self.s[self.i..].starts_with(b"\\u")
+                            {
                                 self.i += 2;
                                 let low = self.hex4()?;
                                 code = 0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00);
@@ -291,7 +311,8 @@ impl Parser<'_> {
     fn hex4(&mut self) -> Result<u32, String> {
         let h = self.s.get(self.i..self.i + 4).ok_or("short \\u escape")?;
         self.i += 4;
-        u32::from_str_radix(std::str::from_utf8(h).map_err(|e| e.to_string())?, 16).map_err(|e| e.to_string())
+        u32::from_str_radix(std::str::from_utf8(h).map_err(|e| e.to_string())?, 16)
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -324,7 +345,10 @@ pub fn base64_encode(bytes: &[u8]) -> String {
     const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
-        let n = chunk.iter().enumerate().fold(0u32, |n, (i, &b)| n | (b as u32) << (16 - 8 * i));
+        let n = chunk
+            .iter()
+            .enumerate()
+            .fold(0u32, |n, (i, &b)| n | (b as u32) << (16 - 8 * i));
         for i in 0..4 {
             if i <= chunk.len() {
                 out.push(A[(n >> (18 - 6 * i) & 63) as usize] as char);
@@ -354,7 +378,10 @@ mod tests {
     #[test]
     fn base64() {
         for s in ["", "f", "fo", "foo", "foob", "fooba", "foobar"] {
-            assert_eq!(base64_decode(&base64_encode(s.as_bytes())).unwrap(), s.as_bytes());
+            assert_eq!(
+                base64_decode(&base64_encode(s.as_bytes())).unwrap(),
+                s.as_bytes()
+            );
         }
         assert_eq!(base64_encode(b"foobar"), "Zm9vYmFy");
         assert_eq!(base64_decode("Zm9v\nYg==").unwrap(), b"foob");

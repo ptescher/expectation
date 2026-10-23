@@ -16,7 +16,7 @@ pub mod vocabulary;
 pub use condition::{Condition, Constraint, Interval};
 pub use diagnostic::{Diagnostic, Label, Severity, Sources, Span};
 pub use spec::{
-    ExpId, Expectation, Fact, Feature, FeatureId, Keyword, Phrase, PhraseBody, PhraseId, Said, Scenario, Section,
-    SectionId, Shift, StepText, Story, StoryId, StoryStep, Suite, Term, Trigger,
+    ExpId, Expectation, Fact, Feature, FeatureId, Keyword, Phrase, PhraseBody, PhraseId, Said,
+    Scenario, Section, SectionId, Shift, StepText, Story, StoryId, StoryStep, Suite, Term, Trigger,
 };
 pub use vocabulary::{Event, EventId, Value, VarId, VarKind, Variable, Vocabulary};

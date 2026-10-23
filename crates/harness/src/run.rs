@@ -5,8 +5,8 @@ use crate::service::Services;
 use expectation_model::{Suite, Trigger};
 use expectation_story::{Check, CheckResult, Plan, PlanResult, Report, Status, StepResult};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Clone, Debug)]
 pub struct RunOptions {
@@ -18,21 +18,40 @@ pub struct RunOptions {
 
 impl Default for RunOptions {
     fn default() -> Self {
-        RunOptions { docs_dir: None, patience: 100 }
+        RunOptions {
+            docs_dir: None,
+            patience: 100,
+        }
     }
 }
 
 pub fn run(suite: &Suite, plans: &[Plan], driver: &mut dyn Driver, opts: &RunOptions) -> Report {
     let mut launched = None;
-    Report { results: plans.iter().map(|p| run_plan(suite, p, driver, opts, &mut launched)).collect() }
+    Report {
+        results: plans
+            .iter()
+            .map(|p| run_plan(suite, p, driver, opts, &mut launched))
+            .collect(),
+    }
 }
 
 /// As [`run`], with what the driver needs from outside started before each plan: a service that
 /// is up stays, one that died is started again, and when one cannot be had the plan is not
 /// supported yet, with what to do about it.
-pub fn run_with(suite: &Suite, plans: &[Plan], driver: &mut dyn Driver, opts: &RunOptions, services: &mut Services) -> Report {
+pub fn run_with(
+    suite: &Suite,
+    plans: &[Plan],
+    driver: &mut dyn Driver,
+    opts: &RunOptions,
+    services: &mut Services,
+) -> Report {
     let mut launched = None;
-    Report { results: plans.iter().map(|plan| run_served(suite, plan, driver, opts, services, &mut launched)).collect() }
+    Report {
+        results: plans
+            .iter()
+            .map(|plan| run_served(suite, plan, driver, opts, services, &mut launched))
+            .collect(),
+    }
 }
 
 /// What one worker of [`run_parallel`] runs with: a driver of its own, and the services that
@@ -44,7 +63,10 @@ pub struct Worker {
 
 impl Worker {
     pub fn new(driver: impl Driver + 'static) -> Self {
-        Worker { driver: Box::new(driver), services: Services::new() }
+        Worker {
+            driver: Box::new(driver),
+            services: Services::new(),
+        }
     }
 
     pub fn with_services(mut self, services: Services) -> Self {
@@ -58,7 +80,13 @@ impl Worker {
 /// [`Worker`], so a driver need not be `Send` and two workers never share one: give each its own
 /// app, port, database and screen. Results are in the order of `plans`. `workers` is at least 1
 /// and at most the number of plans.
-pub fn run_parallel<F>(suite: &Suite, plans: &[Plan], workers: usize, opts: &RunOptions, make: F) -> Report
+pub fn run_parallel<F>(
+    suite: &Suite,
+    plans: &[Plan],
+    workers: usize,
+    opts: &RunOptions,
+    make: F,
+) -> Report
 where
     F: Fn(usize) -> Worker + Sync,
 {
@@ -75,7 +103,14 @@ where
                     let Some(plan) = plans.get(i) else { break };
                     // Built when there is a plan to run, so a worker with nothing to do starts nothing.
                     let w = worker.get_or_insert_with(|| make(n));
-                    let result = run_served(suite, plan, &mut *w.driver, opts, &mut w.services, &mut launched);
+                    let result = run_served(
+                        suite,
+                        plan,
+                        &mut *w.driver,
+                        opts,
+                        &mut w.services,
+                        &mut launched,
+                    );
                     done.lock().unwrap().push((i, result));
                 }
             });
@@ -83,7 +118,9 @@ where
     });
     let mut done = done.into_inner().unwrap();
     done.sort_by_key(|(i, _)| *i);
-    Report { results: done.into_iter().map(|(_, r)| r).collect() }
+    Report {
+        results: done.into_iter().map(|(_, r)| r).collect(),
+    }
 }
 
 fn run_served(
@@ -98,7 +135,14 @@ fn run_served(
     let names: Vec<&str> = needs.iter().map(String::as_str).collect();
     let fresh = driver.fresh();
     let fresh: Vec<&str> = fresh.iter().map(String::as_str).collect();
-    match unsupported(suite, plan, driver).map_or_else(|| services.restart(&fresh).and_then(|()| services.start(&names)), |_| Ok(())) {
+    match unsupported(suite, plan, driver).map_or_else(
+        || {
+            services
+                .restart(&fresh)
+                .and_then(|()| services.start(&names))
+        },
+        |_| Ok(()),
+    ) {
         Ok(()) => run_plan(suite, plan, driver, opts, launched),
         Err(why) => {
             let mut r = PlanResult::with(Status::Unsupported, plan);
@@ -123,11 +167,16 @@ fn needs<'a>(suite: &'a Suite, plan: &Plan) -> Vec<Need<'a>> {
 
 /// A plan the driver cannot run yet is not run and not failed: the result says what it lacks.
 fn unsupported(suite: &Suite, plan: &Plan, driver: &dyn Driver) -> Option<PlanResult> {
-    let mut missing: Vec<String> =
-        needs(suite, plan).into_iter().filter(|n| !driver.supports(*n)).map(|n| n.to_string()).collect();
+    let mut missing: Vec<String> = needs(suite, plan)
+        .into_iter()
+        .filter(|n| !driver.supports(*n))
+        .map(|n| n.to_string())
+        .collect();
     for (x, c) in plan.start.iter() {
         let var = suite.vocabulary.var(x);
-        let value = var.witness(c).expect("plans only arrange satisfiable states");
+        let value = var
+            .witness(c)
+            .expect("plans only arrange satisfiable states");
         if !driver.can_arrange(var, &value) {
             missing.push(format!("arrange {} as {value}", var.subject));
         }
@@ -142,7 +191,10 @@ fn unsupported(suite: &Suite, plan: &Plan, driver: &dyn Driver) -> Option<PlanRe
         if missing.len() > 3 {
             shown.push(format!("{} more things", missing.len() - 3));
         }
-        r.start.error = Some(format!("The driver can't {} yet.", expectation_model::text::join_and(&shown)));
+        r.start.error = Some(format!(
+            "The driver can't {} yet.",
+            expectation_model::text::join_and(&shown)
+        ));
         return Some(r);
     }
     None
@@ -150,7 +202,13 @@ fn unsupported(suite: &Suite, plan: &Plan, driver: &dyn Driver) -> Option<PlanRe
 
 /// `launched` is how the program was last started (a section's `Launch:`), so it is started
 /// once for the plans that share it and again when a section says to start it differently.
-fn run_plan(suite: &Suite, plan: &Plan, driver: &mut dyn Driver, opts: &RunOptions, launched: &mut Option<String>) -> PlanResult {
+fn run_plan(
+    suite: &Suite,
+    plan: &Plan,
+    driver: &mut dyn Driver,
+    opts: &RunOptions,
+    launched: &mut Option<String>,
+) -> PlanResult {
     let failed = |error: String| StepResult {
         status: Status::Failed,
         checks: vec![],
@@ -195,7 +253,9 @@ fn run_plan(suite: &Suite, plan: &Plan, driver: &mut dyn Driver, opts: &RunOptio
     }
     for (x, c) in plan.start.iter() {
         let var = suite.vocabulary.var(x);
-        let value = var.witness(c).expect("plans only arrange satisfiable states");
+        let value = var
+            .witness(c)
+            .expect("plans only arrange satisfiable states");
         if let Err(e) = driver.arrange(var, &value) {
             return skip_all(failed(format!("couldn't arrange {}: {e}", var.describe(c))));
         }
@@ -222,18 +282,28 @@ fn run_plan(suite: &Suite, plan: &Plan, driver: &mut dyn Driver, opts: &RunOptio
         ok = r.status == Status::Passed;
         steps.push(r);
     }
-    PlanResult { status: if ok { Status::Passed } else { Status::Failed }, start, steps }
+    PlanResult {
+        status: if ok { Status::Passed } else { Status::Failed },
+        start,
+        steps,
+    }
 }
 
 fn act(suite: &Suite, driver: &mut dyn Driver, action: &Trigger) -> Result<(), String> {
     for (x, c) in action.changes.iter() {
         let var = suite.vocabulary.var(x);
-        let value = var.witness(c).ok_or_else(|| format!("no value satisfies {}", var.describe(c)))?;
-        driver.set(var, &value).map_err(|e| format!("couldn't set {}: {e}", var.describe(c)))?;
+        let value = var
+            .witness(c)
+            .ok_or_else(|| format!("no value satisfies {}", var.describe(c)))?;
+        driver
+            .set(var, &value)
+            .map_err(|e| format!("couldn't set {}: {e}", var.describe(c)))?;
     }
     if let Some(e) = action.event {
         let event = suite.vocabulary.event(e);
-        driver.perform(event).map_err(|err| format!("couldn't make it happen that {}: {err}", event.text))?;
+        driver
+            .perform(event)
+            .map_err(|err| format!("couldn't make it happen that {}: {err}", event.text))?;
     }
     Ok(())
 }
@@ -248,15 +318,33 @@ fn observe(suite: &Suite, driver: &mut dyn Driver, checks: &[Check], patience: u
             .map(|c| {
                 let var = suite.vocabulary.var(c.var);
                 match driver.observe(var) {
-                    Ok(v) => CheckResult { passed: var.admits(&c.expect, &v), observed: Some(v), error: None },
-                    Err(e) => CheckResult { observed: None, passed: false, error: Some(e) },
+                    Ok(v) => CheckResult {
+                        passed: var.admits(&c.expect, &v),
+                        observed: Some(v),
+                        error: None,
+                    },
+                    Err(e) => CheckResult {
+                        observed: None,
+                        passed: false,
+                        error: Some(e),
+                    },
                 }
             })
             .collect();
         let passed = results.iter().all(|r| r.passed);
         if passed || polls > patience || driver.advance() == Progress::Static {
-            let status = if passed { Status::Passed } else { Status::Failed };
-            return StepResult { status, checks: results, screenshot: None, error: None, polls };
+            let status = if passed {
+                Status::Passed
+            } else {
+                Status::Failed
+            };
+            return StepResult {
+                status,
+                checks: results,
+                screenshot: None,
+                error: None,
+                polls,
+            };
         }
     }
 }

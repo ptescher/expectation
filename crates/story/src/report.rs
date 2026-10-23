@@ -28,9 +28,15 @@ impl Status {
     }
 
     fn parse(s: &str) -> Option<Status> {
-        [Status::Passed, Status::Failed, Status::Skipped, Status::Unsupported, Status::NotRun]
-            .into_iter()
-            .find(|x| x.name() == s)
+        [
+            Status::Passed,
+            Status::Failed,
+            Status::Skipped,
+            Status::Unsupported,
+            Status::NotRun,
+        ]
+        .into_iter()
+        .find(|x| x.name() == s)
     }
 
     /// Did it run (pass or fail), as opposed to not running at all?
@@ -64,7 +70,13 @@ impl StepResult {
     }
 
     pub fn with(status: Status) -> Self {
-        StepResult { status, checks: vec![], screenshot: None, error: None, polls: 0 }
+        StepResult {
+            status,
+            checks: vec![],
+            screenshot: None,
+            error: None,
+            polls: 0,
+        }
     }
 }
 
@@ -81,7 +93,11 @@ impl PlanResult {
         PlanResult {
             status,
             start: StepResult::with(status),
-            steps: plan.steps.iter().map(|_| StepResult::with(status)).collect(),
+            steps: plan
+                .steps
+                .iter()
+                .map(|_| StepResult::with(status))
+                .collect(),
         }
     }
 }
@@ -118,7 +134,12 @@ impl Report {
 
     /// For plans that haven't run.
     pub fn not_run(plans: &[Plan]) -> Report {
-        Report { results: plans.iter().map(|p| PlanResult::with(Status::NotRun, p)).collect() }
+        Report {
+            results: plans
+                .iter()
+                .map(|p| PlanResult::with(Status::NotRun, p))
+                .collect(),
+        }
     }
 
     /// Plan by plan, the more informative of the two: a result that ran over one that's
@@ -142,7 +163,9 @@ impl Report {
         let mut out = vec![Verdict::Untested; suite.expectations.len()];
         let mut mark = |checks: &[Check], results: &[CheckResult]| {
             for (c, r) in checks.iter().zip(results) {
-                let Because::Expectation(e) = c.because else { continue };
+                let Because::Expectation(e) = c.because else {
+                    continue;
+                };
                 let v = &mut out[e.0 as usize];
                 if !r.passed {
                     *v = Verdict::Failed;
@@ -158,12 +181,20 @@ impl Report {
             }
         }
         // Untested only because the tests that would check it can't run yet, or haven't.
-        for (status, verdict) in [(Status::Unsupported, Verdict::Unsupported), (Status::NotRun, Verdict::NotRun)] {
+        for (status, verdict) in [
+            (Status::Unsupported, Verdict::Unsupported),
+            (Status::NotRun, Verdict::NotRun),
+        ] {
             for (plan, result) in plans.iter().zip(&self.results) {
                 if result.status != status {
                     continue;
                 }
-                for e in plan.start_invariants.iter().copied().chain(plan.steps.iter().flat_map(|s| s.exercises())) {
+                for e in plan
+                    .start_invariants
+                    .iter()
+                    .copied()
+                    .chain(plan.steps.iter().flat_map(|s| s.exercises()))
+                {
                     if out[e.0 as usize] == Verdict::Untested {
                         out[e.0 as usize] = verdict;
                     }
@@ -183,7 +214,13 @@ impl Report {
             if r.status == Status::NotRun {
                 continue;
             }
-            let _ = writeln!(out, "plan\t{}\t{}\t{}", plan.slug, r.status.name(), fingerprint(plan));
+            let _ = writeln!(
+                out,
+                "plan\t{}\t{}\t{}",
+                plan.slug,
+                r.status.name(),
+                fingerprint(plan)
+            );
             for (n, step) in std::iter::once(&r.start).chain(&r.steps).enumerate() {
                 let _ = writeln!(
                     out,
@@ -199,7 +236,12 @@ impl Report {
                         Some(Value::Enum(s)) => format!("e:{}", field(s)),
                         None => "-".into(),
                     };
-                    let _ = writeln!(out, "check\t{}\t{observed}\t{}", c.passed as u8, opt(&c.error));
+                    let _ = writeln!(
+                        out,
+                        "check\t{}\t{observed}\t{}",
+                        c.passed as u8,
+                        opt(&c.error)
+                    );
                 }
             }
         }
@@ -223,11 +265,19 @@ impl Report {
                         prints.insert(slug.to_string(), print.to_string());
                     }
                     let status = Status::parse(status).unwrap_or(Status::NotRun);
-                    current =
-                        Some((slug.to_string(), PlanResult { status, start: StepResult::with(status), steps: vec![] }));
+                    current = Some((
+                        slug.to_string(),
+                        PlanResult {
+                            status,
+                            start: StepResult::with(status),
+                            steps: vec![],
+                        },
+                    ));
                 }
                 ["step", n, status, polls, shot, error] => {
-                    let Some((_, r)) = current.as_mut() else { continue };
+                    let Some((_, r)) = current.as_mut() else {
+                        continue;
+                    };
                     let step = StepResult {
                         status: Status::parse(status).unwrap_or(Status::NotRun),
                         checks: vec![],
@@ -235,17 +285,31 @@ impl Report {
                         error: opt(error),
                         polls: polls.parse().unwrap_or(0),
                     };
-                    if *n == "0" { r.start = step } else { r.steps.push(step) }
+                    if *n == "0" {
+                        r.start = step
+                    } else {
+                        r.steps.push(step)
+                    }
                 }
                 ["check", passed, observed, error] => {
-                    let Some((_, r)) = current.as_mut() else { continue };
+                    let Some((_, r)) = current.as_mut() else {
+                        continue;
+                    };
                     let observed = match observed.split_once(':') {
                         Some(("n", v)) => v.parse().ok().map(Value::Number),
                         Some(("e", v)) => Some(Value::Enum(v.to_string())),
                         _ => None,
                     };
-                    let check = CheckResult { observed, passed: *passed == "1", error: opt(error) };
-                    r.steps.last_mut().unwrap_or(&mut r.start).checks.push(check);
+                    let check = CheckResult {
+                        observed,
+                        passed: *passed == "1",
+                        error: opt(error),
+                    };
+                    r.steps
+                        .last_mut()
+                        .unwrap_or(&mut r.start)
+                        .checks
+                        .push(check);
                 }
                 _ => {}
             }
@@ -256,7 +320,9 @@ impl Report {
             .map(|p| match found.remove(&p.slug) {
                 Some(r)
                     if r.steps.len() == p.steps.len()
-                        && prints.get(&p.slug).is_none_or(|print| *print == fingerprint(p)) =>
+                        && prints
+                            .get(&p.slug)
+                            .is_none_or(|print| *print == fingerprint(p)) =>
                 {
                     r
                 }
@@ -274,8 +340,12 @@ impl Report {
                 continue;
             }
             let _ = writeln!(s, "✗ {}", plan.title);
-            let steps = std::iter::once((None, &plan.start_checks, &result.start))
-                .chain(plan.steps.iter().zip(&result.steps).map(|(p, r)| (Some(p), &p.checks, r)));
+            let steps = std::iter::once((None, &plan.start_checks, &result.start)).chain(
+                plan.steps
+                    .iter()
+                    .zip(&result.steps)
+                    .map(|(p, r)| (Some(p), &p.checks, r)),
+            );
             for (step, checks, r) in steps {
                 if r.status != Status::Failed {
                     continue;
@@ -306,7 +376,11 @@ impl Report {
                         (Some(v), _) => format!("observed {v}"),
                         (None, _) => "not observed".into(),
                     };
-                    let _ = writeln!(s, "    expected {} ({why}); {seen}", var.describe(&c.expect));
+                    let _ = writeln!(
+                        s,
+                        "    expected {} ({why}); {seen}",
+                        var.describe(&c.expect)
+                    );
                 }
             }
         }
@@ -364,9 +438,15 @@ pub fn load_results_for(dir: &std::path::Path, plans: &[Plan], platform: Option<
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "tsv"))
-        .filter(|p| match p.file_stem().and_then(|s| s.to_str()).and_then(|s| s.split_once('@')) {
-            Some((_, on)) => Some(on) == platform,
-            None => true,
+        .filter(|p| {
+            match p
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .and_then(|s| s.split_once('@'))
+            {
+                Some((_, on)) => Some(on) == platform,
+                None => true,
+            }
         })
         .collect();
     files.sort();
@@ -381,5 +461,8 @@ pub fn load_results_for(dir: &std::path::Path, plans: &[Plan], platform: Option<
 
 /// An expectation's verdict is about the expectation; this is the id it's indexed by.
 pub fn verdict_of(verdicts: &[Verdict], e: ExpId) -> Verdict {
-    verdicts.get(e.0 as usize).copied().unwrap_or(Verdict::Untested)
+    verdicts
+        .get(e.0 as usize)
+        .copied()
+        .unwrap_or(Verdict::Untested)
 }

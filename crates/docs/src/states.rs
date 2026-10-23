@@ -40,10 +40,16 @@ fn shots(d: &Docs, map: &StateMap) -> Vec<Vec<Shot>> {
         let steps = std::iter::once((&plan.start, &result.start))
             .chain(plan.steps.iter().map(|s| &s.state).zip(&result.steps));
         for (state, r) in steps {
-            let (Some(path), Some(at)) = (&r.screenshot, map.locate(state)) else { continue };
+            let (Some(path), Some(at)) = (&r.screenshot, map.locate(state)) else {
+                continue;
+            };
             let passed = r.status == Status::Passed && r.checks.iter().all(|c| c.passed);
             if !out[at].iter().any(|s| s.path == *path) {
-                out[at].push(Shot { path: path.clone(), plan: i, passed });
+                out[at].push(Shot {
+                    path: path.clone(),
+                    plan: i,
+                    passed,
+                });
             }
         }
     }
@@ -185,7 +191,10 @@ pub fn html(
                 .map(|(v, k)| {
                     let var = s.vocabulary.var(v);
                     let p = var.predicate(k);
-                    let part = ["is ", "are ", "has ", "have "].iter().find_map(|w| p.strip_prefix(w)).unwrap_or(&p);
+                    let part = ["is ", "are ", "has ", "have "]
+                        .iter()
+                        .find_map(|w| p.strip_prefix(w))
+                        .unwrap_or(&p);
                     (var.describe(k), part.to_string())
                 })
                 .collect()
@@ -204,28 +213,53 @@ pub fn html(
         if cond_facts[i].is_empty() {
             "anything".into()
         } else {
-            cond_facts[i].iter().map(|(_, p)| p.as_str()).collect::<Vec<_>>().join(" · ")
+            cond_facts[i]
+                .iter()
+                .map(|(_, p)| p.as_str())
+                .collect::<Vec<_>>()
+                .join(" · ")
         }
     };
     let action = |k: usize| map.describe_move(s, &map.moves[k]);
 
     // The data.
-    let (mut facts, mut actions, mut exps, mut tests, mut paths) =
-        (Table::default(), Table::default(), Table::default(), Table::default(), Table::default());
+    let (mut facts, mut actions, mut exps, mut tests, mut paths) = (
+        Table::default(),
+        Table::default(),
+        Table::default(),
+        Table::default(),
+        Table::default(),
+    );
     let mut states_json = Vec::with_capacity(n);
     for i in 0..n {
         let st = &map.states[i];
-        let fs = list(cond_facts[i].iter().map(|(fact, part)| facts.id(format!("[{},{}]", js(fact), js(part)))));
+        let fs = list(
+            cond_facts[i]
+                .iter()
+                .map(|(fact, part)| facts.id(format!("[{},{}]", js(fact), js(part)))),
+        );
         let (shot, plan) = match shots[i].first() {
-            Some(sh) => (paths.id(js(&sh.path)) as i64, tests.id(js(&test_link(sh.plan))) as i64),
+            Some(sh) => (
+                paths.id(js(&sh.path)) as i64,
+                tests.id(js(&test_link(sh.plan))) as i64,
+            ),
             None => (-1, -1),
         };
-        states_json.push(format!("[{},{},{},{},{fs},{shot},{plan}]", st.level, st.start as u8, at[i].0, at[i].1));
+        states_json.push(format!(
+            "[{},{},{},{},{fs},{shot},{plan}]",
+            st.level, st.start as u8, at[i].0, at[i].1
+        ));
     }
     let mut moves_json = Vec::with_capacity(map.moves.len());
     for (k, m) in map.moves.iter().enumerate() {
         let a = actions.id(js(&action(k)));
-        let es = list(m.fired.iter().map(|&e| exps.id(format!("[{},{}]", js(&exp_link(e)), verdict_code(f.verdict(e))))));
+        let es = list(m.fired.iter().map(|&e| {
+            exps.id(format!(
+                "[{},{}]",
+                js(&exp_link(e)),
+                verdict_code(f.verdict(e))
+            ))
+        }));
         moves_json.push(format!("[{},{},{a},{es}]", m.from, m.to));
     }
 
@@ -246,13 +280,24 @@ pub fn html(
     };
     let by_exps = |fired: &[ExpId]| -> String {
         let links: Vec<String> = fired.iter().map(|&e| exp_link(e)).collect();
-        if links.is_empty() { String::new() } else { format!(r#"<small>{}</small>"#, links.join(", ")) }
+        if links.is_empty() {
+            String::new()
+        } else {
+            format!(r#"<small>{}</small>"#, links.join(", "))
+        }
     };
     for i in (0..n).filter(|&i| map.states[i].start) {
-        let _ = write!(o, r#"<section class="state-panel static" id="state-{i}"><h3>{}</h3>"#, esc(&label(i)));
+        let _ = write!(
+            o,
+            r#"<section class="state-panel static" id="state-{i}"><h3>{}</h3>"#,
+            esc(&label(i))
+        );
         o.push_str(r#"<p><span class="badge ok">start</span></p>"#);
         if !cond_facts[i].is_empty() {
-            let items: Vec<String> = cond_facts[i].iter().map(|(f, _)| format!("<li>{}</li>", esc(f))).collect();
+            let items: Vec<String> = cond_facts[i]
+                .iter()
+                .map(|(f, _)| format!("<li>{}</li>", esc(f)))
+                .collect();
             let _ = write!(o, r#"<ul class="facts">{}</ul>"#, items.join(""));
         }
         let mut out = vec![];
@@ -260,14 +305,27 @@ pub fn html(
         for &k in &from[i] {
             let m = &map.moves[k];
             if m.stays() {
-                stays.push(format!(r#"<li><span class="act">{}</span> {}</li>"#, esc(&action(k)), by_exps(&m.fired)));
+                stays.push(format!(
+                    r#"<li><span class="act">{}</span> {}</li>"#,
+                    esc(&action(k)),
+                    by_exps(&m.fired)
+                ));
             } else {
-                out.push(format!(r#"<li><span class="act">{}</span> → {} {}</li>"#, esc(&action(k)), state_link(m.to), by_exps(&m.fired)));
+                out.push(format!(
+                    r#"<li><span class="act">{}</span> → {} {}</li>"#,
+                    esc(&action(k)),
+                    state_link(m.to),
+                    by_exps(&m.fired)
+                ));
             }
         }
         for (title, items) in [("From here", out), ("Stays here", stays)] {
             if !items.is_empty() {
-                let _ = write!(o, r#"<h4>{title}</h4><ul class="moves">{}</ul>"#, items.join(""));
+                let _ = write!(
+                    o,
+                    r#"<h4>{title}</h4><ul class="moves">{}</ul>"#,
+                    items.join("")
+                );
             }
         }
         o.push_str("</section>");
@@ -521,7 +579,10 @@ mod tests {
 
     #[test]
     fn strings_are_safe_inside_a_script() {
-        assert_eq!(js(r#"say "hi" </script>"#), r#""say \"hi\" \u003c/script>""#);
+        assert_eq!(
+            js(r#"say "hi" </script>"#),
+            r#""say \"hi\" \u003c/script>""#
+        );
         assert_eq!(js("a\\b\nc"), r#""a\\b\nc""#);
     }
 

@@ -75,13 +75,17 @@ pub fn perform_among<'a>(
         None => true,
     });
     uncertain.retain(|&l| !all.iter().any(|&w| prec.beats(w, l)));
-    let (fired, maybe_beaten): (Vec<_>, Vec<_>) =
-        fired.into_iter().partition(|&l| !uncertain.iter().any(|&w| prec.beats(w, l)));
+    let (fired, maybe_beaten): (Vec<_>, Vec<_>) = fired
+        .into_iter()
+        .partition(|&l| !uncertain.iter().any(|&w| prec.beats(w, l)));
     uncertain.extend(maybe_beaten);
 
     // What each Then makes of the state the action leaves, relative Thens included.
     let before = state.overlay(&action.changes);
-    let effects: Vec<Condition> = fired.iter().map(|&e| suite.exp(e).effect(&suite.vocabulary, &before)).collect();
+    let effects: Vec<Condition> = fired
+        .iter()
+        .map(|&e| suite.exp(e).effect(&suite.vocabulary, &before))
+        .collect();
     let mut then = Condition::new();
     let mut clashes = vec![];
     for (i, &a) in fired.iter().enumerate() {
@@ -92,27 +96,49 @@ pub fn perform_among<'a>(
         }
         then = then.and(&effects[i]);
     }
-    let handed_over = fired.iter().copied().find(|&e| suite.exp(e).hands_over.is_some());
+    let handed_over = fired
+        .iter()
+        .copied()
+        .find(|&e| suite.exp(e).hands_over.is_some());
     let (after, invariants) = settle(suite, prec, &before.overlay(&then), &fired);
-    Outcome { fired, uncertain, overridden, clashes, invariants, after, handed_over }
+    Outcome {
+        fired,
+        uncertain,
+        overridden,
+        clashes,
+        invariants,
+        after,
+        handed_over,
+    }
 }
 
 /// The state an expectation with `trigger` checks its Given against when `action` happens in
 /// `state`: the action's other changes already made.
 pub fn seen_by(state: &Condition, action: &Trigger, trigger: &Trigger) -> Condition {
-    let others = action.changes.vars().filter(|v| trigger.changes.get(*v).is_none());
+    let others = action
+        .changes
+        .vars()
+        .filter(|v| trigger.changes.get(*v).is_none());
     state.overlay(&action.changes.restrict(others))
 }
 
 /// Apply every invariant whose Given certainly holds, until nothing changes. Invariants that
 /// one of `exempt_by` overrides are skipped.
-pub fn settle(suite: &Suite, prec: &Precedence, state: &Condition, exempt_by: &[ExpId]) -> (Condition, Vec<ExpId>) {
+pub fn settle(
+    suite: &Suite,
+    prec: &Precedence,
+    state: &Condition,
+    exempt_by: &[ExpId],
+) -> (Condition, Vec<ExpId>) {
     let mut s = state.clone();
     let mut in_force = BTreeSet::new();
     for _ in 0..8 {
         let mut changed = false;
         for inv in suite.invariants() {
-            if !s.is_satisfiable() || exempt_by.iter().any(|&w| prec.beats(w, inv.id)) || !s.implies(&inv.given) {
+            if !s.is_satisfiable()
+                || exempt_by.iter().any(|&w| prec.beats(w, inv.id))
+                || !s.implies(&inv.given)
+            {
                 continue;
             }
             in_force.insert(inv.id);

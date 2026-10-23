@@ -3,8 +3,8 @@
 
 use crate::manual::{self, Note};
 use crate::{
-    Docs, Facts, NO_SCREENSHOT, NOT_SUPPORTED, Page, action_heading, feature_slug, missing_shot, narrative,
-    status_label, values, verdict_label, voice,
+    Docs, Facts, NO_SCREENSHOT, NOT_SUPPORTED, Page, action_heading, feature_slug, missing_shot,
+    narrative, status_label, values, verdict_label, voice,
 };
 use expectation_graph::Node;
 use expectation_model::text::paragraphs;
@@ -12,28 +12,51 @@ use expectation_model::{ExpId, PhraseBody, SectionId, StepText, Suite};
 use expectation_story::{Because, Check, CheckResult, Origin, Plan, Status, StepResult, Verdict};
 use std::fmt::Write;
 
-const GENERATED: &str =
-    "<!-- Generated from the suite's .expect files by Expectation (github.com/ptescher/expectation); edit those, not this. -->";
+const GENERATED: &str = "<!-- Generated from the suite's .expect files by Expectation (github.com/ptescher/expectation); edit those, not this. -->";
 
 pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
     let mut pages = vec![
-        Page { path: "README.md".into(), content: index(d) },
-        Page { path: "tests.md".into(), content: report(d, f) },
-        Page { path: "glossary.md".into(), content: glossary(d) },
-        Page { path: "vocabulary.md".into(), content: vocabulary(d) },
+        Page {
+            path: "README.md".into(),
+            content: index(d),
+        },
+        Page {
+            path: "tests.md".into(),
+            content: report(d, f),
+        },
+        Page {
+            path: "glossary.md".into(),
+            content: glossary(d),
+        },
+        Page {
+            path: "vocabulary.md".into(),
+            content: vocabulary(d),
+        },
     ];
     for i in 0..d.plans.len() {
-        pages.push(Page { path: format!("tests/{}.md", d.plans[i].slug), content: test_page(d, f, i) });
+        pages.push(Page {
+            path: format!("tests/{}.md", d.plans[i].slug),
+            content: test_page(d, f, i),
+        });
         if let Some(t) = manual::tutorial(d, f, i) {
-            pages.push(Page { path: format!("tutorials/{}.md", d.plans[i].slug), content: tutorial_page(d, f, i, &t) });
+            pages.push(Page {
+                path: format!("tutorials/{}.md", d.plans[i].slug),
+                content: tutorial_page(d, f, i, &t),
+            });
         }
     }
     for i in 0..d.outline.map_or(0, |o| o.pages.len()) {
-        pages.push(Page { path: format!("manual/{}.md", d.outline.unwrap().pages[i].slug), content: authored_page(d, i) });
+        pages.push(Page {
+            path: format!("manual/{}.md", d.outline.unwrap().pages[i].slug),
+            content: authored_page(d, i),
+        });
     }
     for feature in &d.suite.features {
         let path = format!("features/{}.md", feature_slug(d.suite, feature));
-        pages.push(Page { path, content: feature_page(d, f, feature.id.0 as usize) });
+        pages.push(Page {
+            path,
+            content: feature_page(d, f, feature.id.0 as usize),
+        });
     }
     pages
 }
@@ -86,22 +109,37 @@ fn prose(d: &Docs, text: &str, from_subdir: bool) -> String {
 fn ref_path(d: &Docs, r: manual::Ref) -> String {
     let s = d.suite;
     match r {
-        manual::Ref::Section(id) => format!("README.md#{}", expectation_model::text::slug(&s.section(id).name)),
+        manual::Ref::Section(id) => format!(
+            "README.md#{}",
+            expectation_model::text::slug(&s.section(id).name)
+        ),
         manual::Ref::Feature(f) => format!("features/{}.md", feature_slug(s, s.feature(f))),
         manual::Ref::Exp(e) => {
             let x = s.exp(e);
-            format!("features/{}.md#{}", feature_slug(s, s.feature(x.feature)), x.slug)
+            format!(
+                "features/{}.md#{}",
+                feature_slug(s, s.feature(x.feature)),
+                x.slug
+            )
         }
         manual::Ref::Tutorial(i) => format!("tutorials/{}.md", d.plans[i].slug),
         manual::Ref::Term(t) => format!("glossary.md#{}", s.glossary[t].slug),
-        manual::Ref::Page(i) => format!("manual/{}.md", d.outline.map_or("", |o| o.pages[i].slug.as_str())),
+        manual::Ref::Page(i) => format!(
+            "manual/{}.md",
+            d.outline.map_or("", |o| o.pages[i].slug.as_str())
+        ),
     }
 }
 
 fn exp_link(d: &Docs, e: ExpId, from_subdir: bool) -> String {
     let x = d.suite.exp(e);
     let feature = feature_slug(d.suite, d.suite.feature(x.feature));
-    format!("[{}]({}features/{feature}.md#{})", x.name, up(from_subdir), x.slug)
+    format!(
+        "[{}]({}features/{feature}.md#{})",
+        x.name,
+        up(from_subdir),
+        x.slug
+    )
 }
 
 fn test_link(d: &Docs, i: usize, from_subdir: bool) -> String {
@@ -111,14 +149,23 @@ fn test_link(d: &Docs, i: usize, from_subdir: bool) -> String {
 
 fn tutorial_link(d: &Docs, i: usize, from_subdir: bool) -> String {
     let p = &d.plans[i];
-    format!("[{}]({}tutorials/{}.md)", manual::short_title(d.suite, p), up(from_subdir), p.slug)
+    format!(
+        "[{}]({}tutorials/{}.md)",
+        manual::short_title(d.suite, p),
+        up(from_subdir),
+        p.slug
+    )
 }
 
 /// "Sketch › Drawing".
 fn section_path(suite: &Suite, id: SectionId) -> String {
     let chain = suite.chain(id);
     let names: Vec<&str> = chain.iter().skip(1).map(|s| s.name.as_str()).collect();
-    if names.is_empty() { suite.name.clone() } else { names.join(" › ") }
+    if names.is_empty() {
+        suite.name.clone()
+    } else {
+        names.join(" › ")
+    }
 }
 
 /// A page's first lines: the generated marker and the way back.
@@ -133,14 +180,26 @@ fn head(o: &mut String, s: &Suite, section: SectionId) {
 /// A screenshot, or a placeholder. `alt` says what it shows: the step's outcome.
 fn image(o: &mut String, shot: Option<&str>, status: Status, alt: &str) {
     let alt = manual::plain(alt).replace('"', "'");
-    let alt = if alt.is_empty() { "Screenshot".to_string() } else { alt };
+    let alt = if alt.is_empty() {
+        "Screenshot".to_string()
+    } else {
+        alt
+    };
     match shot {
         Some(shot) => {
             let _ = writeln!(o, "<img src=\"../{shot}\" width=\"720\" alt=\"{alt}\">\n");
         }
         None => {
-            let placeholder = if status == Status::Unsupported { NOT_SUPPORTED } else { NO_SCREENSHOT };
-            let _ = writeln!(o, "<img src=\"../{placeholder}\" width=\"360\" alt=\"{}\">\n", manual::missing(status));
+            let placeholder = if status == Status::Unsupported {
+                NOT_SUPPORTED
+            } else {
+                NO_SCREENSHOT
+            };
+            let _ = writeln!(
+                o,
+                "<img src=\"../{placeholder}\" width=\"360\" alt=\"{}\">\n",
+                manual::missing(status)
+            );
         }
     }
 }
@@ -171,7 +230,10 @@ fn index(d: &Docs) -> String {
                 match *item {
                     crate::outline::Item::Section(id) => {
                         let sec = s.section(id);
-                        let about = paragraphs(&sec.description).into_iter().next().unwrap_or_default();
+                        let about = paragraphs(&sec.description)
+                            .into_iter()
+                            .next()
+                            .unwrap_or_default();
                         let _ = writeln!(
                             o,
                             "- [{}](README.md#{}): {}",
@@ -182,12 +244,21 @@ fn index(d: &Docs) -> String {
                     }
                     crate::outline::Item::Page(i) => {
                         let page = &outline.pages[i];
-                        let _ = writeln!(o, "- [{}](manual/{}.md): {}", page.title, page.slug, prose(d, &page.about(), false));
+                        let _ = writeln!(
+                            o,
+                            "- [{}](manual/{}.md): {}",
+                            page.title,
+                            page.slug,
+                            prose(d, &page.about(), false)
+                        );
                     }
                 }
             }
             if part.name == "Reference" {
-                let _ = writeln!(o, "- [Glossary](glossary.md): What the words in this manual mean.");
+                let _ = writeln!(
+                    o,
+                    "- [Glossary](glossary.md): What the words in this manual mean."
+                );
             }
             o.push('\n');
         }
@@ -199,7 +270,12 @@ fn index(d: &Docs) -> String {
                     let mut stack = vec![(id, 1usize)];
                     while let Some((x, depth)) = stack.pop() {
                         order.push((Some((p, depth)), s.section(x)));
-                        let below = s.section(x).children.iter().rev().filter(|&&c| !outline.listed(c));
+                        let below = s
+                            .section(x)
+                            .children
+                            .iter()
+                            .rev()
+                            .filter(|&&c| !outline.listed(c));
                         stack.extend(below.map(|&c| (c, depth + 1)));
                     }
                 }
@@ -251,14 +327,27 @@ fn index(d: &Docs) -> String {
             }
         }
         let tutorials: Vec<usize> = (0..d.plans.len())
-            .filter(|&i| d.plans[i].section == section.id && matches!(d.plans[i].origin, Origin::Story { .. }))
+            .filter(|&i| {
+                d.plans[i].section == section.id
+                    && matches!(d.plans[i].origin, Origin::Story { .. })
+            })
             .collect();
         if !tutorials.is_empty() {
             o.push_str("**Tutorials**\n\n");
             for i in tutorials {
-                let Origin::Story { story, .. } = d.plans[i].origin else { continue };
-                let about = paragraphs(&s.story(story).description).into_iter().next().unwrap_or_default();
-                let _ = writeln!(o, "- **{}**: {}", tutorial_link(d, i, false), prose(d, &about, false));
+                let Origin::Story { story, .. } = d.plans[i].origin else {
+                    continue;
+                };
+                let about = paragraphs(&s.story(story).description)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default();
+                let _ = writeln!(
+                    o,
+                    "- **{}**: {}",
+                    tutorial_link(d, i, false),
+                    prose(d, &about, false)
+                );
             }
             o.push('\n');
         }
@@ -266,9 +355,17 @@ fn index(d: &Docs) -> String {
             o.push_str("**Topics**\n\n");
             for &fid in &section.features {
                 let feature = s.feature(fid);
-                let about = paragraphs(&feature.description).into_iter().next().unwrap_or_default();
+                let about = paragraphs(&feature.description)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default();
                 let about = prose(d, &about, false);
-                let _ = writeln!(o, "- **[{}](features/{}.md)**: {about}", feature.name, feature_slug(s, feature));
+                let _ = writeln!(
+                    o,
+                    "- **[{}](features/{}.md)**: {about}",
+                    feature.name,
+                    feature_slug(s, feature)
+                );
             }
             o.push('\n');
         }
@@ -282,8 +379,7 @@ fn authored_page(d: &Docs, i: usize) -> String {
     let page = &outline.pages[i];
     let mut o = format!(
         "{GENERATED}\n\n[{}](../README.md) › {}\n\n",
-        d.suite.name,
-        outline.parts[page.part].name
+        d.suite.name, outline.parts[page.part].name
     );
     let mut in_code = false;
     for line in page.source.lines() {
@@ -335,7 +431,16 @@ fn tutorial_page(d: &Docs, f: &Facts, i: usize, t: &manual::Tutorial) -> String 
         }
         o.push('\n');
         let mut img = String::new();
-        image(&mut img, step.shot.as_deref(), step.status, if step.seen.is_empty() { &step.doing } else { &step.seen });
+        image(
+            &mut img,
+            step.shot.as_deref(),
+            step.status,
+            if step.seen.is_empty() {
+                &step.doing
+            } else {
+                &step.seen
+            },
+        );
         for line in img.lines() {
             let _ = writeln!(o, "   {line}");
         }
@@ -344,7 +449,12 @@ fn tutorial_page(d: &Docs, f: &Facts, i: usize, t: &manual::Tutorial) -> String 
         o.push_str("## Learn more\n\n");
         for &fid in &t.related {
             let feature = s.feature(fid);
-            let _ = writeln!(o, "- [{}](../features/{}.md)", feature.name, feature_slug(s, feature));
+            let _ = writeln!(
+                o,
+                "- [{}](../features/{}.md)",
+                feature.name,
+                feature_slug(s, feature)
+            );
         }
         o.push('\n');
     }
@@ -359,8 +469,7 @@ fn tutorial_page(d: &Docs, f: &Facts, i: usize, t: &manual::Tutorial) -> String 
         let _ = writeln!(o, "The user story: {n}\n");
     }
     let _ = writeln!(o, "```gherkin\n{}```\n\n</details>", gherkin(&t.written));
-    if let Origin::Story { .. } = plan.origin {
-    }
+    if let Origin::Story { .. } = plan.origin {}
     o
 }
 
@@ -386,17 +495,38 @@ fn feature_page(d: &Docs, f: &Facts, fi: usize) -> String {
                 Note::Except { when, see } if when.is_empty() => {
                     format!("**Exception:** see {}.", exp_link(d, see, true))
                 }
-                Note::Except { when, see } => format!("**Except** when {when}: see {}.", exp_link(d, see, true)),
-                Note::ExceptionTo(other) => format!("An exception to {}.", exp_link(d, other, true)),
-                Note::CanLeave { by, what } => format!("**Exception:** {} can leave {what}.", exp_link(d, by, true)),
+                Note::Except { when, see } => {
+                    format!("**Except** when {when}: see {}.", exp_link(d, see, true))
+                }
+                Note::ExceptionTo(other) => {
+                    format!("An exception to {}.", exp_link(d, other, true))
+                }
+                Note::CanLeave { by, what } => {
+                    format!("**Exception:** {} can leave {what}.", exp_link(d, by, true))
+                }
             };
             let _ = writeln!(o, "> {line}\n");
         }
         match f.shot_of(d, e) {
-            Some((_, _, shot)) => image(&mut o, Some(&shot), Status::Passed, &voice::how(s, &x.steps)),
-            None => image(&mut o, None, f.tested_by(e).first().map_or(Status::NotRun, |&p| f.status[p]), ""),
+            Some((_, _, shot)) => image(
+                &mut o,
+                Some(&shot),
+                Status::Passed,
+                &voice::how(s, &x.steps),
+            ),
+            None => image(
+                &mut o,
+                None,
+                f.tested_by(e)
+                    .first()
+                    .map_or(Status::NotRun, |&p| f.status[p]),
+                "",
+            ),
         }
-        let shown: Vec<String> = manual::shown_in(d, f, e).into_iter().map(|p| tutorial_link(d, p, true)).collect();
+        let shown: Vec<String> = manual::shown_in(d, f, e)
+            .into_iter()
+            .map(|p| tutorial_link(d, p, true))
+            .collect();
         if !shown.is_empty() {
             let _ = writeln!(o, "See it in {}.\n", shown.join(", "));
         }
@@ -420,13 +550,24 @@ fn feature_page(d: &Docs, f: &Facts, fi: usize) -> String {
                 let _ = writeln!(o, "- **Follows:** {}", parents.join(", "));
             }
             None if d.analysis.flow.truncated => {
-                let _ = writeln!(o, "- **Follows:** nothing the search found within its limits");
+                let _ = writeln!(
+                    o,
+                    "- **Follows:** nothing the search found within its limits"
+                );
             }
             None => {
-                let _ = writeln!(o, "- **Unreachable:** nothing leads to a state where it applies");
+                let _ = writeln!(
+                    o,
+                    "- **Unreachable:** nothing leads to a state where it applies"
+                );
             }
         }
-        let children: Vec<String> = d.analysis.flow.children(Node::Exp(e)).map(|c| exp_link(d, c, true)).collect();
+        let children: Vec<String> = d
+            .analysis
+            .flow
+            .children(Node::Exp(e))
+            .map(|c| exp_link(d, c, true))
+            .collect();
         if !children.is_empty() {
             let _ = writeln!(o, "- **Leads to:** {}", children.join(", "));
         }
@@ -438,7 +579,11 @@ fn feature_page(d: &Docs, f: &Facts, fi: usize) -> String {
         let _ = writeln!(
             o,
             "- **Tested by:** {}\n\n</details>\n",
-            if links.is_empty() { "nothing yet".into() } else { links.join(", ") }
+            if links.is_empty() {
+                "nothing yet".into()
+            } else {
+                links.join(", ")
+            }
         );
     }
     o
@@ -475,17 +620,28 @@ fn report(d: &Docs, f: &Facts) -> String {
         _ => o.push_str("The tests haven't run.\n\n"),
     }
     for section in &s.sections {
-        let tests: Vec<usize> = (0..d.plans.len()).filter(|&i| d.plans[i].section == section.id).collect();
+        let tests: Vec<usize> = (0..d.plans.len())
+            .filter(|&i| d.plans[i].section == section.id)
+            .collect();
         if tests.is_empty() {
             continue;
         }
-        let _ = writeln!(o, "## {}\n\n| Test | Kind | Result |\n| --- | --- | --- |", section_path(s, section.id));
+        let _ = writeln!(
+            o,
+            "## {}\n\n| Test | Kind | Result |\n| --- | --- | --- |",
+            section_path(s, section.id)
+        );
         for i in tests {
             let kind = match d.plans[i].origin {
                 Origin::Story { .. } => format!("[tutorial](tutorials/{}.md)", d.plans[i].slug),
                 Origin::Coverage { .. } | Origin::Reaching { .. } => "generated".into(),
             };
-            let _ = writeln!(o, "| {} | {kind} | {} |", test_link(d, i, false), status_mark(f.status[i]));
+            let _ = writeln!(
+                o,
+                "| {} | {kind} | {} |",
+                test_link(d, i, false),
+                status_mark(f.status[i])
+            );
         }
         o.push('\n');
     }
@@ -501,8 +657,13 @@ fn report(d: &Docs, f: &Facts) -> String {
             Verdict::Untested | Verdict::Unsupported | Verdict::NotRun => "untested",
         })
     };
-    let _ = writeln!(o, "```mermaid\n{}```", expectation_graph::export::mermaid(s, d.analysis, &classes));
-    let map = expectation_graph::states::explore(s, &d.analysis.precedence, &[], Default::default());
+    let _ = writeln!(
+        o,
+        "```mermaid\n{}```",
+        expectation_graph::export::mermaid(s, d.analysis, &classes)
+    );
+    let map =
+        expectation_graph::states::explore(s, &d.analysis.precedence, &[], Default::default());
     let _ = writeln!(
         o,
         "\n## State map\n\nThe states the app can get into from each section's setup, and every way from one to \
@@ -515,8 +676,11 @@ fn report(d: &Docs, f: &Facts) -> String {
 fn glossary(d: &Docs) -> String {
     let s = d.suite;
     let mut o = String::new();
-    let _ =
-        writeln!(o, "{GENERATED}\n\n[{}](README.md)\n\n# Glossary\n\nWhat the words in this manual mean.\n", s.name);
+    let _ = writeln!(
+        o,
+        "{GENERATED}\n\n[{}](README.md)\n\n# Glossary\n\nWhat the words in this manual mean.\n",
+        s.name
+    );
     for i in manual::terms(s) {
         let t = &s.glossary[i];
         let _ = writeln!(o, "<a id=\"{}\"></a>\n\n**{}**\n", t.slug, t.name);
@@ -552,7 +716,9 @@ fn vocabulary(d: &Docs) -> String {
         if !vars.is_empty() {
             o.push_str("**States**\n\n| State | Can be | To change it |\n| --- | --- | --- |\n");
             for var in vars {
-                let set = voice::how_to_set(var).map(|t| voice::sentence(&t)).unwrap_or_default();
+                let set = voice::how_to_set(var)
+                    .map(|t| voice::sentence(&t))
+                    .unwrap_or_default();
                 let _ = writeln!(o, "| {} | {} | {set} |", var.subject, values(var));
             }
             o.push('\n');
@@ -573,12 +739,17 @@ fn vocabulary(d: &Docs) -> String {
             for p in phrases {
                 let means = match &p.body {
                     PhraseBody::Setup(facts) => {
-                        let f: Vec<String> = facts.iter().map(|f| v.var(f.var).describe(&f.constraint)).collect();
+                        let f: Vec<String> = facts
+                            .iter()
+                            .map(|f| v.var(f.var).describe(&f.constraint))
+                            .collect();
                         expectation_model::text::join_and(&f)
                     }
-                    PhraseBody::Actions(actions) => {
-                        actions.iter().map(|t| s.describe_trigger(t)).collect::<Vec<_>>().join(", then ")
-                    }
+                    PhraseBody::Actions(actions) => actions
+                        .iter()
+                        .map(|t| s.describe_trigger(t))
+                        .collect::<Vec<_>>()
+                        .join(", then "),
                 };
                 let say = p.say.as_deref().map(voice::sentence).unwrap_or_default();
                 let _ = writeln!(o, "| {} | {say} *({means})* |", p.name);
@@ -594,7 +765,11 @@ fn test_page(d: &Docs, f: &Facts, i: usize) -> String {
     let plan = &d.plans[i];
     let result = d.report.and_then(|r| r.results.get(i));
     let mut o = String::new();
-    let _ = writeln!(o, "{GENERATED}\n\n[{}](../README.md) › [Test report](../tests.md)\n\n# {}\n", s.name, plan.title);
+    let _ = writeln!(
+        o,
+        "{GENERATED}\n\n[{}](../README.md) › [Test report](../tests.md)\n\n# {}\n",
+        s.name, plan.title
+    );
     match plan.origin {
         Origin::Story { story, .. } => {
             let st = s.story(story);
@@ -629,14 +804,32 @@ fn test_page(d: &Docs, f: &Facts, i: usize) -> String {
     }
 
     let _ = writeln!(o, "## Start\n\n```gherkin\n{}```\n", start_lines(s, plan));
-    step_body(d, &mut o, &plan.start_checks, result.map(|r| &r.start), f.status[i]);
+    step_body(
+        d,
+        &mut o,
+        &plan.start_checks,
+        result.map(|r| &r.start),
+        f.status[i],
+    );
     for (n, step) in plan.steps.iter().enumerate() {
-        let _ = writeln!(o, "## {}. {}\n\n```gherkin\n{}```\n", n + 1, action_heading(&step.text), gherkin(&step.text));
+        let _ = writeln!(
+            o,
+            "## {}. {}\n\n```gherkin\n{}```\n",
+            n + 1,
+            action_heading(&step.text),
+            gherkin(&step.text)
+        );
         if !step.fired.is_empty() {
             let fired: Vec<String> = step.fired.iter().map(|&e| exp_link(d, e, true)).collect();
             let _ = writeln!(o, "Expected behaviour: {}.\n", fired.join(", "));
         }
-        step_body(d, &mut o, &step.checks, result.and_then(|r| r.steps.get(n)), f.status[i]);
+        step_body(
+            d,
+            &mut o,
+            &step.checks,
+            result.and_then(|r| r.steps.get(n)),
+            f.status[i],
+        );
     }
     o
 }
@@ -645,7 +838,10 @@ fn test_page(d: &Docs, f: &Facts, i: usize) -> String {
 /// start first, then the rest.
 pub(crate) fn start_lines(s: &Suite, plan: &Plan) -> String {
     let section = &s.section(plan.section).start;
-    let (own, rest): (Vec<_>, Vec<_>) = plan.start.iter().partition(|(v, c)| section.get(*v) != Some(*c));
+    let (own, rest): (Vec<_>, Vec<_>) = plan
+        .start
+        .iter()
+        .partition(|(v, c)| section.get(*v) != Some(*c));
     let mut out = String::new();
     for (i, (v, c)) in own.into_iter().chain(rest).enumerate() {
         let keyword = if i == 0 { "Given" } else { "  And" };
@@ -654,13 +850,22 @@ pub(crate) fn start_lines(s: &Suite, plan: &Plan) -> String {
     out
 }
 
-fn step_body(d: &Docs, o: &mut String, checks: &[Check], result: Option<&StepResult>, plan_status: Status) {
+fn step_body(
+    d: &Docs,
+    o: &mut String,
+    checks: &[Check],
+    result: Option<&StepResult>,
+    plan_status: Status,
+) {
     let status = result.map_or(plan_status, |r| r.status);
     image(o, result.and_then(|r| r.screenshot.as_deref()), status, "");
     if result.and_then(|r| r.screenshot.as_ref()).is_none() {
         let _ = writeln!(o, "*{}*\n", missing_shot(status));
     }
-    if let Some(e) = result.and_then(|r| r.error.as_ref()).filter(|_| status == Status::Failed) {
+    if let Some(e) = result
+        .and_then(|r| r.error.as_ref())
+        .filter(|_| status == Status::Failed)
+    {
         let _ = writeln!(o, "❌ **{e}**\n");
     }
     // Arranged states that read back as arranged say nothing the Start block doesn't.
@@ -674,7 +879,10 @@ fn step_body(d: &Docs, o: &mut String, checks: &[Check], result: Option<&StepRes
         let _ = writeln!(o, "- {}", check_line(d, c, cr));
     }
     if arranged > 0 {
-        let _ = writeln!(o, "- ✅ every arranged state read back as arranged ({arranged})");
+        let _ = writeln!(
+            o,
+            "- ✅ every arranged state read back as arranged ({arranged})"
+        );
     }
     o.push('\n');
 }
@@ -706,8 +914,17 @@ fn check_line(d: &Docs, c: &Check, r: Option<&CheckResult>) -> String {
 pub(crate) fn gherkin(steps: &[StepText]) -> String {
     let mut s = String::new();
     for t in steps {
-        let and = matches!(t.keyword, expectation_model::Keyword::And | expectation_model::Keyword::But);
-        let _ = writeln!(s, "{}{} {}", if and { "  " } else { "" }, t.keyword.as_str(), t.text);
+        let and = matches!(
+            t.keyword,
+            expectation_model::Keyword::And | expectation_model::Keyword::But
+        );
+        let _ = writeln!(
+            s,
+            "{}{} {}",
+            if and { "  " } else { "" },
+            t.keyword.as_str(),
+            t.text
+        );
     }
     s
 }

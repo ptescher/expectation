@@ -136,6 +136,7 @@ cargo run -p expectation_harness --example kettle                      # docs in
 cargo run -p expectation_harness --example kettle -- out --bug         # a seeded defect, to see a failure
 cargo run -p expectation_cli -- check crates/harness/examples/kettle   # check it without running anything
 cargo test --workspace                                                 # the examples, as tests too
+git config core.hooksPath .githooks                                    # check fmt and clippy before each commit
 ```
 
 In the kettle, the dial has to be held above 55 % for 0.6 s before the kettle starts, and the

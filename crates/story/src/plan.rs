@@ -11,7 +11,8 @@ use expectation_graph::semantics::perform_among;
 use expectation_graph::{Analysis, Precedence};
 use expectation_model::text;
 use expectation_model::{
-    Condition, Constraint, Diagnostic, ExpId, Fact, Keyword, SectionId, Span, StepText, StoryId, Suite, Trigger, VarId,
+    Condition, Constraint, Diagnostic, ExpId, Fact, Keyword, SectionId, Span, StepText, StoryId,
+    Suite, Trigger, VarId,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -110,7 +111,11 @@ pub fn plan_stories(suite: &Suite, analysis: &Analysis) -> Planned {
             } else {
                 format!("{} › {}", story.name, sc.name)
             };
-            let slug = if title == story.name { story.slug.clone() } else { format!("{}--{}", story.slug, sc.slug) };
+            let slug = if title == story.name {
+                story.slug.clone()
+            } else {
+                format!("{}--{}", story.slug, sc.slug)
+            };
             let section = suite.section(story.section);
             let slug = prefixed(&section.slug, &slug);
             let inputs = sc.steps.iter().map(|s| Input {
@@ -122,12 +127,31 @@ pub fn plan_stories(suite: &Suite, analysis: &Analysis) -> Planned {
                 written: s.written.clone(),
             });
             let start = section.start.overlay(&sc.given);
-            let mut given: Vec<StepText> =
-                suite.chain(section.id).iter().flat_map(|s| s.setup_steps.iter().cloned()).collect();
+            let mut given: Vec<StepText> = suite
+                .chain(section.id)
+                .iter()
+                .flat_map(|s| s.setup_steps.iter().cloned())
+                .collect();
             given.extend(sc.given_steps.iter().cloned());
-            let origin = Origin::Story { story: story.id, scenario: i };
-            let head = Head { origin, section: section.id, title, slug, start, given };
-            plans.push(build(suite, &analysis.precedence, head, inputs, &mut diagnostics));
+            let origin = Origin::Story {
+                story: story.id,
+                scenario: i,
+            };
+            let head = Head {
+                origin,
+                section: section.id,
+                title,
+                slug,
+                start,
+                given,
+            };
+            plans.push(build(
+                suite,
+                &analysis.precedence,
+                head,
+                inputs,
+                &mut diagnostics,
+            ));
         }
     }
     Planned { plans, diagnostics }
@@ -135,7 +159,11 @@ pub fn plan_stories(suite: &Suite, analysis: &Analysis) -> Planned {
 
 /// `slug` under a section: "app--drawing--first-sketch".
 fn prefixed(section: &str, slug: &str) -> String {
-    if section.is_empty() { slug.to_string() } else { format!("{section}--{slug}") }
+    if section.is_empty() {
+        slug.to_string()
+    } else {
+        format!("{section}--{slug}")
+    }
 }
 
 /// What a plan is, before its steps are worked out.
@@ -155,11 +183,25 @@ fn build<'a>(
     inputs: impl Iterator<Item = Input<'a>>,
     diags: &mut Vec<Diagnostic>,
 ) -> Plan {
-    let Head { origin, section, title, slug, start, given } = head;
+    let Head {
+        origin,
+        section,
+        title,
+        slug,
+        start,
+        given,
+    } = head;
     let v = &suite.vocabulary;
-    let (mut state, start_invariants) = expectation_graph::semantics::settle(suite, prec, &start, &[]);
-    let mut start_checks: Vec<Check> =
-        start.iter().map(|(var, c)| Check { var, expect: *c, because: Because::Arranged }).collect();
+    let (mut state, start_invariants) =
+        expectation_graph::semantics::settle(suite, prec, &start, &[]);
+    let mut start_checks: Vec<Check> = start
+        .iter()
+        .map(|(var, c)| Check {
+            var,
+            expect: *c,
+            because: Because::Arranged,
+        })
+        .collect();
     for &inv in &start_invariants {
         promise(&mut start_checks, suite, inv, &start);
     }
@@ -176,7 +218,12 @@ fn build<'a>(
             diags.push(
                 Diagnostic::error(
                     "clash",
-                    format!("«{}» and «{}» both apply here and disagree about {}", a.name, b.name, v.var(var).subject),
+                    format!(
+                        "«{}» and «{}» both apply here and disagree about {}",
+                        a.name,
+                        b.name,
+                        v.var(var).subject
+                    ),
                 )
                 .at(&input.span, "")
                 .help("settle the conflict between them first"),
@@ -185,22 +232,42 @@ fn build<'a>(
         }
         for &u in &out.uncertain {
             let e = suite.exp(u);
-            let mut d = Diagnostic::error("unclear-step", format!("it isn't clear whether «{}» applies here", e.name));
-            let given = expectation_graph::semantics::seen_by(&state, &input.action, &e.trigger).unproven(&e.given);
+            let mut d = Diagnostic::error(
+                "unclear-step",
+                format!("it isn't clear whether «{}» applies here", e.name),
+            );
+            let given = expectation_graph::semantics::seen_by(&state, &input.action, &e.trigger)
+                .unproven(&e.given);
             if !given.is_unconstrained() {
-                d = d.at(&input.span, format!("nothing establishes that {}", v.describe(&given)));
+                d = d.at(
+                    &input.span,
+                    format!("nothing establishes that {}", v.describe(&given)),
+                );
             }
             let trig = input.action.changes.unproven(&e.trigger.changes);
             if !trig.is_unconstrained() {
-                d = d.at(&input.span, format!("the step doesn't say whether {}", v.describe(&trig)));
+                d = d.at(
+                    &input.span,
+                    format!("the step doesn't say whether {}", v.describe(&trig)),
+                );
             }
             diags.push(
-                d.at(&e.span, "").help("pin it down: arrange it with a `Given`, or give the When an exact value"),
+                d.at(&e.span, "").help(
+                    "pin it down: arrange it with a `Given`, or give the When an exact value",
+                ),
             );
         }
-        if let (true, true, Some(e)) = (out.fired.is_empty(), out.uncertain.is_empty(), input.action.event) {
+        if let (true, true, Some(e)) = (
+            out.fired.is_empty(),
+            out.uncertain.is_empty(),
+            input.action.event,
+        ) {
             let event = v.event(e);
-            let line = input.text.iter().find(|t| text::key(&t.text) == event.key).map_or(&input.span, |t| &t.span);
+            let line = input
+                .text
+                .iter()
+                .find(|t| text::key(&t.text) == event.key)
+                .map_or(&input.span, |t| &t.span);
             diags.push(
                 Diagnostic::error("unspecified", format!("nothing is expected to happen when {}", event.text))
                     .at(line, format!("at this point {}", v.describe(&state)))
@@ -225,21 +292,34 @@ fn build<'a>(
                     format!("the story expects {stated}, but the expectations say {said}"),
                 )
                 .at(&fact.span, "");
-                if let Some(&by) = out.fired.iter().find(|&&f| suite.exp(f).then.get(fact.var).is_some()) {
-                    d = d.at(&suite.exp(by).span, format!("«{}» says so", suite.exp(by).name));
+                if let Some(&by) = out
+                    .fired
+                    .iter()
+                    .find(|&&f| suite.exp(f).then.get(fact.var).is_some())
+                {
+                    d = d.at(
+                        &suite.exp(by).span,
+                        format!("«{}» says so", suite.exp(by).name),
+                    );
                 }
                 diags.push(d);
                 continue;
             }
             if !after.implies(&want) {
                 diags.push(
-                    Diagnostic::warning("unpromised", format!("no expectation promises that {stated}"))
-                        .at(&fact.span, "")
-                        .help("it's checked anyway; write an expectation so it's specified"),
+                    Diagnostic::warning(
+                        "unpromised",
+                        format!("no expectation promises that {stated}"),
+                    )
+                    .at(&fact.span, "")
+                    .help("it's checked anyway; write an expectation so it's specified"),
                 );
             }
             after = after.and(&want);
-            if !checks.iter().any(|c: &Check| c.var == fact.var && c.expect == fact.constraint) {
+            if !checks
+                .iter()
+                .any(|c: &Check| c.var == fact.var && c.expect == fact.constraint)
+            {
                 checks.push(Check {
                     var: fact.var,
                     expect: fact.constraint,
@@ -263,14 +343,28 @@ fn build<'a>(
             break;
         }
     }
-    Plan { origin, section, title, slug, start, given, start_checks, start_invariants, steps }
+    Plan {
+        origin,
+        section,
+        title,
+        slug,
+        start,
+        given,
+        start_checks,
+        start_invariants,
+        steps,
+    }
 }
 
 /// Add an expectation's Then to `checks`, skipping what's already checked.
 fn promise(checks: &mut Vec<Check>, suite: &Suite, e: ExpId, before: &Condition) {
     for (var, c) in suite.exp(e).effect(&suite.vocabulary, before).iter() {
         if !checks.iter().any(|k| k.var == var && k.expect == *c) {
-            checks.push(Check { var, expect: *c, because: Because::Expectation(e) });
+            checks.push(Check {
+                var,
+                expect: *c,
+                because: Because::Expectation(e),
+            });
         }
     }
 }
@@ -320,14 +414,21 @@ pub fn untested(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec<Diagn
             .filter(|(v, c)| suite.background.get(*v) != Some(c))
             .map(|(v, c)| format!("Given {}", suite.vocabulary.var(v).describe(c)))
             .collect();
-        lines.extend(route.steps.iter().map(|s| format!("When {}", suite.describe_trigger(&suite.exp(*s).trigger))));
-        diags.push(Diagnostic::warning("untested", format!("no story exercises «{}»", e.name)).at(&e.span, "").help(
-            if lines.is_empty() {
-                "it holds from the start; any story checks it".into()
-            } else {
-                format!("a story that would: {}", lines.join(" / "))
-            },
-        ));
+        lines.extend(
+            route
+                .steps
+                .iter()
+                .map(|s| format!("When {}", suite.describe_trigger(&suite.exp(*s).trigger))),
+        );
+        diags.push(
+            Diagnostic::warning("untested", format!("no story exercises «{}»", e.name))
+                .at(&e.span, "")
+                .help(if lines.is_empty() {
+                    "it holds from the start; any story checks it".into()
+                } else {
+                    format!("a story that would: {}", lines.join(" / "))
+                }),
+        );
     }
     diags
 }
@@ -359,13 +460,20 @@ fn when_text(x: &expectation_model::Expectation) -> Vec<StepText> {
 pub fn reaching_plans(suite: &Suite, analysis: &Analysis) -> Vec<Plan> {
     let mut out = vec![];
     for s in suite.sections.iter().filter(|s| s.follows.is_some()) {
-        let Some(route) = analysis.section_routes[s.id.0 as usize].as_ref().filter(|r| !r.steps.is_empty()) else {
+        let Some(route) = analysis.section_routes[s.id.0 as usize]
+            .as_ref()
+            .filter(|r| !r.steps.is_empty())
+        else {
             continue;
         };
         // It runs where the setup it follows is: that section's launch and expectations.
         let from = expectation_graph::followed(suite, s);
         let mut given: Vec<StepText> = match from {
-            Some(f) => suite.chain(f).iter().flat_map(|x| x.setup_steps.iter().cloned()).collect(),
+            Some(f) => suite
+                .chain(f)
+                .iter()
+                .flat_map(|x| x.setup_steps.iter().cloned())
+                .collect(),
             None => s.follows_steps.clone(),
         };
         given.iter_mut().for_each(|t| t.keyword = Keyword::Given);
@@ -373,7 +481,14 @@ pub fn reaching_plans(suite: &Suite, analysis: &Analysis) -> Vec<Plan> {
             let x = suite.exp(id);
             let text = when_text(x);
             let (action, span) = (x.trigger.clone(), x.span.clone());
-            Input { action, checks: &[], written: text.clone(), text, span, group: n + 1 }
+            Input {
+                action,
+                checks: &[],
+                written: text.clone(),
+                text,
+                span,
+                group: n + 1,
+            }
         });
         let head = Head {
             origin: Origin::Reaching { section: s.id },
@@ -392,7 +507,11 @@ pub fn reaching_plans(suite: &Suite, analysis: &Analysis) -> Vec<Plan> {
         let last = plan.steps.last_mut().expect("a route has steps");
         for (var, c) in s.start.iter() {
             if !last.checks.iter().any(|k| k.var == var && k.expect == *c) {
-                last.checks.push(Check { var, expect: *c, because: Because::Setup(s.id) });
+                last.checks.push(Check {
+                    var,
+                    expect: *c,
+                    because: Because::Setup(s.id),
+                });
             }
         }
         out.push(plan);
@@ -412,7 +531,8 @@ pub fn coverage_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec
         covered[e] |= !by.is_empty();
     }
     // Routes from each section's own start, so a generated test starts where the section does.
-    let mut flows: Vec<Option<expectation_graph::Flow>> = suite.sections.iter().map(|_| None).collect();
+    let mut flows: Vec<Option<expectation_graph::Flow>> =
+        suite.sections.iter().map(|_| None).collect();
     for e in &suite.expectations {
         if covered[e.id.0 as usize] {
             continue;
@@ -420,18 +540,37 @@ pub fn coverage_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec
         let section = suite.section_of(e.id);
         let flow = flows[section.id.0 as usize].get_or_insert_with(|| {
             let roots = [(section.start.clone(), section.id)];
-            expectation_graph::flow::explore(suite, &analysis.precedence, &roots, expectation_graph::Limits::default())
+            expectation_graph::flow::explore(
+                suite,
+                &analysis.precedence,
+                &roots,
+                expectation_graph::Limits::default(),
+            )
         });
-        let route = flow.routes[e.id.0 as usize].as_ref().or(analysis.flow.routes[e.id.0 as usize].as_ref());
+        let route = flow.routes[e.id.0 as usize]
+            .as_ref()
+            .or(analysis.flow.routes[e.id.0 as usize].as_ref());
         if route.is_some_and(|r| r.steps.is_empty()) {
             continue;
         }
         // Without a route, the expectation on its own: its Given arranged on the section's
         // start, then its When (an invariant needs no step: it's checked at the start).
         let (start, steps, title) = match route {
-            Some(r) => (r.start.clone(), r.steps.clone(), format!("Reaching «{}»", e.name)),
-            None if e.is_invariant() => (section.start.overlay(&e.given), vec![], format!("Arranging «{}»", e.name)),
-            None => (section.start.overlay(&e.given), vec![e.id], format!("Arranging «{}»", e.name)),
+            Some(r) => (
+                r.start.clone(),
+                r.steps.clone(),
+                format!("Reaching «{}»", e.name),
+            ),
+            None if e.is_invariant() => (
+                section.start.overlay(&e.given),
+                vec![],
+                format!("Arranging «{}»", e.name),
+            ),
+            None => (
+                section.start.overlay(&e.given),
+                vec![e.id],
+                format!("Arranging «{}»", e.name),
+            ),
         };
         let inputs = steps.iter().enumerate().map(|(n, &s)| {
             let x = suite.exp(s);
@@ -445,12 +584,26 @@ pub fn coverage_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec
                 group: n + 1,
             }
         });
-        let mut given: Vec<StepText> =
-            suite.chain(section.id).iter().flat_map(|s| s.setup_steps.iter().cloned()).collect();
-        for (var, c) in start.iter().filter(|(v, c)| section.start.get(*v) != Some(c)) {
+        let mut given: Vec<StepText> = suite
+            .chain(section.id)
+            .iter()
+            .flat_map(|s| s.setup_steps.iter().cloned())
+            .collect();
+        for (var, c) in start
+            .iter()
+            .filter(|(v, c)| section.start.get(*v) != Some(c))
+        {
             let span = e.span.clone();
-            let (text, meaning) = (suite.vocabulary.var(var).describe(c), Some(expectation_model::Said::Fact(var, *c)));
-            given.push(StepText { keyword: Keyword::Given, text, span, meaning });
+            let (text, meaning) = (
+                suite.vocabulary.var(var).describe(c),
+                Some(expectation_model::Said::Fact(var, *c)),
+            );
+            given.push(StepText {
+                keyword: Keyword::Given,
+                text,
+                span,
+                meaning,
+            });
         }
         let mut diags = vec![];
         let head = Head {
@@ -490,21 +643,48 @@ pub fn visit_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec<Pl
         .flat_map(|p| std::iter::once(&p.start).chain(p.steps.iter().map(|s| &s.state)))
         .map(key)
         .collect();
-    let mut slugs: std::collections::HashSet<String> = plans.iter().map(|p| p.slug.clone()).collect();
+    let mut slugs: std::collections::HashSet<String> =
+        plans.iter().map(|p| p.slug.clone()).collect();
     let mut out = vec![];
     for m in expectation_graph::states::first_moves(suite, &analysis.precedence) {
         if seen.contains(&key(&m.after)) {
             continue;
         }
         let e = suite.exp(m.rule);
-        let section = suite.sections.iter().find(|s| s.id == m.section).expect("a move's section");
+        let section = suite
+            .sections
+            .iter()
+            .find(|s| s.id == m.section)
+            .expect("a move's section");
         let text = when_text(e);
-        let input = Input { action: e.trigger.clone(), checks: &[], written: text.clone(), text, span: e.span.clone(), group: 1 };
-        let mut given: Vec<StepText> =
-            suite.chain(section.id).iter().flat_map(|s| s.setup_steps.iter().cloned()).collect();
-        for (var, c) in m.before.iter().filter(|(v, c)| section.start.get(*v) != Some(c)) {
-            let (text, meaning) = (suite.vocabulary.var(var).describe(c), Some(expectation_model::Said::Fact(var, *c)));
-            given.push(StepText { keyword: Keyword::Given, text, span: e.span.clone(), meaning });
+        let input = Input {
+            action: e.trigger.clone(),
+            checks: &[],
+            written: text.clone(),
+            text,
+            span: e.span.clone(),
+            group: 1,
+        };
+        let mut given: Vec<StepText> = suite
+            .chain(section.id)
+            .iter()
+            .flat_map(|s| s.setup_steps.iter().cloned())
+            .collect();
+        for (var, c) in m
+            .before
+            .iter()
+            .filter(|(v, c)| section.start.get(*v) != Some(c))
+        {
+            let (text, meaning) = (
+                suite.vocabulary.var(var).describe(c),
+                Some(expectation_model::Said::Fact(var, *c)),
+            );
+            given.push(StepText {
+                keyword: Keyword::Given,
+                text,
+                span: e.span.clone(),
+                meaning,
+            });
         }
         let base = prefixed(&section.slug, &format!("state--{}", text::slug(&e.name)));
         let mut slug = base.clone();
@@ -522,7 +702,13 @@ pub fn visit_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec<Pl
             given,
         };
         let mut diags = vec![];
-        let plan = build(suite, &analysis.precedence, head, std::iter::once(input), &mut diags);
+        let plan = build(
+            suite,
+            &analysis.precedence,
+            head,
+            std::iter::once(input),
+            &mut diags,
+        );
         if diags.iter().any(|d| d.is_error()) {
             continue;
         }

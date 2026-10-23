@@ -5,10 +5,13 @@ pub mod plan;
 pub mod report;
 
 pub use plan::{
-    Because, Check, Origin, Plan, PlanStep, Planned, coverage, coverage_plans, plan_stories, reaching_plans, untested,
-    visit_plans,
+    Because, Check, Origin, Plan, PlanStep, Planned, coverage, coverage_plans, plan_stories,
+    reaching_plans, untested, visit_plans,
 };
-pub use report::{CheckResult, PlanResult, Report, Status, StepResult, Verdict, fingerprint, load_results, load_results_for, results_file};
+pub use report::{
+    CheckResult, PlanResult, Report, Status, StepResult, Verdict, fingerprint, load_results,
+    load_results_for, results_file,
+};
 
 #[cfg(test)]
 mod tests {
@@ -78,9 +81,16 @@ Story: Boil dry
         // The story never says the kettle heats; the expectation does, so the test checks it.
         let first = &plan.steps[0];
         assert_eq!(first.fired.len(), 1);
-        assert_eq!(s.vocabulary.describe(&first.state), "the kettle is heating and the dial is 80 %");
+        assert_eq!(
+            s.vocabulary.describe(&first.state),
+            "the kettle is heating and the dial is 80 %"
+        );
         assert!(matches!(first.checks[0].because, Because::Expectation(_)));
-        assert_eq!(plan.steps[1].checks.len(), 1, "the story's Then duplicates the promise");
+        assert_eq!(
+            plan.steps[1].checks.len(),
+            1,
+            "the story's Then duplicates the promise"
+        );
     }
 
     #[test]
@@ -103,7 +113,8 @@ Story: Boil dry
         );
         assert!(codes(&p).is_empty());
 
-        let (_, _, p) = planned("Story: S\n  When the dial is 80 %\n  Then the help screen is hidden\n");
+        let (_, _, p) =
+            planned("Story: S\n  When the dial is 80 %\n  Then the help screen is hidden\n");
         assert_eq!(codes(&p), vec!["unpromised"]);
     }
 
@@ -126,7 +137,10 @@ Story: Boil dry
         // To reach running dry, the generated test starts the kettle first.
         assert_eq!(generated[0].steps.len(), 2);
         // Help needs the help screen hidden, which the Background leaves open: it's arranged.
-        assert_eq!(generated[2].given.last().unwrap().text, "the help screen is hidden");
+        assert_eq!(
+            generated[2].given.last().unwrap().text,
+            "the help screen is hidden"
+        );
     }
 
     #[test]
@@ -160,7 +174,10 @@ Feature: End
         let generated = coverage_plans(s, &a, &[]);
         assert_eq!(generated.len(), 1);
         let plan = &generated[0];
-        assert_eq!(plan.title, "Arranging «A tie when the clock runs out is a draw»");
+        assert_eq!(
+            plan.title,
+            "Arranging «A tie when the clock runs out is a draw»"
+        );
         assert_eq!(plan.given.last().unwrap().text, "the clock is 5 s");
         assert_eq!(plan.steps.len(), 1);
         assert_eq!(plan.steps[0].fired, vec![expectation_model::ExpId(0)]);
@@ -241,14 +258,25 @@ Background:
   Given the page is billing
   And the banner is shown
 ";
-        let files = [("root.expect", root), ("01-home/h.expect", home), ("02-billing/b.expect", billing)];
+        let files = [
+            ("root.expect", root),
+            ("01-home/h.expect", home),
+            ("02-billing/b.expect", billing),
+        ];
         let l = expectation_language::load_sources("t", &files);
         assert!(!l.has_errors(), "{}", l.render_diagnostics());
         let (s, a) = (&l.suite, expectation_graph::analyze(&l.suite));
         let generated = coverage_plans(s, &a, &[]);
-        let plan = generated.iter().find(|p| matches!(p.origin, Origin::Reaching { .. })).expect("a reaching test");
+        let plan = generated
+            .iter()
+            .find(|p| matches!(p.origin, Origin::Reaching { .. }))
+            .expect("a reaching test");
         assert_eq!(plan.title, "Reaching «Billing»");
-        assert_eq!(s.section(plan.section).name, "Home", "it starts where the setup it follows is");
+        assert_eq!(
+            s.section(plan.section).name,
+            "Home",
+            "it starts where the setup it follows is"
+        );
         let given: Vec<&str> = plan.given.iter().map(|t| t.text.as_str()).collect();
         assert_eq!(given, ["the page is home", "the banner is shown"]);
         assert_eq!(plan.steps.len(), 1);
@@ -259,8 +287,16 @@ Background:
         assert_eq!(checks.len(), 2, "{checks:?}");
         assert!(matches!(checks[0].because, Because::Expectation(_)));
         assert_eq!(checks[1].because, Because::Setup(billing));
-        assert_eq!(s.vocabulary.describe(&plan.steps[0].state), "the page is billing and the banner is shown");
+        assert_eq!(
+            s.vocabulary.describe(&plan.steps[0].state),
+            "the page is billing and the banner is shown"
+        );
         // It exercises the link, so coverage doesn't generate another test for it.
-        assert_eq!(generated.len(), 1, "{:?}", generated.iter().map(|p| &p.title).collect::<Vec<_>>());
+        assert_eq!(
+            generated.len(),
+            1,
+            "{:?}",
+            generated.iter().map(|p| &p.title).collect::<Vec<_>>()
+        );
     }
 }

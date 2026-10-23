@@ -18,7 +18,12 @@ pub struct Interval {
 
 impl Interval {
     pub fn closed(lo: f64, hi: f64) -> Self {
-        Interval { lo, lo_open: false, hi, hi_open: false }
+        Interval {
+            lo,
+            lo_open: false,
+            hi,
+            hi_open: false,
+        }
     }
 
     pub fn point(v: f64) -> Self {
@@ -30,8 +35,16 @@ impl Interval {
     }
 
     pub fn contains(&self, v: f64) -> bool {
-        let above = if self.lo_open { v > self.lo } else { v >= self.lo };
-        let below = if self.hi_open { v < self.hi } else { v <= self.hi };
+        let above = if self.lo_open {
+            v > self.lo
+        } else {
+            v >= self.lo
+        };
+        let below = if self.hi_open {
+            v < self.hi
+        } else {
+            v <= self.hi
+        };
         above && below
     }
 
@@ -50,7 +63,12 @@ impl Interval {
             Some(std::cmp::Ordering::Greater) => (o.hi, o.hi_open),
             _ => (self.hi, self.hi_open || o.hi_open),
         };
-        Interval { lo, lo_open, hi, hi_open }
+        Interval {
+            lo,
+            lo_open,
+            hi,
+            hi_open,
+        }
     }
 
     /// Is every value in `self` also in `o`?
@@ -65,7 +83,12 @@ impl Interval {
 
     fn bits(&self) -> (u64, bool, u64, bool) {
         // +0.0 and -0.0 are the same bound.
-        ((self.lo + 0.0).to_bits(), self.lo_open, (self.hi + 0.0).to_bits(), self.hi_open)
+        (
+            (self.lo + 0.0).to_bits(),
+            self.lo_open,
+            (self.hi + 0.0).to_bits(),
+            self.hi_open,
+        )
     }
 }
 
@@ -179,7 +202,9 @@ impl Condition {
     pub fn and(&self, o: &Condition) -> Condition {
         let mut out = self.0.clone();
         for (v, c) in &o.0 {
-            out.entry(*v).and_modify(|e| *e = e.intersect(c)).or_insert(*c);
+            out.entry(*v)
+                .and_modify(|e| *e = e.intersect(c))
+                .or_insert(*c);
         }
         Condition(out)
     }
@@ -196,7 +221,10 @@ impl Condition {
 
     /// Is every state of `self` also in `o`?
     pub fn implies(&self, o: &Condition) -> bool {
-        !self.is_satisfiable() || o.0.iter().all(|(v, c)| self.0.get(v).is_some_and(|s| s.within(c)))
+        !self.is_satisfiable()
+            || o.0
+                .iter()
+                .all(|(v, c)| self.0.get(v).is_some_and(|s| s.within(c)))
     }
 
     /// `self` with `o`'s variables replaced by what `o` says: the state after an action that
@@ -209,18 +237,29 @@ impl Condition {
 
     /// Variables both mention but on which they can't both hold.
     pub fn contradictions(&self, o: &Condition) -> Vec<VarId> {
-        self.0.iter().filter(|(v, c)| o.0.get(v).is_some_and(|d| !c.overlaps(d))).map(|(v, _)| *v).collect()
+        self.0
+            .iter()
+            .filter(|(v, c)| o.0.get(v).is_some_and(|d| !c.overlaps(d)))
+            .map(|(v, _)| *v)
+            .collect()
     }
 
     /// Only the given variables.
     pub fn restrict(&self, vars: impl IntoIterator<Item = VarId>) -> Condition {
-        Condition(vars.into_iter().filter_map(|v| self.0.get(&v).map(|c| (v, *c))).collect())
+        Condition(
+            vars.into_iter()
+                .filter_map(|v| self.0.get(&v).map(|c| (v, *c)))
+                .collect(),
+        )
     }
 
     /// The parts of `o` that `self` doesn't already guarantee.
     pub fn unproven(&self, o: &Condition) -> Condition {
         Condition(
-            o.0.iter().filter(|(v, c)| !self.0.get(v).is_some_and(|s| s.within(c))).map(|(v, c)| (*v, *c)).collect(),
+            o.0.iter()
+                .filter(|(v, c)| !self.0.get(v).is_some_and(|s| s.within(c)))
+                .map(|(v, c)| (*v, *c))
+                .collect(),
         )
     }
 }
@@ -238,20 +277,36 @@ mod tests {
             key: format!("v{id}"),
             kind,
             verb: "is".into(),
-            set: None, sets: vec![],
+            set: None,
+            sets: vec![],
             shows: vec![],
             span: Span::new("t", 1),
         }
     }
 
     fn above(v: f64) -> Constraint {
-        Constraint::Range(Interval { lo: v, lo_open: true, hi: 100.0, hi_open: false })
+        Constraint::Range(Interval {
+            lo: v,
+            lo_open: true,
+            hi: 100.0,
+            hi_open: false,
+        })
     }
 
     #[test]
     fn intervals() {
-        let a = Interval { lo: 55.0, lo_open: true, hi: 100.0, hi_open: false };
-        let b = Interval { lo: 0.0, lo_open: false, hi: 55.0, hi_open: false };
+        let a = Interval {
+            lo: 55.0,
+            lo_open: true,
+            hi: 100.0,
+            hi_open: false,
+        };
+        let b = Interval {
+            lo: 0.0,
+            lo_open: false,
+            hi: 55.0,
+            hi_open: false,
+        };
         assert!(a.intersect(&b).is_empty());
         assert!(!a.intersect(&Interval::closed(50.0, 60.0)).is_empty());
         assert!(Interval::point(80.0).within(&a));
@@ -262,7 +317,14 @@ mod tests {
 
     #[test]
     fn full_domains_are_not_stored() {
-        let thr = var(0, VarKind::Number { min: 0.0, max: 100.0, unit: None });
+        let thr = var(
+            0,
+            VarKind::Number {
+                min: 0.0,
+                max: 100.0,
+                unit: None,
+            },
+        );
         let mut c = Condition::new();
         c.constrain(&thr, Constraint::Range(Interval::closed(-10.0, 200.0)));
         assert!(c.is_unconstrained());
@@ -272,8 +334,18 @@ mod tests {
 
     #[test]
     fn implication_and_overlay() {
-        let phase = var(0, VarKind::Enum(vec!["off".into(), "heating".into(), "dry".into()]));
-        let thr = var(1, VarKind::Number { min: 0.0, max: 100.0, unit: None });
+        let phase = var(
+            0,
+            VarKind::Enum(vec!["off".into(), "heating".into(), "dry".into()]),
+        );
+        let thr = var(
+            1,
+            VarKind::Number {
+                min: 0.0,
+                max: 100.0,
+                unit: None,
+            },
+        );
         let mut held = Condition::new();
         held.constrain(&phase, Constraint::OneOf(0b001));
         let mut held_hot = held.clone();

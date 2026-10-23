@@ -5,9 +5,9 @@ use crate::parse::{RawExpectation, RawFile, RawPhrase, RawScenario, RawSection, 
 use crate::step::{self, Meaning};
 use expectation_model::text;
 use expectation_model::{
-    Condition, Diagnostic, Event, EventId, ExpId, Expectation, Fact, Feature, FeatureId, Keyword, Phrase, PhraseBody,
-    PhraseId, Said, Scenario, Section, SectionId, Shift, Span, StepText, Story, StoryId, StoryStep, Suite, Trigger,
-    VarId, Vocabulary,
+    Condition, Diagnostic, Event, EventId, ExpId, Expectation, Fact, Feature, FeatureId, Keyword,
+    Phrase, PhraseBody, PhraseId, Said, Scenario, Section, SectionId, Shift, Span, StepText, Story,
+    StoryId, StoryStep, Suite, Trigger, VarId, Vocabulary,
 };
 
 pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
@@ -16,9 +16,12 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
         if let Some(n) = &f.name {
             match named {
                 Some(prev) if prev.0 != n.0 => diags.push(
-                    Diagnostic::warning("two-names", format!("the suite is already called «{}»", prev.0))
-                        .at(&n.1, "")
-                        .at(&prev.1, "named here first"),
+                    Diagnostic::warning(
+                        "two-names",
+                        format!("the suite is already called «{}»", prev.0),
+                    )
+                    .at(&n.1, "")
+                    .at(&prev.1, "named here first"),
                 ),
                 Some(_) => {}
                 None => {
@@ -31,8 +34,15 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
     suite.vocabulary = vocabulary(files, diags);
     for f in files {
         for t in &f.terms {
-            if suite.glossary.iter().any(|g| g.name.eq_ignore_ascii_case(&t.name)) {
-                diags.push(Diagnostic::error("duplicate", format!("«{}» is already defined", t.name)).at(&t.span, ""));
+            if suite
+                .glossary
+                .iter()
+                .any(|g| g.name.eq_ignore_ascii_case(&t.name))
+            {
+                diags.push(
+                    Diagnostic::error("duplicate", format!("«{}» is already defined", t.name))
+                        .at(&t.span, ""),
+                );
                 continue;
             }
             suite.glossary.push(expectation_model::Term {
@@ -45,8 +55,17 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
     }
     sections(suite, files, diags);
     let vocab = &suite.vocabulary;
-    let dirs: Vec<(String, SectionId)> = suite.sections.iter().map(|s| (s.path.clone(), s.id)).collect();
-    let section_of = |dir: &str| dirs.iter().find(|(d, _)| d == dir).map(|(_, id)| *id).unwrap();
+    let dirs: Vec<(String, SectionId)> = suite
+        .sections
+        .iter()
+        .map(|s| (s.path.clone(), s.id))
+        .collect();
+    let section_of = |dir: &str| {
+        dirs.iter()
+            .find(|(d, _)| d == dir)
+            .map(|(_, id)| *id)
+            .unwrap()
+    };
 
     // Features and their expectations.
     let mut overrides: Vec<(ExpId, Vec<(String, Span)>)> = vec![];
@@ -64,14 +83,23 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
             };
             for re in &rf.expectations {
                 let id = ExpId(suite.expectations.len() as u32);
-                if let Some(prev) = suite.expectations.iter().find(|e| text::key(&e.name) == text::key(&re.name)) {
+                if let Some(prev) = suite
+                    .expectations
+                    .iter()
+                    .find(|e| text::key(&e.name) == text::key(&re.name))
+                {
                     diags.push(
-                        Diagnostic::error("duplicate", format!("there is already an expectation called «{}»", re.name))
-                            .at(&re.span, "")
-                            .at(&prev.span, "first defined here"),
+                        Diagnostic::error(
+                            "duplicate",
+                            format!("there is already an expectation called «{}»", re.name),
+                        )
+                        .at(&re.span, "")
+                        .at(&prev.span, "first defined here"),
                     );
                 }
-                suite.expectations.push(expectation(id, fid, re, vocab, diags));
+                suite
+                    .expectations
+                    .push(expectation(id, fid, re, vocab, diags));
                 feature.expectations.push(id);
                 overrides.push((id, re.overrides.clone()));
             }
@@ -80,26 +108,40 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
     }
     for f in 0..suite.features.len() {
         let section = suite.features[f].section;
-        suite.sections[section.0 as usize].features.push(FeatureId(f as u32));
+        suite.sections[section.0 as usize]
+            .features
+            .push(FeatureId(f as u32));
     }
     for (id, names) in overrides {
         for (name, span) in names {
             let k = text::key(&name);
             match suite.expectations.iter().find(|e| text::key(&e.name) == k) {
-                Some(target) if target.id == id => {
-                    diags.push(Diagnostic::error("bad-override", "an expectation can't override itself").at(&span, ""))
-                }
+                Some(target) if target.id == id => diags.push(
+                    Diagnostic::error("bad-override", "an expectation can't override itself")
+                        .at(&span, ""),
+                ),
                 Some(target) => {
                     let t = target.id;
                     suite.expectations[id.0 as usize].overrides.push(t);
                 }
                 None => {
-                    let d = Diagnostic::error("bad-override", format!("there is no expectation called «{name}»"))
-                        .at(&span, "");
-                    let names: Vec<String> = suite.expectations.iter().map(|e| text::key(&e.name)).collect();
+                    let d = Diagnostic::error(
+                        "bad-override",
+                        format!("there is no expectation called «{name}»"),
+                    )
+                    .at(&span, "");
+                    let names: Vec<String> = suite
+                        .expectations
+                        .iter()
+                        .map(|e| text::key(&e.name))
+                        .collect();
                     let d = match text::closest(&k, names.iter().map(|s| s.as_str())) {
                         Some(c) => {
-                            let e = suite.expectations.iter().find(|e| text::key(&e.name) == c).unwrap();
+                            let e = suite
+                                .expectations
+                                .iter()
+                                .find(|e| text::key(&e.name) == c)
+                                .unwrap();
                             d.help(format!("did you mean «{}»?", e.name))
                         }
                         None => d,
@@ -114,10 +156,15 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
     for f in files {
         for rs in &f.stories {
             let id = StoryId(suite.stories.len() as u32);
-            let scenarios = rs.scenarios.iter().filter_map(|sc| scenario(sc, vocab, diags)).collect::<Vec<_>>();
+            let scenarios = rs
+                .scenarios
+                .iter()
+                .filter_map(|sc| scenario(sc, vocab, diags))
+                .collect::<Vec<_>>();
             if rs.scenarios.is_empty() {
                 diags.push(
-                    Diagnostic::error("empty-story", format!("story «{}» has no steps", rs.name)).at(&rs.span, ""),
+                    Diagnostic::error("empty-story", format!("story «{}» has no steps", rs.name))
+                        .at(&rs.span, ""),
                 );
             }
             let section = section_of(&f.dir);
@@ -166,9 +213,12 @@ fn sections(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
         for f in files.iter().filter(|f| f.dir == dir) {
             if let (Some(h), Some(prev)) = (&f.section, header) {
                 diags.push(
-                    Diagnostic::error("two-names", format!("this section is already called «{}»", prev.name))
-                        .at(&h.span, "")
-                        .at(&prev.span, "named here first"),
+                    Diagnostic::error(
+                        "two-names",
+                        format!("this section is already called «{}»", prev.name),
+                    )
+                    .at(&h.span, "")
+                    .at(&prev.span, "named here first"),
                 );
             } else if f.section.is_some() {
                 header = f.section.as_ref();
@@ -191,7 +241,10 @@ fn sections(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
         for f in files.iter().filter(|f| f.dir == dir) {
             for s in &f.background {
                 if !matches!(s.keyword, Keyword::Given | Keyword::And | Keyword::But) {
-                    diags.push(Diagnostic::error("syntax", "a Background only has Given steps").at(&s.span, ""));
+                    diags.push(
+                        Diagnostic::error("syntax", "a Background only has Given steps")
+                            .at(&s.span, ""),
+                    );
                     continue;
                 }
                 for fact in facts_of(s, &suite.vocabulary, diags) {
@@ -202,10 +255,20 @@ fn sections(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
         }
         let mut follows: Option<Condition> = None;
         let mut follows_steps = vec![];
-        for s in files.iter().filter(|f| f.dir == dir).flat_map(|f| &f.follows) {
+        for s in files
+            .iter()
+            .filter(|f| f.dir == dir)
+            .flat_map(|f| &f.follows)
+        {
             let target = follows.get_or_insert_with(Condition::new);
             for fact in facts_of(s, &suite.vocabulary, diags) {
-                add(target, &fact, &suite.vocabulary, diags, "this setup can never hold");
+                add(
+                    target,
+                    &fact,
+                    &suite.vocabulary,
+                    diags,
+                    "this setup can never hold",
+                );
             }
             follows_steps.push(text_of(s, &suite.vocabulary));
         }
@@ -242,10 +305,16 @@ fn sections(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
 /// "02-child_lock" -> "Child lock": a directory's name, without an ordering prefix.
 fn title_of(dir: &str) -> String {
     let rest = dir.trim_start_matches(|c: char| c.is_ascii_digit());
-    let rest = if rest.len() < dir.len() { rest.trim_start_matches(['-', '_', ' ']) } else { dir };
+    let rest = if rest.len() < dir.len() {
+        rest.trim_start_matches(['-', '_', ' '])
+    } else {
+        dir
+    };
     let words = rest.replace(['-', '_'], " ");
     let mut c = words.chars();
-    c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
+    c.next()
+        .map(|f| f.to_uppercase().chain(c).collect())
+        .unwrap_or_default()
 }
 
 /// A `Shows:` line: "dry: the display says DRY" for one value of a named state, or a
@@ -259,7 +328,10 @@ fn shows(
     if let Some((value, text)) = line.split_once(':') {
         let value = value.trim();
         // A change, as a relative Then writes it: "goes up by 1", "stays the same".
-        if ["goes up by ", "goes down by ", "stays the same"].iter().any(|w| value.starts_with(w)) {
+        if ["goes up by ", "goes down by ", "stays the same"]
+            .iter()
+            .any(|w| value.starts_with(w))
+        {
             return (Some(value.to_string()), text.trim().to_string());
         }
         match &var.kind {
@@ -270,8 +342,18 @@ fn shows(
             }
             // "80 %", "at least 99 %": a value or comparison as steps write it.
             expectation_model::VarKind::Number { .. } => {
-                let comparison = ["above", "below", "at least", "at most", "between", "more than", "fewer than"];
-                if value.starts_with(|c: char| c.is_ascii_digit()) || comparison.iter().any(|w| value.starts_with(w)) {
+                let comparison = [
+                    "above",
+                    "below",
+                    "at least",
+                    "at most",
+                    "between",
+                    "more than",
+                    "fewer than",
+                ];
+                if value.starts_with(|c: char| c.is_ascii_digit())
+                    || comparison.iter().any(|w| value.starts_with(w))
+                {
                     return (Some(value.to_string()), text.trim().to_string());
                 }
             }
@@ -281,10 +363,15 @@ fn shows(
         diags.push(
             Diagnostic::warning(
                 "shows-what",
-                format!("this `Shows:` doesn't say which value of {} it's for", var.subject),
+                format!(
+                    "this `Shows:` doesn't say which value of {} it's for",
+                    var.subject
+                ),
             )
             .at(span, "")
-            .help("start it with the value and a colon (`dry: …`), or use `{value}` for every value"),
+            .help(
+                "start it with the value and a colon (`dry: …`), or use `{value}` for every value",
+            ),
         );
     }
     (None, line.to_string())
@@ -293,8 +380,12 @@ fn shows(
 /// A `Set:` line for one value of a named state: "lost: switch off the TX15".
 fn set_for_value(var: &expectation_model::Variable, line: &str) -> Option<(String, String)> {
     let (value, text) = line.split_once(':')?;
-    let expectation_model::VarKind::Enum(values) = &var.kind else { return None };
-    let v = values.iter().find(|v| v.eq_ignore_ascii_case(value.trim()))?;
+    let expectation_model::VarKind::Enum(values) = &var.kind else {
+        return None;
+    };
+    let v = values
+        .iter()
+        .find(|v| v.eq_ignore_ascii_case(value.trim()))?;
     Some((v.clone(), text.trim().to_string()))
 }
 
@@ -303,7 +394,10 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
     for f in files {
         for d in &f.states {
             let id = VarId(vocab.variables.len() as u32);
-            let Ok(mut var) = step::declare_state(&d.text, &d.span, id).map_err(|e| diags.push(e)) else { continue };
+            let Ok(mut var) = step::declare_state(&d.text, &d.span, id).map_err(|e| diags.push(e))
+            else {
+                continue;
+            };
             for (line, _) in &d.sets {
                 match set_for_value(&var, line) {
                     Some(one) => var.sets.push(one),
@@ -311,7 +405,11 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
                     None => {}
                 }
             }
-            var.shows = d.shows.iter().map(|(t, span)| shows(&var, t, span, diags)).collect();
+            var.shows = d
+                .shows
+                .iter()
+                .map(|(t, span)| shows(&var, t, span, diags))
+                .collect();
             // A state can be declared in more than one section; a `Set:` on any of them counts.
             match vocab.variables.iter_mut().find(|v| v.key == var.key) {
                 Some(prev) if prev.kind == var.kind => {
@@ -322,9 +420,12 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
                     prev.shows.extend(var.shows);
                 }
                 Some(prev) => diags.push(
-                    Diagnostic::error("bad-state", format!("{} is declared twice, differently", var.subject))
-                        .at(&d.span, "")
-                        .at(&prev.span, "first declared here"),
+                    Diagnostic::error(
+                        "bad-state",
+                        format!("{} is declared twice, differently", var.subject),
+                    )
+                    .at(&d.span, "")
+                    .at(&prev.span, "first declared here"),
                 ),
                 None => vocab.variables.push(var),
             }
@@ -343,7 +444,13 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
             } else {
                 let id = EventId(vocab.events.len() as u32);
                 let say = d.say.as_ref().map(|(s, _)| s.clone());
-                vocab.events.push(Event { id, text: d.text.clone(), key, span: d.span.clone(), say });
+                vocab.events.push(Event {
+                    id,
+                    text: d.text.clone(),
+                    key,
+                    span: d.span.clone(),
+                    say,
+                });
             }
         }
     }
@@ -351,19 +458,31 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
     for f in files {
         for rp in &f.phrases {
             let key = text::key(&rp.name);
-            if vocab.phrases.iter().any(|p| p.key == key) || vocab.events.iter().any(|e| e.key == key) {
+            if vocab.phrases.iter().any(|p| p.key == key)
+                || vocab.events.iter().any(|e| e.key == key)
+            {
                 diags.push(
-                    Diagnostic::error("duplicate", format!("«{}» is already declared", rp.name)).at(&rp.span, ""),
+                    Diagnostic::error("duplicate", format!("«{}» is already declared", rp.name))
+                        .at(&rp.span, ""),
                 );
                 continue;
             }
             if let Some((say, span)) = &rp.say {
                 launch_in_step(say, span, diags);
             }
-            let Some(body) = phrase_body(rp, &vocab, diags) else { continue };
+            let Some(body) = phrase_body(rp, &vocab, diags) else {
+                continue;
+            };
             let id = PhraseId(vocab.phrases.len() as u32);
             let say = rp.say.as_ref().map(|(s, _)| s.clone());
-            vocab.phrases.push(Phrase { id, name: rp.name.clone(), key, say, span: rp.span.clone(), body });
+            vocab.phrases.push(Phrase {
+                id,
+                name: rp.name.clone(),
+                key,
+                say,
+                span: rp.span.clone(),
+                body,
+            });
         }
     }
     vocab
@@ -375,11 +494,15 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
 fn launch_in_step(say: &str, span: &Span, diags: &mut Vec<Diagnostic>) {
     let is_command = |code: &str| {
         let mut words = code.split_whitespace();
-        let Some(first) = words.next() else { return false };
+        let Some(first) = words.next() else {
+            return false;
+        };
         if first.starts_with("./") || first.starts_with('/') || first.starts_with("~/") {
             return true;
         }
-        let program = first.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '_' | '.'))
+        let program = first
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '_' | '.'))
             && first.starts_with(|c: char| c.is_ascii_lowercase());
         // A lone word has to look like a program (`some-command`), not like a label.
         program && (words.next().is_some() || first.contains(['-', '_', '.']))
@@ -394,8 +517,14 @@ fn launch_in_step(say: &str, span: &Span, diags: &mut Vec<Diagnostic>) {
 }
 
 /// A phrase is a setup (Givens) or actions in order (each When starts one, And adds to it).
-fn phrase_body(rp: &RawPhrase, vocab: &Vocabulary, diags: &mut Vec<Diagnostic>) -> Option<PhraseBody> {
-    let mut sections = Sections { current: Keyword::Given };
+fn phrase_body(
+    rp: &RawPhrase,
+    vocab: &Vocabulary,
+    diags: &mut Vec<Diagnostic>,
+) -> Option<PhraseBody> {
+    let mut sections = Sections {
+        current: Keyword::Given,
+    };
     let mut facts = vec![];
     let mut actions: Vec<Trigger> = vec![];
     let mut kind: Option<Keyword> = None;
@@ -403,9 +532,12 @@ fn phrase_body(rp: &RawPhrase, vocab: &Vocabulary, diags: &mut Vec<Diagnostic>) 
         let section = sections.next(s.keyword);
         if section == Keyword::Then || kind.is_some_and(|k| k != section) {
             diags.push(
-                Diagnostic::error("bad-phrase", "a phrase is either a setup (Givens) or actions (Whens)")
-                    .at(&s.span, "")
-                    .help("what happens after an action belongs in the expectations, not the phrase"),
+                Diagnostic::error(
+                    "bad-phrase",
+                    "a phrase is either a setup (Givens) or actions (Whens)",
+                )
+                .at(&s.span, "")
+                .help("what happens after an action belongs in the expectations, not the phrase"),
             );
             return None;
         }
@@ -418,7 +550,10 @@ fn phrase_body(rp: &RawPhrase, vocab: &Vocabulary, diags: &mut Vec<Diagnostic>) 
     }
     match kind {
         None => {
-            diags.push(Diagnostic::error("bad-phrase", format!("phrase «{}» has no steps", rp.name)).at(&rp.span, ""));
+            diags.push(
+                Diagnostic::error("bad-phrase", format!("phrase «{}» has no steps", rp.name))
+                    .at(&rp.span, ""),
+            );
             None
         }
         Some(Keyword::Given) => Some(PhraseBody::Setup(facts)),
@@ -438,13 +573,22 @@ enum Part {
 fn part(s: &RawStep, vocab: &Vocabulary, diags: &mut Vec<Diagnostic>) -> Option<Part> {
     match step::resolve(&s.text, &s.span, vocab) {
         Ok(Meaning::Fact(f)) => Some(Part::Facts(vec![f])),
-        Ok(Meaning::Event(e)) => Some(Part::Actions(vec![Trigger { event: Some(e), changes: Condition::new() }])),
+        Ok(Meaning::Event(e)) => Some(Part::Actions(vec![Trigger {
+            event: Some(e),
+            changes: Condition::new(),
+        }])),
         Ok(Meaning::Shift(v, shift)) => Some(Part::Shift(v, shift)),
         Ok(Meaning::Phrase(p)) => Some(match &vocab.phrase(p).body {
             // Facts point at where the phrase is used, for diagnostics.
-            PhraseBody::Setup(facts) => {
-                Part::Facts(facts.iter().map(|f| Fact { span: s.span.clone(), ..f.clone() }).collect())
-            }
+            PhraseBody::Setup(facts) => Part::Facts(
+                facts
+                    .iter()
+                    .map(|f| Fact {
+                        span: s.span.clone(),
+                        ..f.clone()
+                    })
+                    .collect(),
+            ),
             PhraseBody::Actions(actions) => Part::Actions(actions.clone()),
         }),
         Err(d) => {
@@ -455,20 +599,34 @@ fn part(s: &RawStep, vocab: &Vocabulary, diags: &mut Vec<Diagnostic>) -> Option<
 }
 
 fn text_of(s: &RawStep, vocab: &Vocabulary) -> StepText {
-    let meaning = step::resolve(&s.text, &s.span, vocab).ok().map(|m| m.said());
-    StepText { keyword: s.keyword, text: s.text.clone(), span: s.span.clone(), meaning }
+    let meaning = step::resolve(&s.text, &s.span, vocab)
+        .ok()
+        .map(|m| m.said());
+    StepText {
+        keyword: s.keyword,
+        text: s.text.clone(),
+        span: s.span.clone(),
+        meaning,
+    }
 }
 
 /// The facts a Given, Then or Background line says.
 fn facts_of(s: &RawStep, vocab: &Vocabulary, diags: &mut Vec<Diagnostic>) -> Vec<Fact> {
-    let place = if s.keyword == Keyword::Then { "a Then" } else { "a Given" };
+    let place = if s.keyword == Keyword::Then {
+        "a Then"
+    } else {
+        "a Given"
+    };
     match part(s, vocab, diags) {
         Some(Part::Facts(f)) => f,
         Some(Part::Shift(..)) => {
             diags.push(
                 Diagnostic::error(
                     "misplaced-shift",
-                    format!("`{}` is relative, which only an expectation's Then can be", s.text),
+                    format!(
+                        "`{}` is relative, which only an expectation's Then can be",
+                        s.text
+                    ),
                 )
                 .at(&s.span, "")
                 .help("say what it is: `the drawing has 3 shapes`"),
@@ -477,9 +635,12 @@ fn facts_of(s: &RawStep, vocab: &Vocabulary, diags: &mut Vec<Diagnostic>) -> Vec
         }
         Some(Part::Actions(_)) => {
             diags.push(
-                Diagnostic::error("misplaced-event", format!("`{}` is an action, which can't be {place}", s.text))
-                    .at(&s.span, "")
-                    .help("events and action phrases go in `When` steps"),
+                Diagnostic::error(
+                    "misplaced-event",
+                    format!("`{}` is an action, which can't be {place}", s.text),
+                )
+                .at(&s.span, "")
+                .help("events and action phrases go in `When` steps"),
             );
             vec![]
         }
@@ -488,7 +649,13 @@ fn facts_of(s: &RawStep, vocab: &Vocabulary, diags: &mut Vec<Diagnostic>) -> Vec
 }
 
 /// Fold `t` into `action`: its event and its changes.
-fn merge(action: &mut Trigger, t: &Trigger, vocab: &Vocabulary, span: &Span, diags: &mut Vec<Diagnostic>) {
+fn merge(
+    action: &mut Trigger,
+    t: &Trigger,
+    vocab: &Vocabulary,
+    span: &Span,
+    diags: &mut Vec<Diagnostic>,
+) {
     if let Some(e) = t.event {
         if action.event.is_some() {
             diags.push(
@@ -500,14 +667,29 @@ fn merge(action: &mut Trigger, t: &Trigger, vocab: &Vocabulary, span: &Span, dia
         action.event = Some(e);
     }
     for (v, c) in t.changes.iter() {
-        let f = Fact { var: v, constraint: *c, span: span.clone() };
-        add(&mut action.changes, &f, vocab, diags, "this When contradicts itself");
+        let f = Fact {
+            var: v,
+            constraint: *c,
+            span: span.clone(),
+        };
+        add(
+            &mut action.changes,
+            &f,
+            vocab,
+            diags,
+            "this When contradicts itself",
+        );
     }
 }
 
 /// A When or And line in a sequence of actions: a When starts the next action, an And adds to
 /// the last one, and an action phrase brings its own.
-fn act(actions: &mut Vec<Trigger>, s: &RawStep, vocab: &Vocabulary, diags: &mut Vec<Diagnostic>) -> usize {
+fn act(
+    actions: &mut Vec<Trigger>,
+    s: &RawStep,
+    vocab: &Vocabulary,
+    diags: &mut Vec<Diagnostic>,
+) -> usize {
     let before = actions.len();
     let fresh = s.keyword == Keyword::When || actions.is_empty();
     match part(s, vocab, diags) {
@@ -517,7 +699,13 @@ fn act(actions: &mut Vec<Trigger>, s: &RawStep, vocab: &Vocabulary, diags: &mut 
             }
             let last = actions.last_mut().unwrap();
             for f in facts {
-                add(&mut last.changes, &f, vocab, diags, "this When contradicts itself");
+                add(
+                    &mut last.changes,
+                    &f,
+                    vocab,
+                    diags,
+                    "this When contradicts itself",
+                );
             }
         }
         Some(Part::Actions(ts)) => {
@@ -529,9 +717,12 @@ fn act(actions: &mut Vec<Trigger>, s: &RawStep, vocab: &Vocabulary, diags: &mut 
             }
         }
         Some(Part::Shift(..)) => diags.push(
-            Diagnostic::error("misplaced-shift", "a When says what happens, not how much something changes")
-                .at(&s.span, "")
-                .help("relative steps go in the Then"),
+            Diagnostic::error(
+                "misplaced-shift",
+                "a When says what happens, not how much something changes",
+            )
+            .at(&s.span, "")
+            .help("relative steps go in the Then"),
         ),
         None => {}
     }
@@ -544,7 +735,10 @@ fn add(c: &mut Condition, f: &Fact, vocab: &Vocabulary, diags: &mut Vec<Diagnost
         diags.push(
             Diagnostic::warning(
                 "says-nothing",
-                format!("every value of {} satisfies this, so it says nothing", var.subject),
+                format!(
+                    "every value of {} satisfies this, so it says nothing",
+                    var.subject
+                ),
             )
             .at(&f.span, "")
             .help("narrow it, or remove the step"),
@@ -586,7 +780,9 @@ fn expectation(
     let mut actions: Vec<Trigger> = vec![];
     let mut then = Condition::new();
     let mut shifts = vec![];
-    let mut sections = Sections { current: Keyword::Given };
+    let mut sections = Sections {
+        current: Keyword::Given,
+    };
     let mut seen = Keyword::Given;
     let order = |k: Keyword| match k {
         Keyword::Given => 0,
@@ -596,17 +792,23 @@ fn expectation(
     for (i, s) in re.steps.iter().enumerate() {
         if i == 0 && matches!(s.keyword, Keyword::And | Keyword::But) {
             diags.push(
-                Diagnostic::error("syntax", format!("an expectation can't start with `{}`", s.keyword.as_str()))
-                    .at(&s.span, ""),
+                Diagnostic::error(
+                    "syntax",
+                    format!("an expectation can't start with `{}`", s.keyword.as_str()),
+                )
+                .at(&s.span, ""),
             );
             continue;
         }
         let section = sections.next(s.keyword);
         if order(section) < order(seen) {
             diags.push(
-                Diagnostic::error("syntax", format!("`{}` after `{}`", section.as_str(), seen.as_str()))
-                    .at(&s.span, "")
-                    .help("an expectation reads Given…, When…, Then…; split it into two expectations"),
+                Diagnostic::error(
+                    "syntax",
+                    format!("`{}` after `{}`", section.as_str(), seen.as_str()),
+                )
+                .at(&s.span, "")
+                .help("an expectation reads Given…, When…, Then…; split it into two expectations"),
             );
             continue;
         }
@@ -638,7 +840,10 @@ fn expectation(
                         diags.push(
                             Diagnostic::error(
                                 "contradiction",
-                                format!("this Then already says what {} becomes", vocab.var(v).subject),
+                                format!(
+                                    "this Then already says what {} becomes",
+                                    vocab.var(v).subject
+                                ),
                             )
                             .at(&s.span, ""),
                         );
@@ -651,9 +856,12 @@ fn expectation(
                     }
                 }
                 Some(Part::Actions(_)) => diags.push(
-                    Diagnostic::error("misplaced-event", format!("`{}` is an action, which can't be a Then", s.text))
-                        .at(&s.span, "")
-                        .help("events and action phrases go in `When` steps"),
+                    Diagnostic::error(
+                        "misplaced-event",
+                        format!("`{}` is an action, which can't be a Then", s.text),
+                    )
+                    .at(&s.span, "")
+                    .help("events and action phrases go in `When` steps"),
                 ),
                 None => {}
             },
@@ -721,7 +929,9 @@ fn scenario(sc: &RawScenario, vocab: &Vocabulary, diags: &mut Vec<Diagnostic>) -
     let mut given = Condition::new();
     let mut given_steps = vec![];
     let mut steps: Vec<StoryStep> = vec![];
-    let mut sections = Sections { current: Keyword::Given };
+    let mut sections = Sections {
+        current: Keyword::Given,
+    };
     let mut last = Keyword::Given;
     let mut group = 0;
     for s in &sc.steps {
@@ -732,7 +942,9 @@ fn scenario(sc: &RawScenario, vocab: &Vocabulary, diags: &mut Vec<Diagnostic>) -
                     diags.push(
                         Diagnostic::error("syntax", "`Given` after `When`")
                             .at(&s.span, "")
-                            .help("arrange everything before the first When, or start a new Scenario"),
+                            .help(
+                                "arrange everything before the first When, or start a new Scenario",
+                            ),
                     );
                 } else {
                     for f in facts_of(s, vocab, diags) {
@@ -787,7 +999,10 @@ fn scenario(sc: &RawScenario, vocab: &Vocabulary, diags: &mut Vec<Diagnostic>) -
                 n => {
                     let checks = facts_of(s, vocab, diags);
                     let text = text_of(s, vocab);
-                    let first = steps.iter().position(|st| st.group == group).unwrap_or(n - 1);
+                    let first = steps
+                        .iter()
+                        .position(|st| st.group == group)
+                        .unwrap_or(n - 1);
                     steps[first].written.push(text.clone());
                     let step = steps.last_mut().unwrap();
                     step.steps.push(text);
@@ -799,9 +1014,12 @@ fn scenario(sc: &RawScenario, vocab: &Vocabulary, diags: &mut Vec<Diagnostic>) -
     }
     if steps.is_empty() {
         diags.push(
-            Diagnostic::error("empty-story", format!("scenario «{}» has no `When`", sc.name))
-                .at(&sc.span, "")
-                .help("a scenario is a sequence of `When … Then …` steps"),
+            Diagnostic::error(
+                "empty-story",
+                format!("scenario «{}» has no `When`", sc.name),
+            )
+            .at(&sc.span, "")
+            .help("a scenario is a sequence of `When … Then …` steps"),
         );
         return None;
     }

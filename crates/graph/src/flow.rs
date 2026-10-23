@@ -34,7 +34,10 @@ pub struct Limits {
 
 impl Default for Limits {
     fn default() -> Self {
-        Limits { depth: 24, states: 5000 }
+        Limits {
+            depth: 24,
+            states: 5000,
+        }
     }
 }
 
@@ -55,11 +58,17 @@ pub struct Flow {
 
 impl Flow {
     pub fn parents(&self, e: ExpId) -> impl Iterator<Item = Node> + '_ {
-        self.edges.iter().filter(move |(_, c)| *c == e).map(|(p, _)| *p)
+        self.edges
+            .iter()
+            .filter(move |(_, c)| *c == e)
+            .map(|(p, _)| *p)
     }
 
     pub fn children(&self, n: Node) -> impl Iterator<Item = ExpId> + '_ {
-        self.edges.iter().filter(move |(p, _)| *p == n).map(|(_, c)| *c)
+        self.edges
+            .iter()
+            .filter(move |(p, _)| *p == n)
+            .map(|(_, c)| *c)
     }
 
     fn record(&mut self, e: ExpId, level: u32, from: Node, route: impl FnOnce() -> Route) {
@@ -125,24 +134,42 @@ pub fn in_scope(suite: &Suite, section: SectionId) -> Vec<bool> {
 
 /// Search from each root state (each section's start, and each story's arranged start),
 /// taking only the expectations in scope for the root's section.
-pub fn explore(suite: &Suite, prec: &Precedence, roots: &[(Condition, SectionId)], limits: Limits) -> Flow {
+pub fn explore(
+    suite: &Suite,
+    prec: &Precedence,
+    roots: &[(Condition, SectionId)],
+    limits: Limits,
+) -> Flow {
     let n = suite.expectations.len();
     let followed = vec![false; suite.sections.len()];
-    let mut flow = Flow { level: vec![None; n], routes: vec![None; n], followed, ..Flow::default() };
-    let follows: Vec<(usize, &Condition)> =
-        suite.sections.iter().filter_map(|s| s.follows.as_ref().map(|f| (s.id.0 as usize, f))).collect();
+    let mut flow = Flow {
+        level: vec![None; n],
+        routes: vec![None; n],
+        followed,
+        ..Flow::default()
+    };
+    let follows: Vec<(usize, &Condition)> = suite
+        .sections
+        .iter()
+        .filter_map(|s| s.follows.as_ref().map(|f| (s.id.0 as usize, f)))
+        .collect();
     let mut states: Vec<State> = vec![];
     let mut seen: HashMap<Condition, usize> = HashMap::new();
 
     let mut scopes: HashMap<SectionId, Vec<bool>> = HashMap::new();
     for (root, section) in roots {
-        let scope = scopes.entry(*section).or_insert_with(|| in_scope(suite, *section));
+        let scope = scopes
+            .entry(*section)
+            .or_insert_with(|| in_scope(suite, *section));
         let (cond, invariants) = settle(suite, prec, root, &[]);
         if !cond.is_satisfiable() || seen.contains_key(&cond) {
             continue;
         }
         for inv in invariants.into_iter().filter(|e| scope[e.0 as usize]) {
-            flow.record(inv, 0, Node::Start, || Route { start: root.clone(), steps: vec![] });
+            flow.record(inv, 0, Node::Start, || Route {
+                start: root.clone(),
+                steps: vec![],
+            });
         }
         seen.insert(cond.clone(), states.len());
         let section = *section;
@@ -173,16 +200,28 @@ pub fn explore(suite: &Suite, prec: &Precedence, roots: &[(Condition, SectionId)
             // Take the part of this state where `e` applies. Assumptions about states nothing
             // has changed yet can be arranged at the start.
             let pre = s.cond.and(&e.given);
-            let out = perform_among(suite, prec, &pre, &e.trigger, companions[t].iter().map(|&c| transitions[c]));
+            let out = perform_among(
+                suite,
+                prec,
+                &pre,
+                &e.trigger,
+                companions[t].iter().map(|&c| transitions[c]),
+            );
             if !out.fired.contains(&e.id) {
                 continue;
             }
-            let assumed = s.cond.unproven(&e.given).restrict(e.given.vars().filter(|v| !s.touched.contains(v)));
+            let assumed = s
+                .cond
+                .unproven(&e.given)
+                .restrict(e.given.vars().filter(|v| !s.touched.contains(v)));
             let start = s.start.and(&assumed);
             let route = || {
                 let mut steps = steps_to(&states, i);
                 steps.push(e.id);
-                Route { start: start.clone(), steps }
+                Route {
+                    start: start.clone(),
+                    steps,
+                }
             };
             let (level, from) = (s.level, s.from());
             for &f in &out.fired {
@@ -228,7 +267,11 @@ pub fn explore(suite: &Suite, prec: &Precedence, roots: &[(Condition, SectionId)
 pub(crate) fn companions(transitions: &[&Expectation]) -> Vec<Vec<usize>> {
     transitions
         .iter()
-        .map(|e| (0..transitions.len()).filter(|&c| e.trigger.may_fire(&transitions[c].trigger)).collect())
+        .map(|e| {
+            (0..transitions.len())
+                .filter(|&c| e.trigger.may_fire(&transitions[c].trigger))
+                .collect()
+        })
         .collect()
 }
 
@@ -240,15 +283,24 @@ pub(crate) fn companions(transitions: &[&Expectation]) -> Vec<Vec<usize>> {
 /// state with the fewest steps taken plus half the goal states still wrong, so it reaches deep
 /// setups (sign in, open a project, pick a tool, start drawing) without trying every other button
 /// on the way.
-pub fn route_to(suite: &Suite, prec: &Precedence, from: &Condition, goal: &Condition, limits: Limits) -> Option<Route> {
+pub fn route_to(
+    suite: &Suite,
+    prec: &Precedence,
+    from: &Condition,
+    goal: &Condition,
+    limits: Limits,
+) -> Option<Route> {
     use std::cmp::Reverse;
     use std::collections::BinaryHeap;
 
     // Relevant: the states the goal needs changed, and whatever the transitions that change
     // them need. A transition that only touches states that are already right can only undo them.
     let (start, _) = settle(suite, prec, from, &[]);
-    let mut relevant: BTreeSet<VarId> =
-        goal.iter().filter(|(v, g)| !start.get(*v).is_some_and(|x| x.within(g))).map(|(v, _)| v).collect();
+    let mut relevant: BTreeSet<VarId> = goal
+        .iter()
+        .filter(|(v, g)| !start.get(*v).is_some_and(|x| x.within(g)))
+        .map(|(v, _)| v)
+        .collect();
     loop {
         let before = relevant.len();
         for e in suite.transitions() {
@@ -260,13 +312,20 @@ pub fn route_to(suite: &Suite, prec: &Precedence, from: &Condition, goal: &Condi
             break;
         }
     }
-    let transitions: Vec<&Expectation> =
-        suite.transitions().filter(|e| e.sets().any(|v| relevant.contains(&v))).collect();
+    let transitions: Vec<&Expectation> = suite
+        .transitions()
+        .filter(|e| e.sets().any(|v| relevant.contains(&v)))
+        .collect();
     let companions = companions(&transitions);
-    let wrong = |c: &Condition| goal.iter().filter(|(v, g)| !c.get(*v).is_some_and(|x| x.within(g))).count() as u32;
+    let wrong = |c: &Condition| {
+        goal.iter()
+            .filter(|(v, g)| !c.get(*v).is_some_and(|x| x.within(g)))
+            .count() as u32
+    };
 
     // (state, parent, via, steps taken)
-    let mut states: Vec<(Condition, Option<usize>, Option<ExpId>, u32)> = vec![(start.clone(), None, None, 0)];
+    let mut states: Vec<(Condition, Option<usize>, Option<ExpId>, u32)> =
+        vec![(start.clone(), None, None, 0)];
     let mut seen: HashMap<Condition, usize> = HashMap::from([(start.clone(), 0)]);
     let mut queue = BinaryHeap::from([(Reverse(wrong(&start)), Reverse(0usize))]);
     // Ordered by 2 × steps + wrong states, i.e. steps + wrong / 2, in whole numbers.
@@ -290,7 +349,10 @@ pub fn route_to(suite: &Suite, prec: &Precedence, from: &Condition, goal: &Condi
                     }
                     let candidates = companions[t].iter().map(|&c| transitions[c]);
                     let out = perform_among(suite, prec, &state, &e.trigger, candidates);
-                    if !out.fired.contains(&e.id) || !out.uncertain.is_empty() || !out.after.is_satisfiable() {
+                    if !out.fired.contains(&e.id)
+                        || !out.uncertain.is_empty()
+                        || !out.after.is_satisfiable()
+                    {
                         return None;
                     }
                     state = out.after;
@@ -323,7 +385,10 @@ pub fn route_to(suite: &Suite, prec: &Precedence, from: &Condition, goal: &Condi
                     }
                 }
             }
-            return Some(Route { start: from.clone(), steps });
+            return Some(Route {
+                start: from.clone(),
+                steps,
+            });
         }
         let depth = states[i].3;
         if depth >= limits.depth {
@@ -334,9 +399,17 @@ pub fn route_to(suite: &Suite, prec: &Precedence, from: &Condition, goal: &Condi
             if states.len() >= limits.states || !states[i].0.implies(&e.given) {
                 continue;
             }
-            let out =
-                perform_among(suite, prec, &states[i].0, &e.trigger, companions[t].iter().map(|&c| transitions[c]));
-            if !out.fired.contains(&e.id) || !out.uncertain.is_empty() || !out.after.is_satisfiable() {
+            let out = perform_among(
+                suite,
+                prec,
+                &states[i].0,
+                &e.trigger,
+                companions[t].iter().map(|&c| transitions[c]),
+            );
+            if !out.fired.contains(&e.id)
+                || !out.uncertain.is_empty()
+                || !out.after.is_satisfiable()
+            {
                 continue;
             }
             if !seen.contains_key(&out.after) {

@@ -30,9 +30,14 @@ impl Shift {
     pub fn apply(self, var: &Variable, before: Option<&Constraint>) -> Constraint {
         let before = before.copied().unwrap_or_else(|| var.full());
         match (self, before, var.full()) {
-            (Shift::By(d), Constraint::Range(r), Constraint::Range(full)) => {
-                Constraint::Range(Interval { lo: r.lo + d, hi: r.hi + d, ..r }.intersect(&full))
-            }
+            (Shift::By(d), Constraint::Range(r), Constraint::Range(full)) => Constraint::Range(
+                Interval {
+                    lo: r.lo + d,
+                    hi: r.hi + d,
+                    ..r
+                }
+                .intersect(&full),
+            ),
             _ => before,
         }
     }
@@ -139,7 +144,9 @@ impl Trigger {
     /// Might performing this action set off `o`, depending on which value it picks? Only if
     /// it changes every state `o` is set off by.
     pub fn may_fire(&self, o: &Trigger) -> bool {
-        !o.is_none() && self.compatible(o) && o.changes.vars().all(|v| self.changes.get(v).is_some())
+        !o.is_none()
+            && self.compatible(o)
+            && o.changes.vars().all(|v| self.changes.get(v).is_some())
     }
 }
 
@@ -398,7 +405,11 @@ impl Suite {
         if let Some(e) = t.event {
             parts.push(self.vocabulary.event(e).text.clone());
         }
-        if parts.is_empty() { "always".into() } else { parts.join(" and ") }
+        if parts.is_empty() {
+            "always".into()
+        } else {
+            parts.join(" and ")
+        }
     }
 
     /// Transitions (expectations with a trigger), in declaration order.

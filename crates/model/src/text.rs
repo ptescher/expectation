@@ -3,7 +3,10 @@
 /// Lowercase, collapse whitespace and drop a trailing full stop, for matching step text.
 pub fn normalize(s: &str) -> String {
     let s = s.trim().trim_end_matches('.');
-    s.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+    s.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
 }
 
 /// The matching key of a phrase: normalised, without a leading article.
@@ -30,7 +33,11 @@ pub fn slug(s: &str) -> String {
     while out.ends_with('-') {
         out.pop();
     }
-    if out.is_empty() { "untitled".into() } else { out }
+    if out.is_empty() {
+        "untitled".into()
+    } else {
+        out
+    }
 }
 
 /// Description lines as paragraphs: lines joined with spaces, an empty line between paragraphs.
@@ -86,7 +93,11 @@ pub fn edit_distance(a: &str, b: &str) -> usize {
         row[0] = i + 1;
         for (j, cb) in b.iter().enumerate() {
             let cur = row[j + 1];
-            row[j + 1] = if ca == *cb { prev } else { 1 + prev.min(row[j]).min(row[j + 1]) };
+            row[j + 1] = if ca == *cb {
+                prev
+            } else {
+                1 + prev.min(row[j]).min(row[j + 1])
+            };
             prev = cur;
         }
     }
@@ -109,11 +120,22 @@ mod tests {
 
     #[test]
     fn list_items_stay_apart() {
-        let lines: Vec<String> = ["Pick one.", "", "1. First", "  more", "2. Second", "", "After."]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        assert_eq!(paragraphs(&lines), ["Pick one.", "1. First   more", "2. Second", "After."]);
+        let lines: Vec<String> = [
+            "Pick one.",
+            "",
+            "1. First",
+            "  more",
+            "2. Second",
+            "",
+            "After.",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        assert_eq!(
+            paragraphs(&lines),
+            ["Pick one.", "1. First   more", "2. Second", "After."]
+        );
     }
 
     #[test]
@@ -124,7 +146,10 @@ mod tests {
 
     #[test]
     fn slugs() {
-        assert_eq!(slug("Turning the dial up starts the kettle!"), "turning-the-dial-up-starts-the-kettle");
+        assert_eq!(
+            slug("Turning the dial up starts the kettle!"),
+            "turning-the-dial-up-starts-the-kettle"
+        );
         assert_eq!(slug("--"), "untitled");
     }
 
@@ -132,7 +157,10 @@ mod tests {
     fn numbers_and_lists() {
         assert_eq!(number(55.0), "55");
         assert_eq!(number(77.5), "77.5");
-        assert_eq!(join_and(&["a".into(), "b".into(), "c".into()]), "a, b and c");
+        assert_eq!(
+            join_and(&["a".into(), "b".into(), "c".into()]),
+            "a, b and c"
+        );
     }
 
     #[test]

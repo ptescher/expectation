@@ -17,7 +17,9 @@ pub use flow::{Flow, Limits, Node, Route};
 pub use precedence::Precedence;
 pub use states::StateMap;
 
-use expectation_model::{Condition, Diagnostic, ExpId, FeatureId, Section, SectionId, Suite, VarId};
+use expectation_model::{
+    Condition, Diagnostic, ExpId, FeatureId, Section, SectionId, Suite, VarId,
+};
 
 pub struct Analysis {
     pub precedence: Precedence,
@@ -58,17 +60,27 @@ impl Analysis {
         for (f, d) in deps.iter_mut().enumerate() {
             d.remove(&f);
         }
-        let dependents: Vec<usize> = (0..n).map(|f| deps.iter().filter(|d| d.contains(&f)).count()).collect();
+        let dependents: Vec<usize> = (0..n)
+            .map(|f| deps.iter().filter(|d| d.contains(&f)).count())
+            .collect();
         let earliest: Vec<u32> = suite
             .features
             .iter()
-            .map(|f| f.expectations.iter().filter_map(|e| self.flow.level[e.0 as usize]).min().unwrap_or(u32::MAX))
+            .map(|f| {
+                f.expectations
+                    .iter()
+                    .filter_map(|e| self.flow.level[e.0 as usize])
+                    .min()
+                    .unwrap_or(u32::MAX)
+            })
             .collect();
         let key = |f: usize| (earliest[f], std::cmp::Reverse(dependents[f]), f);
         let mut placed = vec![false; n];
         let mut order = vec![];
         while order.len() < n {
-            let ready = (0..n).filter(|&f| !placed[f] && deps[f].iter().all(|&d| placed[d])).min_by_key(|&f| key(f));
+            let ready = (0..n)
+                .filter(|&f| !placed[f] && deps[f].iter().all(|&d| placed[d]))
+                .min_by_key(|&f| key(f));
             let next = ready.unwrap_or_else(|| (0..n).find(|&f| !placed[f]).unwrap());
             placed[next] = true;
             order.push(FeatureId(next as u32));
@@ -89,7 +101,10 @@ pub fn roots(suite: &Suite) -> Vec<(Condition, SectionId)> {
         .map(|s| (s.start.clone(), s.id));
     let scenarios = suite.stories.iter().flat_map(|story| {
         let start = &suite.section(story.section).start;
-        story.scenarios.iter().map(move |sc| (start.overlay(&sc.given), story.section))
+        story
+            .scenarios
+            .iter()
+            .map(move |sc| (start.overlay(&sc.given), story.section))
     });
     for r in starts.chain(scenarios) {
         if !roots.contains(&r) {
@@ -107,7 +122,11 @@ pub fn followed(suite: &Suite, section: &Section) -> Option<SectionId> {
     suite
         .sections
         .iter()
-        .filter(|s| s.id != section.id && (!s.features.is_empty() || !s.stories.is_empty()) && s.start.implies(follows))
+        .filter(|s| {
+            s.id != section.id
+                && (!s.features.is_empty() || !s.stories.is_empty())
+                && s.start.implies(follows)
+        })
         .min_by_key(|s| s.start.iter().count())
         .map(|s| s.id)
 }
@@ -124,9 +143,16 @@ pub fn reached_from<'a>(suite: &'a Suite, section: &'a Section) -> Option<&'a Co
 /// How a section's setup is reached from where it is reached from ([`reached_from`]): the chain
 /// of expectations that gets there. `None` for the root, for a section that adds no setup to
 /// its parent's, and for one nothing leads into.
-pub fn section_route(suite: &Suite, prec: &Precedence, section: &Section, limits: Limits) -> Option<Route> {
+pub fn section_route(
+    suite: &Suite,
+    prec: &Precedence,
+    section: &Section,
+    limits: Limits,
+) -> Option<Route> {
     let from = reached_from(suite, section)?;
-    if (section.follows.is_none() && section.setup.is_unconstrained()) || from.implies(&section.start) {
+    if (section.follows.is_none() && section.setup.is_unconstrained())
+        || from.implies(&section.start)
+    {
         return None;
     }
     flow::route_to(suite, prec, from, &section.start, limits)
@@ -134,7 +160,11 @@ pub fn section_route(suite: &Suite, prec: &Precedence, section: &Section, limits
 
 /// For each section, how its setup is reached: see [`section_route`].
 pub fn section_routes(suite: &Suite, prec: &Precedence, limits: Limits) -> Vec<Option<Route>> {
-    suite.sections.iter().map(|s| section_route(suite, prec, s, limits)).collect()
+    suite
+        .sections
+        .iter()
+        .map(|s| section_route(suite, prec, s, limits))
+        .collect()
 }
 
 pub fn analyze(suite: &Suite) -> Analysis {
@@ -147,11 +177,19 @@ pub fn analyze_with(suite: &Suite, limits: Limits) -> Analysis {
     diagnostics.extend(conflict::diagnose(suite, &precedence, &conflicts));
     let flow = flow::explore(suite, &precedence, &roots(suite), limits);
     if !flow.truncated {
-        for e in suite.expectations.iter().filter(|e| flow.level[e.id.0 as usize].is_none()) {
+        for e in suite
+            .expectations
+            .iter()
+            .filter(|e| flow.level[e.id.0 as usize].is_none())
+        {
             let needs = if e.is_invariant() {
                 suite.describe(&e.given)
             } else {
-                format!("{}, and then {}", suite.describe(&e.given), suite.describe_trigger(&e.trigger))
+                format!(
+                    "{}, and then {}",
+                    suite.describe(&e.given),
+                    suite.describe_trigger(&e.trigger)
+                )
             };
             diagnostics.push(
                 Diagnostic::warning("unreachable", format!("«{}» can never happen, starting from any section's setup", e.name))
@@ -166,11 +204,17 @@ pub fn analyze_with(suite: &Suite, limits: Limits) -> Analysis {
             diagnostics.extend(follows(suite, &precedence, &flow, s, route.as_ref()));
             continue;
         }
-        let Some(parent) = s.parent.map(|p| suite.section(p)) else { continue };
+        let Some(parent) = s.parent.map(|p| suite.section(p)) else {
+            continue;
+        };
         // From a parent with no setup there's nothing to route from: getting there is starting
         // the program, which happens outside the suite.
         let from_somewhere = !parent.start.is_unconstrained();
-        if from_somewhere && route.is_none() && !s.setup.is_unconstrained() && !parent.start.implies(&s.start) {
+        if from_somewhere
+            && route.is_none()
+            && !s.setup.is_unconstrained()
+            && !parent.start.implies(&s.start)
+        {
             let span = s.setup_steps.first().map(|t| &t.span).or(s.span.as_ref());
             let mut d =
                 Diagnostic::warning("no-way-in", format!("nothing leads from «{}» into «{}»", parent.name, s.name))
@@ -182,7 +226,13 @@ pub fn analyze_with(suite: &Suite, limits: Limits) -> Analysis {
             diagnostics.push(d);
         }
     }
-    Analysis { precedence, conflicts, flow, section_routes, diagnostics }
+    Analysis {
+        precedence,
+        conflicts,
+        flow,
+        section_routes,
+        diagnostics,
+    }
 }
 
 /// What's wrong with a section's `Follows:`. Nothing gets to the setup it follows (a warning,
@@ -190,15 +240,27 @@ pub fn analyze_with(suite: &Suite, limits: Limits) -> Analysis {
 /// and still nothing gets there from it (an error: the route it claims is broken). Where some
 /// of those states nothing changes, the Background's steps are a claim about how to set up
 /// that the expectations can't check, so there's nothing to say.
-fn follows(suite: &Suite, prec: &Precedence, flow: &Flow, s: &Section, route: Option<&Route>) -> Vec<Diagnostic> {
-    let (Some(f), Some(from)) = (s.follows.as_ref(), reached_from(suite, s)) else { return vec![] };
+fn follows(
+    suite: &Suite,
+    prec: &Precedence,
+    flow: &Flow,
+    s: &Section,
+    route: Option<&Route>,
+) -> Vec<Diagnostic> {
+    let (Some(f), Some(from)) = (s.follows.as_ref(), reached_from(suite, s)) else {
+        return vec![];
+    };
     let span = s.follows_steps.first().map(|t| &t.span).or(s.span.as_ref());
     let at = |d: Diagnostic| match span {
         Some(span) => d.at(span, ""),
         None => d,
     };
     if !flow.truncated && !flow.followed[s.id.0 as usize] {
-        let what = format!("nothing gets to {}, which «{}» follows", suite.describe(f), s.name);
+        let what = format!(
+            "nothing gets to {}, which «{}» follows",
+            suite.describe(f),
+            s.name
+        );
         let d = Diagnostic::warning("follows-unreached", what)
             .help("no section's setup has it in place and no chain of expectations gets there; check the `Follows:`");
         return vec![at(d)];
@@ -207,9 +269,16 @@ fn follows(suite: &Suite, prec: &Precedence, flow: &Flow, s: &Section, route: Op
         return vec![];
     }
     let (settled, _) = semantics::settle(suite, prec, from, &[]);
-    let needed: Vec<VarId> =
-        s.start.iter().filter(|(v, c)| !settled.get(*v).is_some_and(|x| x.within(c))).map(|(v, _)| v).collect();
-    if !needed.iter().all(|v| suite.transitions().any(|e| e.sets().any(|x| x == *v))) {
+    let needed: Vec<VarId> = s
+        .start
+        .iter()
+        .filter(|(v, c)| !settled.get(*v).is_some_and(|x| x.within(c)))
+        .map(|(v, _)| v)
+        .collect();
+    if !needed
+        .iter()
+        .all(|v| suite.transitions().any(|e| e.sets().any(|x| x == *v)))
+    {
         return vec![];
     }
     let what = format!("nothing leads from {} into «{}»", suite.describe(f), s.name);
@@ -318,14 +387,29 @@ Feature: Billing
     fn finds_an_outcome_conflict_and_where_it_happens() {
         let s = suite("");
         let a = analyze(&s);
-        let [c] = &a.conflicts[..] else { panic!("{:?}", a.conflicts) };
-        assert_eq!((c.a, c.b), (named(&s, "Turning the dial up starts the kettle"), named(&s, "The child lock holds the kettle")));
+        let [c] = &a.conflicts[..] else {
+            panic!("{:?}", a.conflicts)
+        };
+        assert_eq!(
+            (c.a, c.b),
+            (
+                named(&s, "Turning the dial up starts the kettle"),
+                named(&s, "The child lock holds the kettle")
+            )
+        );
         assert_eq!(c.winner, None);
         // The triggers overlap above 70 %, and both Givens hold with the child lock on.
         assert_eq!(s.describe_trigger(&c.trigger), "the dial is above 70 %");
         assert!(s.describe(&c.situation).contains("the child lock is on"));
         let d = a.diagnostics.iter().find(|d| d.code == "conflict").unwrap();
-        assert!(d.help.as_ref().unwrap().contains("«The child lock holds the kettle» is the more specific"), "{:?}", d.help);
+        assert!(
+            d.help
+                .as_ref()
+                .unwrap()
+                .contains("«The child lock holds the kettle» is the more specific"),
+            "{:?}",
+            d.help
+        );
     }
 
     #[test]
@@ -334,9 +418,16 @@ Feature: Billing
         let src = format!("{VOCAB}{}", HEATING.replace("    Given the kettle is off\n    And the child", "    Overrides: Turning the dial up starts the kettle\n    Given the kettle is off\n    And the child"));
         let l = expectation_language::load_sources("t", &[("t.expect", &src)]);
         let a = analyze(&l.suite);
-        assert!(!a.has_errors(), "{}", expectation_model::diagnostic::render_all(&a.diagnostics, &l.suite.sources));
+        assert!(
+            !a.has_errors(),
+            "{}",
+            expectation_model::diagnostic::render_all(&a.diagnostics, &l.suite.sources)
+        );
         assert_eq!(a.exceptions().count(), 1);
-        assert_eq!(a.exceptions().next().unwrap().winner, Some(named(&s, "The child lock holds the kettle")));
+        assert_eq!(
+            a.exceptions().next().unwrap().winner,
+            Some(named(&s, "The child lock holds the kettle"))
+        );
     }
 
     #[test]
@@ -355,7 +446,12 @@ Feature: More
 ",
         );
         let a = analyze(&s);
-        assert_eq!(a.conflicts.len(), 1, "only the child lock conflict: {:?}", a.conflicts);
+        assert_eq!(
+            a.conflicts.len(),
+            1,
+            "only the child lock conflict: {:?}",
+            a.conflicts
+        );
     }
 
     #[test]
@@ -373,8 +469,18 @@ Feature: Help
 ",
         );
         let a = analyze(&s);
-        let c = a.conflicts.iter().find(|c| c.kind == ConflictKind::Invariant).expect("help toggles while heating");
-        assert_eq!((c.a, c.b), (named(&s, "Help toggles on"), named(&s, "No help while heating")));
+        let c = a
+            .conflicts
+            .iter()
+            .find(|c| c.kind == ConflictKind::Invariant)
+            .expect("help toggles while heating");
+        assert_eq!(
+            (c.a, c.b),
+            (
+                named(&s, "Help toggles on"),
+                named(&s, "No help while heating")
+            )
+        );
     }
 
     #[test]
@@ -428,10 +534,15 @@ Feature: F
     fn relative_thens_conflict_and_sections_have_a_way_in() {
         let root = "Vocabulary:\n State: the tool is none | PEN\n State: the drawing has 0..100 shapes\n Event: the user presses PEN\n Event: the user clicks the canvas\nBackground:\n Given the tool is none\n And the drawing has 0 shapes\nFeature: Tools\n Expectation: PEN picks the pen\n  Given the tool is none\n  When the user presses PEN\n  Then the tool is PEN\n";
         let drawing = "Background:\n Given the tool is PEN\nFeature: Shapes\n Expectation: A click adds a shape\n  Given the tool is PEN\n  When the user clicks the canvas\n  Then the drawing goes up by 1\n Expectation: A click adds two\n  Given the tool is PEN\n  When the user clicks the canvas\n  Then the drawing goes up by 2\n";
-        let l = expectation_language::load_sources("t", &[("root.expect", root), ("drawing/w.expect", drawing)]);
+        let l = expectation_language::load_sources(
+            "t",
+            &[("root.expect", root), ("drawing/w.expect", drawing)],
+        );
         assert!(!l.has_errors(), "{}", l.render_diagnostics());
         let a = analyze(&l.suite);
-        let [c] = &a.conflicts[..] else { panic!("{:?}", a.conflicts) };
+        let [c] = &a.conflicts[..] else {
+            panic!("{:?}", a.conflicts)
+        };
         assert_eq!((c.a, c.b), (ExpId(1), ExpId(2)));
         // From the root's start, pressing PEN gets into the drawing section.
         let route = a.section_routes[1].as_ref().expect("a way into drawing");
@@ -451,7 +562,11 @@ Feature: F
     }
 
     fn site(home: &str, billing: &str) -> (Suite, Analysis) {
-        let files = [("root.expect", SITE_ROOT), ("01-home/h.expect", home), ("02-billing/b.expect", billing)];
+        let files = [
+            ("root.expect", SITE_ROOT),
+            ("01-home/h.expect", home),
+            ("02-billing/b.expect", billing),
+        ];
         let l = expectation_language::load_sources("t", &files);
         assert!(!l.has_errors(), "{}", l.render_diagnostics());
         let a = analyze(&l.suite);
@@ -461,14 +576,31 @@ Feature: F
     #[test]
     fn a_follows_takes_the_route_the_expectations_take() {
         let (s, a) = site(SITE_HOME, SITE_BILLING);
-        assert!(!a.diagnostics.iter().any(|d| d.code.starts_with("follows")), "{:?}", a.diagnostics);
+        assert!(
+            !a.diagnostics.iter().any(|d| d.code.starts_with("follows")),
+            "{:?}",
+            a.diagnostics
+        );
         let billing = s.sections.iter().find(|x| x.name == "Billing").unwrap();
-        let route = a.section_routes[billing.id.0 as usize].as_ref().expect("a route from home");
-        assert_eq!(route.steps, vec![named(&s, "The Billing link opens billing")]);
+        let route = a.section_routes[billing.id.0 as usize]
+            .as_ref()
+            .expect("a route from home");
+        assert_eq!(
+            route.steps,
+            vec![named(&s, "The Billing link opens billing")]
+        );
         // The map takes the link, not a made-up move named after the section.
         let map = states::explore(&s, &a.precedence, &[], Limits::default());
-        assert!(map.moves.iter().all(|m| m.setup.is_none()), "{:?}", map.moves);
-        let to_billing = map.moves.iter().find(|m| map.label(&s, m.to).contains("billing")).unwrap();
+        assert!(
+            map.moves.iter().all(|m| m.setup.is_none()),
+            "{:?}",
+            map.moves
+        );
+        let to_billing = map
+            .moves
+            .iter()
+            .find(|m| map.label(&s, m.to).contains("billing"))
+            .unwrap();
         assert_eq!(map.describe_move(&s, to_billing), "the user clicks Billing");
         assert!(!map.states[to_billing.to].start);
     }
@@ -478,18 +610,36 @@ Feature: F
         // The link now goes to settings, and nothing else gets from home to billing.
         let home = SITE_HOME.replace("Then the page is billing", "Then the page is settings");
         let (_, a) = site(&home, SITE_BILLING);
-        let d = a.diagnostics.iter().find(|d| d.code == "follows-no-way-in").expect("an error");
+        let d = a
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "follows-no-way-in")
+            .expect("an error");
         assert!(d.is_error());
-        assert!(d.message.contains("nothing leads from the page is home into «Billing»"), "{}", d.message);
+        assert!(
+            d.message
+                .contains("nothing leads from the page is home into «Billing»"),
+            "{}",
+            d.message
+        );
     }
 
     #[test]
     fn a_follows_nothing_gets_to_is_a_warning() {
-        let billing = SITE_BILLING.replace("Follows: the page is home", "Follows: the session is out");
+        let billing =
+            SITE_BILLING.replace("Follows: the page is home", "Follows: the session is out");
         let (_, a) = site(SITE_HOME, &billing);
-        let d = a.diagnostics.iter().find(|d| d.code == "follows-unreached").expect("a warning");
+        let d = a
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "follows-unreached")
+            .expect("a warning");
         assert!(!d.is_error());
         // A route from a setup nobody gets to isn't worth an error of its own.
-        assert!(!a.diagnostics.iter().any(|d| d.code == "follows-no-way-in"), "{:?}", a.diagnostics);
+        assert!(
+            !a.diagnostics.iter().any(|d| d.code == "follows-no-way-in"),
+            "{:?}",
+            a.diagnostics
+        );
     }
 }

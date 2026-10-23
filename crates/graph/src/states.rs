@@ -12,7 +12,9 @@
 use crate::flow::{Limits, Route, companions, in_scope};
 use crate::precedence::Precedence;
 use crate::semantics::{perform_among, settle};
-use expectation_model::{Condition, ExpId, Expectation, Section, SectionId, Suite, Trigger, VarId, VarKind};
+use expectation_model::{
+    Condition, ExpId, Expectation, Section, SectionId, Suite, Trigger, VarId, VarKind,
+};
 use std::collections::HashMap;
 use std::fmt::Write;
 
@@ -63,20 +65,37 @@ pub struct StateMap {
 /// The states a map tells apart when nobody says: every enumerated one. Numbers would give a
 /// state per reading.
 pub fn default_by(suite: &Suite) -> Vec<VarId> {
-    suite.vocabulary.variables.iter().filter(|v| matches!(v.kind, VarKind::Enum(_))).map(|v| v.id).collect()
+    suite
+        .vocabulary
+        .variables
+        .iter()
+        .filter(|v| matches!(v.kind, VarKind::Enum(_)))
+        .map(|v| v.id)
+        .collect()
 }
 
 /// The map of `suite`, telling states apart by `by` (or [`default_by`] when it's empty).
 pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -> StateMap {
-    let mut by: Vec<VarId> = if by.is_empty() { default_by(suite) } else { by.to_vec() };
+    let mut by: Vec<VarId> = if by.is_empty() {
+        default_by(suite)
+    } else {
+        by.to_vec()
+    };
     by.sort();
     by.dedup();
-    let mut map = StateMap { by: by.clone(), ..StateMap::default() };
+    let mut map = StateMap {
+        by: by.clone(),
+        ..StateMap::default()
+    };
     let mut nodes: HashMap<Condition, usize> = HashMap::new();
     let mut node = |map: &mut StateMap, c: &Condition, level: u32, start: bool| -> usize {
         let key = c.restrict(by.iter().copied());
         let i = *nodes.entry(key.clone()).or_insert_with(|| {
-            map.states.push(MapState { cond: key, level, start });
+            map.states.push(MapState {
+                cond: key,
+                level,
+                start,
+            });
             map.states.len() - 1
         });
         let s = &mut map.states[i];
@@ -90,10 +109,14 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
     let mut queue: Vec<(Condition, SectionId, u32)> = vec![];
     let mut seen: HashMap<(Condition, SectionId), ()> = HashMap::new();
     let mut scopes: HashMap<SectionId, Vec<bool>> = HashMap::new();
-    let roots: Vec<(Condition, SectionId)> =
-        crate::roots(suite).into_iter().map(|(r, s)| (settle(suite, prec, &r, &[]).0, s)).collect();
+    let roots: Vec<(Condition, SectionId)> = crate::roots(suite)
+        .into_iter()
+        .map(|(r, s)| (settle(suite, prec, &r, &[]).0, s))
+        .collect();
     for (cond, section) in roots.iter().cloned() {
-        scopes.entry(section).or_insert_with(|| in_scope(suite, section));
+        scopes
+            .entry(section)
+            .or_insert_with(|| in_scope(suite, section));
         if !cond.is_satisfiable() || seen.contains_key(&(cond.clone(), section)) {
             continue;
         }
@@ -121,19 +144,37 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
                 continue;
             }
             let pre = cond.and(&e.given);
-            let mut out = perform_among(suite, prec, &pre, &e.trigger, companions[t].iter().map(|&c| transitions[c]));
+            let mut out = perform_among(
+                suite,
+                prec,
+                &pre,
+                &e.trigger,
+                companions[t].iter().map(|&c| transitions[c]),
+            );
             // After a hand-over the map is in the new program's setup, not in this one's state.
-            if let Some(setup) = out.handed_over.and_then(|h| suite.exp(h).hands_over.as_ref()) {
+            if let Some(setup) = out
+                .handed_over
+                .and_then(|h| suite.exp(h).hands_over.as_ref())
+            {
                 out.after = settle(suite, prec, setup, &out.fired).0;
             }
             if !out.fired.contains(&e.id) || !out.after.is_satisfiable() {
                 continue;
             }
             let to = node(&mut map, &out.after, level + 1, false);
-            let m = *moves.entry((from, to, e.trigger.clone(), None)).or_insert_with(|| {
-                map.moves.push(Move { from, to, action: e.trigger.clone(), fired: vec![], hands_over: false, setup: None });
-                map.moves.len() - 1
-            });
+            let m = *moves
+                .entry((from, to, e.trigger.clone(), None))
+                .or_insert_with(|| {
+                    map.moves.push(Move {
+                        from,
+                        to,
+                        action: e.trigger.clone(),
+                        fired: vec![],
+                        hands_over: false,
+                        setup: None,
+                    });
+                    map.moves.len() - 1
+                });
             for f in out.fired.iter().filter(|f| scope[f.0 as usize]) {
                 if !map.moves[m].fired.contains(f) {
                     map.moves[m].fired.push(*f);
@@ -143,7 +184,11 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
             let section = match out.handed_over {
                 Some(_) => {
                     map.moves[m].hands_over = true;
-                    roots.iter().find(|(c, _)| *c == out.after).map(|&(_, s)| s).unwrap_or(section)
+                    roots
+                        .iter()
+                        .find(|(c, _)| *c == out.after)
+                        .map(|&(_, s)| s)
+                        .unwrap_or(section)
                 }
                 None => section,
             };
@@ -175,7 +220,9 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
                 Some(r) => {
                     let (mut at, mut at_node) = (cond.clone(), from);
                     for (k, &id) in r.steps.iter().enumerate() {
-                        let Some(t) = transitions.iter().position(|e| e.id == id) else { break };
+                        let Some(t) = transitions.iter().position(|e| e.id == id) else {
+                            break;
+                        };
                         let e = transitions[t];
                         if !at.implies(&e.given) {
                             break;
@@ -186,7 +233,11 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
                             break;
                         }
                         let last = k + 1 == r.steps.len();
-                        let next = if last { to } else { node(&mut map, &out.after, level + 1 + k as u32, false) };
+                        let next = if last {
+                            to
+                        } else {
+                            node(&mut map, &out.after, level + 1 + k as u32, false)
+                        };
                         walked.push((at_node, next, e.trigger.clone(), out.fired));
                         (at, at_node) = (out.after, next);
                     }
@@ -198,10 +249,19 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
             }
             let setup = route.is_none().then_some(s.id);
             for (a, b, action, fired) in walked {
-                let m = *moves.entry((a, b, action.clone(), setup)).or_insert_with(|| {
-                    map.moves.push(Move { from: a, to: b, action, fired: vec![], hands_over: false, setup });
-                    map.moves.len() - 1
-                });
+                let m = *moves
+                    .entry((a, b, action.clone(), setup))
+                    .or_insert_with(|| {
+                        map.moves.push(Move {
+                            from: a,
+                            to: b,
+                            action,
+                            fired: vec![],
+                            hands_over: false,
+                            setup,
+                        });
+                        map.moves.len() - 1
+                    });
                 for f in fired {
                     if !map.moves[m].fired.contains(&f) {
                         map.moves[m].fired.push(f);
@@ -230,7 +290,9 @@ pub fn explore(suite: &Suite, prec: &Precedence, by: &[VarId], limits: Limits) -
 /// sim's is a LAUNCH from the launcher's) is reached, not a start. Of setups that lead to each
 /// other, the first stays.
 fn prune_starts(map: &mut StateMap) {
-    let starts: Vec<usize> = (0..map.states.len()).filter(|&i| map.states[i].start).collect();
+    let starts: Vec<usize> = (0..map.states.len())
+        .filter(|&i| map.states[i].start)
+        .collect();
     let mut from: Vec<Vec<usize>> = vec![vec![]; map.states.len()];
     for m in &map.moves {
         from[m.from].push(m.to);
@@ -253,7 +315,10 @@ fn prune_starts(map: &mut StateMap) {
         })
         .collect();
     for (a, &r) in starts.iter().enumerate() {
-        let led = starts.iter().enumerate().any(|(b, &other)| b != a && reach[b][r] && (!reach[a][other] || other < r));
+        let led = starts
+            .iter()
+            .enumerate()
+            .any(|(b, &other)| b != a && reach[b][r] && (!reach[a][other] || other < r));
         if led {
             map.states[r].start = false;
         }
@@ -302,7 +367,9 @@ pub fn first_moves(suite: &Suite, prec: &Precedence) -> Vec<FirstMove> {
     let mut seen: HashMap<(Condition, SectionId), ()> = HashMap::new();
     let mut out = vec![];
     for (root, section) in crate::roots(suite) {
-        let scope = scopes.entry(section).or_insert_with(|| in_scope(suite, section));
+        let scope = scopes
+            .entry(section)
+            .or_insert_with(|| in_scope(suite, section));
         let (cond, _) = settle(suite, prec, &root, &[]);
         if !cond.is_satisfiable() || seen.insert((cond.clone(), section), ()).is_some() {
             continue;
@@ -312,9 +379,20 @@ pub fn first_moves(suite: &Suite, prec: &Precedence) -> Vec<FirstMove> {
                 continue;
             }
             let pre = cond.and(&e.given);
-            let o = perform_among(suite, prec, &pre, &e.trigger, companions[t].iter().map(|&c| transitions[c]));
+            let o = perform_among(
+                suite,
+                prec,
+                &pre,
+                &e.trigger,
+                companions[t].iter().map(|&c| transitions[c]),
+            );
             if o.fired.contains(&e.id) && o.after.is_satisfiable() {
-                out.push(FirstMove { section, before: pre, rule: e.id, after: o.after });
+                out.push(FirstMove {
+                    section,
+                    before: pre,
+                    rule: e.id,
+                    after: o.after,
+                });
             }
         }
     }
@@ -348,7 +426,11 @@ impl StateMap {
         c.iter()
             .map(|(v, k)| {
                 let p = suite.vocabulary.var(v).predicate(k);
-                ["is ", "are ", "has ", "have "].iter().find_map(|w| p.strip_prefix(w)).unwrap_or(&p).to_string()
+                ["is ", "are ", "has ", "have "]
+                    .iter()
+                    .find_map(|w| p.strip_prefix(w))
+                    .unwrap_or(&p)
+                    .to_string()
             })
             .collect::<Vec<_>>()
             .join(" · ")
@@ -387,7 +469,13 @@ pub fn mermaid(suite: &Suite, map: &StateMap) -> String {
         }
     }
     for m in &map.moves {
-        let _ = writeln!(s, "  s{} --> s{} : {}", m.from, m.to, quoted(&map.describe_move(suite, m)));
+        let _ = writeln!(
+            s,
+            "  s{} --> s{} : {}",
+            m.from,
+            m.to,
+            quoted(&map.describe_move(suite, m))
+        );
     }
     s
 }
@@ -395,13 +483,28 @@ pub fn mermaid(suite: &Suite, map: &StateMap) -> String {
 /// The map as Graphviz DOT.
 pub fn dot(suite: &Suite, map: &StateMap) -> String {
     let q = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
-    let mut s = String::from("digraph states {\n  rankdir=LR;\n  node [shape=box, style=rounded];\n");
+    let mut s =
+        String::from("digraph states {\n  rankdir=LR;\n  node [shape=box, style=rounded];\n");
     for (i, st) in map.states.iter().enumerate() {
         let periph = if st.start { ", peripheries=2" } else { "" };
-        let _ = writeln!(s, "  s{i} [label=\"{}\"{periph}];", map.facts(suite, i).iter().map(|f| q(f)).collect::<Vec<_>>().join("\\n"));
+        let _ = writeln!(
+            s,
+            "  s{i} [label=\"{}\"{periph}];",
+            map.facts(suite, i)
+                .iter()
+                .map(|f| q(f))
+                .collect::<Vec<_>>()
+                .join("\\n")
+        );
     }
     for m in &map.moves {
-        let _ = writeln!(s, "  s{} -> s{} [label=\"{}\"];", m.from, m.to, q(&map.describe_move(suite, m)));
+        let _ = writeln!(
+            s,
+            "  s{} -> s{} [label=\"{}\"];",
+            m.from,
+            m.to,
+            q(&map.describe_move(suite, m))
+        );
     }
     s.push_str("}\n");
     s
@@ -470,10 +573,19 @@ Feature: Navigation
         assert!(map.states[home].start && !map.states[about].start);
         assert_eq!(map.states[about].level, 2);
         let has = |a: usize, b: usize| map.moves.iter().any(|m| m.from == a && m.to == b);
-        assert!(has(home, settings) && has(settings, about) && has(about, settings) && has(settings, home));
+        assert!(
+            has(home, settings)
+                && has(settings, about)
+                && has(about, settings)
+                && has(settings, home)
+        );
         assert!(!has(home, about));
         // Turning it up changes the volume, which the map doesn't tell apart: it stays in settings.
-        let up = map.moves.iter().find(|m| s.describe_trigger(&m.action) == "the user turns it up").unwrap();
+        let up = map
+            .moves
+            .iter()
+            .find(|m| s.describe_trigger(&m.action) == "the user turns it up")
+            .unwrap();
         assert!(up.stays() && up.from == settings);
         assert_eq!(map.moves_into(settings).count(), 2);
     }
@@ -483,10 +595,16 @@ Feature: Navigation
         let s = suite();
         let a = crate::analyze(&s);
         let map = explore(&s, &a.precedence, &[], Limits::default());
-        let settings = map.locate(&s.background.overlay(&s.expectations[1].given)).unwrap();
+        let settings = map
+            .locate(&s.background.overlay(&s.expectations[1].given))
+            .unwrap();
         assert_eq!(map.label(&s, settings), "settings");
         let m = mermaid(&s, &map);
-        assert!(m.starts_with("stateDiagram-v2") && m.contains("[*] --> s0") && m.contains("the user goes back"));
+        assert!(
+            m.starts_with("stateDiagram-v2")
+                && m.contains("[*] --> s0")
+                && m.contains("the user goes back")
+        );
         assert!(dot(&s, &map).contains("peripheries=2"));
     }
 
@@ -498,7 +616,11 @@ Feature: Navigation
         let map = explore(&s, &a.precedence, &[volume], Limits::default());
         // 0..10 in settings, and the volume never changes anywhere else.
         assert_eq!(map.states.len(), 11);
-        assert!(map.states.iter().all(|st| st.cond.vars().all(|v| v == volume)));
+        assert!(
+            map.states
+                .iter()
+                .all(|st| st.cond.vars().all(|v| v == volume))
+        );
     }
 
     const LAUNCHER: &str = "
@@ -618,13 +740,19 @@ Feature: Settings
 ";
         let l = expectation_language::load_sources(
             "t",
-            &[("root.expect", vocab), ("01-closed/c.expect", closed), ("02-settings/s.expect", settings)],
+            &[
+                ("root.expect", vocab),
+                ("01-closed/c.expect", closed),
+                ("02-settings/s.expect", settings),
+            ],
         );
         assert!(!l.has_errors(), "{}", l.render_diagnostics());
         let s = l.suite;
         let a = crate::analyze(&s);
         let map = explore(&s, &a.precedence, &[], Limits::default());
-        let starts: Vec<usize> = (0..map.states.len()).filter(|&i| map.states[i].start).collect();
+        let starts: Vec<usize> = (0..map.states.len())
+            .filter(|&i| map.states[i].start)
+            .collect();
         assert_eq!(starts.len(), 1, "{:?}", map.states);
         assert_eq!(map.label(&s, starts[0]), "closed");
         let m = map.moves.iter().find(|m| m.setup.is_some()).unwrap();
@@ -637,13 +765,22 @@ Feature: Settings
     fn a_hand_over_is_not_in_the_state_a_story_sees() {
         let l = expectation_language::load_sources(
             "t",
-            &[("root.expect", VOCAB), ("01-launcher/l.expect", LAUNCHER), ("02-app/a.expect", APP)],
+            &[
+                ("root.expect", VOCAB),
+                ("01-launcher/l.expect", LAUNCHER),
+                ("02-app/a.expect", APP),
+            ],
         );
         let s = l.suite;
         let a = crate::analyze(&s);
         let launch = s.transitions().find(|e| e.hands_over.is_some()).unwrap();
         let start = crate::roots(&s).into_iter().next().unwrap().0;
-        let out = crate::semantics::perform(&s, &a.precedence, &start.and(&launch.given), &launch.trigger);
+        let out = crate::semantics::perform(
+            &s,
+            &a.precedence,
+            &start.and(&launch.given),
+            &launch.trigger,
+        );
         assert!(out.handed_over.is_some());
         let screen = s.vocabulary.find_var("the screen").unwrap().id;
         assert!(out.after.get(screen).is_none(), "{:?}", out.after);

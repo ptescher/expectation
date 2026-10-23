@@ -19,15 +19,24 @@ pub struct Screenshot {
 
 impl Screenshot {
     pub fn png(bytes: Vec<u8>) -> Self {
-        Screenshot { bytes, extension: "png" }
+        Screenshot {
+            bytes,
+            extension: "png",
+        }
     }
 
     pub fn jpeg(bytes: Vec<u8>) -> Self {
-        Screenshot { bytes, extension: "jpg" }
+        Screenshot {
+            bytes,
+            extension: "jpg",
+        }
     }
 
     pub fn svg(svg: String) -> Self {
-        Screenshot { bytes: svg.into_bytes(), extension: "svg" }
+        Screenshot {
+            bytes: svg.into_bytes(),
+            extension: "svg",
+        }
     }
 }
 

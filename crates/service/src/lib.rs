@@ -58,7 +58,8 @@ impl Services {
 
     /// Makes a service known (by its name), without starting it.
     pub fn add(&mut self, service: impl Service + 'static) {
-        self.known.insert(service.name().to_string(), Box::new(service));
+        self.known
+            .insert(service.name().to_string(), Box::new(service));
     }
 
     pub fn with(mut self, service: impl Service + 'static) -> Self {
@@ -97,7 +98,9 @@ impl Services {
                 self.up.remove(i);
             }
             let service = &self.known[*name];
-            let running = service.start().map_err(|e| format!("{name} would not start: {e}"))?;
+            let running = service
+                .start()
+                .map_err(|e| format!("{name} would not start: {e}"))?;
             self.up.push((name.to_string(), running));
         }
         Ok(())
@@ -142,12 +145,21 @@ pub enum Ready {
     After(Duration),
 }
 
-fn wait_until_ready(name: &str, ready: &Ready, patience: Duration, mut still_up: impl FnMut() -> bool) -> Result<(), String> {
+fn wait_until_ready(
+    name: &str,
+    ready: &Ready,
+    patience: Duration,
+    mut still_up: impl FnMut() -> bool,
+) -> Result<(), String> {
     match ready {
         Ready::Started => Ok(()),
         Ready::After(d) => {
             std::thread::sleep(*d);
-            if still_up() { Ok(()) } else { Err(format!("{name} exited while it was starting")) }
+            if still_up() {
+                Ok(())
+            } else {
+                Err(format!("{name} exited while it was starting"))
+            }
         }
         Ready::Tcp(port) => {
             let addr = SocketAddr::from(([127, 0, 0, 1], *port));
@@ -160,7 +172,10 @@ fn wait_until_ready(name: &str, ready: &Ready, patience: Duration, mut still_up:
                     return Err(format!("{name} exited before port {port} answered"));
                 }
                 if start.elapsed() > patience {
-                    return Err(format!("{name}: nothing answered on port {port} within {} s", patience.as_secs_f32()));
+                    return Err(format!(
+                        "{name}: nothing answered on port {port} within {} s",
+                        patience.as_secs_f32()
+                    ));
                 }
                 std::thread::sleep(Duration::from_millis(100));
             }
@@ -170,7 +185,11 @@ fn wait_until_ready(name: &str, ready: &Ready, patience: Duration, mut still_up:
 
 /// Whether something accepts a connection on `port` of this machine.
 fn port_answers(port: u16) -> bool {
-    TcpStream::connect_timeout(&SocketAddr::from(([127, 0, 0, 1], port)), Duration::from_millis(200)).is_ok()
+    TcpStream::connect_timeout(
+        &SocketAddr::from(([127, 0, 0, 1], port)),
+        Duration::from_millis(200),
+    )
+    .is_ok()
 }
 
 /// Whether `program` can be run: a path that exists, or a name found on `PATH`.
@@ -179,7 +198,8 @@ fn installed(program: &str) -> bool {
     if p.components().count() > 1 {
         return p.exists();
     }
-    std::env::var_os("PATH").is_some_and(|path| std::env::split_paths(&path).any(|d| d.join(program).is_file()))
+    std::env::var_os("PATH")
+        .is_some_and(|path| std::env::split_paths(&path).any(|d| d.join(program).is_file()))
 }
 
 /// A program run for the duration of a test run.
@@ -215,7 +235,8 @@ impl Command {
     }
 
     pub fn args<I: IntoIterator<Item = S>, S: AsRef<str>>(mut self, args: I) -> Self {
-        self.args.extend(args.into_iter().map(|a| a.as_ref().to_string()));
+        self.args
+            .extend(args.into_iter().map(|a| a.as_ref().to_string()));
         self
     }
 
@@ -279,20 +300,34 @@ impl Service for Command {
     }
 
     fn start(&self) -> Result<Box<dyn Running>, String> {
-        if let Ready::Tcp(port) = self.ready {
-            if port_answers(port) {
-                return Err(format!("{}: port {port} is already in use (a leftover of an earlier run? stop it first)", self.name));
-            }
+        if let Ready::Tcp(port) = self.ready
+            && port_answers(port)
+        {
+            return Err(format!(
+                "{}: port {port} is already in use (a leftover of an earlier run? stop it first)",
+                self.name
+            ));
         }
         let mut cmd = std::process::Command::new(&self.program);
-        cmd.args(&self.args).envs(self.env.iter().map(|(k, v)| (k, v))).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        cmd.args(&self.args)
+            .envs(self.env.iter().map(|(k, v)| (k, v)))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
         if let Some(dir) = &self.dir {
-            std::fs::create_dir_all(dir).map_err(|e| format!("cannot make {}: {e}", dir.display()))?;
+            std::fs::create_dir_all(dir)
+                .map_err(|e| format!("cannot make {}: {e}", dir.display()))?;
             cmd.current_dir(dir);
         }
-        let mut child = cmd.spawn().map_err(|e| format!("cannot run {}: {e}", self.program))?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format!("cannot run {}: {e}", self.program))?;
         let name = self.name.clone();
-        let port = if let Ready::Tcp(p) = self.ready { Some(p) } else { None };
+        let port = if let Ready::Tcp(p) = self.ready {
+            Some(p)
+        } else {
+            None
+        };
         let up = |c: &mut Child| c.try_wait().map(|s| s.is_none()).unwrap_or(false);
         let waited = wait_until_ready(&self.name, &self.ready, self.patience, || up(&mut child));
         if let Err(e) = waited {
@@ -345,7 +380,11 @@ pub struct Present {
 
 impl Present {
     pub fn new(name: &str, path: &std::path::Path) -> Self {
-        Present { name: name.into(), path: path.to_path_buf(), hint: None }
+        Present {
+            name: name.into(),
+            path: path.to_path_buf(),
+            hint: None,
+        }
     }
 
     /// How to get it.
@@ -469,7 +508,10 @@ impl Docker {
 
     /// The arguments of `docker run`.
     pub fn run_args(&self) -> Vec<String> {
-        let mut a: Vec<String> = ["run", "-d", "--rm", "--name"].iter().map(|s| s.to_string()).collect();
+        let mut a: Vec<String> = ["run", "-d", "--rm", "--name"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         a.push(self.container.clone());
         for (inside, outside) in &self.ports {
             a.extend(["-p".to_string(), format!("{outside}:{inside}")]);
@@ -485,15 +527,24 @@ impl Docker {
     /// The arguments of `docker build`, when there is a directory to build from.
     pub fn build_args(&self) -> Option<Vec<String>> {
         let dir = self.build_dir.as_ref()?;
-        Some(["build", "-q", "-t", &self.image, dir].iter().map(|s| s.to_string()).collect())
+        Some(
+            ["build", "-q", "-t", &self.image, dir]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        )
     }
 
     fn docker(&self, args: &[String]) -> std::io::Result<std::process::Output> {
-        std::process::Command::new(&self.program).args(args).stdin(Stdio::null()).output()
+        std::process::Command::new(&self.program)
+            .args(args)
+            .stdin(Stdio::null())
+            .output()
     }
 
     fn daemon_up(&self) -> bool {
-        self.docker(&["info".to_string()]).is_ok_and(|o| o.status.success())
+        self.docker(&["info".to_string()])
+            .is_ok_and(|o| o.status.success())
     }
 
     /// Docker Desktop on a Mac does not run until it is opened: open it and wait for it.
@@ -502,7 +553,9 @@ impl Docker {
             return Ok(());
         }
         if cfg!(target_os = "macos") {
-            let _ = std::process::Command::new("open").args(["-ga", "Docker"]).status();
+            let _ = std::process::Command::new("open")
+                .args(["-ga", "Docker"])
+                .status();
         }
         let start = Instant::now();
         while start.elapsed() < Duration::from_secs(120) {
@@ -529,28 +582,55 @@ impl Service for Docker {
 
     fn start(&self) -> Result<Box<dyn Running>, String> {
         self.wake_daemon()?;
-        let have_image = self.docker(&["image".into(), "inspect".into(), self.image.clone()]).is_ok_and(|o| o.status.success());
+        let have_image = self
+            .docker(&["image".into(), "inspect".into(), self.image.clone()])
+            .is_ok_and(|o| o.status.success());
         if !have_image {
-            let build = self.build_args().ok_or_else(|| format!("the image {} is not built, and there is nothing to build it from", self.image))?;
-            let out = self.docker(&build).map_err(|e| format!("docker build: {e}"))?;
+            let build = self.build_args().ok_or_else(|| {
+                format!(
+                    "the image {} is not built, and there is nothing to build it from",
+                    self.image
+                )
+            })?;
+            let out = self
+                .docker(&build)
+                .map_err(|e| format!("docker build: {e}"))?;
             if !out.status.success() {
-                return Err(format!("docker build failed: {}", String::from_utf8_lossy(&out.stderr).trim()));
+                return Err(format!(
+                    "docker build failed: {}",
+                    String::from_utf8_lossy(&out.stderr).trim()
+                ));
             }
         }
         // A container of the same name from an earlier run would stop this one starting.
         let _ = self.docker(&["rm".into(), "-f".into(), self.container.clone()]);
-        if let Some((_, outside)) = self.ports.first().filter(|_| matches!(self.ready, Ready::Tcp(_))) {
-            if port_answers(*outside) {
-                return Err(format!("{}: port {outside} is already in use (a leftover of an earlier run? stop it first)", self.name));
-            }
+        if let Some((_, outside)) = self
+            .ports
+            .first()
+            .filter(|_| matches!(self.ready, Ready::Tcp(_)))
+            && port_answers(*outside)
+        {
+            return Err(format!(
+                "{}: port {outside} is already in use (a leftover of an earlier run? stop it first)",
+                self.name
+            ));
         }
-        let out = self.docker(&self.run_args()).map_err(|e| format!("docker run: {e}"))?;
+        let out = self
+            .docker(&self.run_args())
+            .map_err(|e| format!("docker run: {e}"))?;
         if !out.status.success() {
-            return Err(format!("docker run failed: {}", String::from_utf8_lossy(&out.stderr).trim()));
+            return Err(format!(
+                "docker run failed: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
         }
         let container = self.container.clone();
         let program = self.program.clone();
-        let running = Container { program, container: container.clone(), port: self.ports.first().map(|p| p.1) };
+        let running = Container {
+            program,
+            container: container.clone(),
+            port: self.ports.first().map(|p| p.1),
+        };
         let up = || running.is_up();
         wait_until_ready(&self.name, &self.ready, self.patience, up)?;
         Ok(Box::new(running))
@@ -590,7 +670,11 @@ impl Running for Container {
 
 impl Drop for Container {
     fn drop(&mut self) {
-        let _ = std::process::Command::new(&self.program).args(["rm", "-f", &self.container]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+        let _ = std::process::Command::new(&self.program)
+            .args(["rm", "-f", &self.container])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
     }
 }
 
@@ -602,7 +686,10 @@ pub struct Fallback {
 
 impl Fallback {
     pub fn new(name: &str, ways: Vec<Box<dyn Service>>) -> Self {
-        Fallback { name: name.into(), ways }
+        Fallback {
+            name: name.into(),
+            ways,
+        }
     }
 }
 
@@ -612,21 +699,29 @@ impl Service for Fallback {
     }
 
     fn unavailable(&self) -> Option<String> {
-        let reasons: Vec<String> = self.ways.iter().map(|w| w.unavailable()).collect::<Option<_>>()?;
+        let reasons: Vec<String> = self
+            .ways
+            .iter()
+            .map(|w| w.unavailable())
+            .collect::<Option<_>>()?;
         Some(reasons.join("; or ").to_string())
     }
 
     fn start(&self) -> Result<Box<dyn Running>, String> {
-        self.ways.iter().find(|w| w.unavailable().is_none()).ok_or("no way to start it here")?.start()
+        self.ways
+            .iter()
+            .find(|w| w.unavailable().is_none())
+            .ok_or("no way to start it here")?
+            .start()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
     use std::net::TcpListener;
     use std::sync::Arc;
+    use std::sync::Mutex;
 
     /// A service that counts how it is used.
     #[derive(Clone, Default)]
@@ -670,7 +765,10 @@ mod tests {
     }
 
     fn fake(name: &'static str) -> Fake {
-        Fake { name, ..Default::default() }
+        Fake {
+            name,
+            ..Default::default()
+        }
     }
 
     /// A test that needs something that cannot be had here is not run and not failed: it says
@@ -678,13 +776,22 @@ mod tests {
     #[test]
     fn a_service_that_cannot_start_here_says_how_to_get_it() {
         let mut s = Services::new();
-        s.add(Fake { why_not: Some("build it with `make server`"), ..fake("server") });
+        s.add(Fake {
+            why_not: Some("build it with `make server`"),
+            ..fake("server")
+        });
         s.add(fake("database"));
         assert_eq!(s.start(&["database"]), Ok(()));
         let err = s.start(&["database", "server"]).unwrap_err();
-        assert!(err.contains("server") && err.contains("make server"), "{err}");
+        assert!(
+            err.contains("server") && err.contains("make server"),
+            "{err}"
+        );
         let unknown = s.start(&["nothing"]).unwrap_err();
-        assert!(unknown.contains("nothing") && unknown.contains("no such service"), "{unknown}");
+        assert!(
+            unknown.contains("nothing") && unknown.contains("no such service"),
+            "{unknown}"
+        );
     }
 
     /// Several plans want the same service: it is started once, for all of them, and stopped
@@ -761,24 +868,49 @@ mod tests {
             s.add(Ordered("app", order.clone()));
             s.start(&["database", "app"]).unwrap();
         }
-        assert_eq!(*order.lock().unwrap(), vec!["app", "database"], "what depends on the database stops first");
+        assert_eq!(
+            *order.lock().unwrap(),
+            vec!["app", "database"],
+            "what depends on the database stops first"
+        );
     }
 
     /// The first service of a list that can run here is the one that runs: a native build, else a container.
     #[test]
     fn a_fallback_takes_the_first_that_is_available() {
-        let (native, docker) = (Fake { why_not: Some("not built"), ..fake("native") }, fake("docker"));
+        let (native, docker) = (
+            Fake {
+                why_not: Some("not built"),
+                ..fake("native")
+            },
+            fake("docker"),
+        );
         let docker_starts = docker.starts.clone();
         let mut s = Services::new();
-        s.add(Fallback::new("server", vec![Box::new(native.clone()), Box::new(docker.clone())]));
+        s.add(Fallback::new(
+            "server",
+            vec![Box::new(native.clone()), Box::new(docker.clone())],
+        ));
         s.start(&["server"]).unwrap();
         assert_eq!(*docker_starts.lock().unwrap(), 1);
         assert_eq!(*native.starts.lock().unwrap(), 0);
 
         let mut none = Services::new();
-        none.add(Fallback::new("server", vec![Box::new(native.clone()), Box::new(Fake { why_not: Some("no docker"), ..fake("docker") })]));
+        none.add(Fallback::new(
+            "server",
+            vec![
+                Box::new(native.clone()),
+                Box::new(Fake {
+                    why_not: Some("no docker"),
+                    ..fake("docker")
+                }),
+            ],
+        ));
         let err = none.start(&["server"]).unwrap_err();
-        assert!(err.contains("not built") && err.contains("no docker"), "every way is named: {err}");
+        assert!(
+            err.contains("not built") && err.contains("no docker"),
+            "every way is named: {err}"
+        );
     }
 
     /// A command is a service when it can be run here; its readiness is a port answering.
@@ -795,10 +927,16 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_secs(3));
             drop(listener);
         });
-        let sleeper = Command::new("sleeper", "sleep").arg("30").ready(Ready::Tcp(port)).patience(std::time::Duration::from_secs(5));
+        let sleeper = Command::new("sleeper", "sleep")
+            .arg("30")
+            .ready(Ready::Tcp(port))
+            .patience(std::time::Duration::from_secs(5));
         let began = std::time::Instant::now();
         let mut running = sleeper.start().expect("starts and is ready");
-        assert!(began.elapsed() >= std::time::Duration::from_millis(300), "it did not wait for the port");
+        assert!(
+            began.elapsed() >= std::time::Duration::from_millis(300),
+            "it did not wait for the port"
+        );
         assert!(running.alive());
         assert_eq!(running.endpoint("port"), Some(port.to_string()));
         opener.join().unwrap();
@@ -808,9 +946,15 @@ mod tests {
             let l = TcpListener::bind("127.0.0.1:0").unwrap();
             l.local_addr().unwrap().port()
         };
-        let slow = Command::new("slow", "sleep").arg("30").ready(Ready::Tcp(closed)).patience(std::time::Duration::from_millis(300));
+        let slow = Command::new("slow", "sleep")
+            .arg("30")
+            .ready(Ready::Tcp(closed))
+            .patience(std::time::Duration::from_millis(300));
         let err = slow.start().err().expect("never ready");
-        assert!(err.contains("slow") && err.contains(&closed.to_string()), "{err}");
+        assert!(
+            err.contains("slow") && err.contains(&closed.to_string()),
+            "{err}"
+        );
     }
 
     /// A port that something else already answers on is not ours to wait for: what answers there
@@ -819,9 +963,14 @@ mod tests {
     fn a_port_somebody_else_holds_is_not_ours_to_wait_for() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
-        let c = Command::new("server", "sleep").arg("30").ready(Ready::Tcp(port));
+        let c = Command::new("server", "sleep")
+            .arg("30")
+            .ready(Ready::Tcp(port));
         let err = c.start().err().expect("the port is taken");
-        assert!(err.contains("server") && err.contains(&port.to_string()) && err.contains("already"), "{err}");
+        assert!(
+            err.contains("server") && err.contains(&port.to_string()) && err.contains("already"),
+            "{err}"
+        );
         drop(listener);
     }
 
@@ -830,7 +979,14 @@ mod tests {
         let sleeper = Command::new("sleeper", "sleep").arg("30");
         let running = sleeper.start().unwrap();
         let pid = running.endpoint("pid").expect("a pid");
-        let gone = |pid: &str| !std::process::Command::new("kill").args(["-0", pid]).stderr(std::process::Stdio::null()).status().unwrap().success();
+        let gone = |pid: &str| {
+            !std::process::Command::new("kill")
+                .args(["-0", pid])
+                .stderr(std::process::Stdio::null())
+                .status()
+                .unwrap()
+                .success()
+        };
         assert!(!gone(&pid), "it is running");
         drop(running);
         let mut tries = 0;
@@ -843,9 +999,13 @@ mod tests {
 
     #[test]
     fn a_command_that_is_not_installed_is_unavailable_with_a_hint() {
-        let c = Command::new("thing", "definitely-not-a-program-expectation").hint("install it from example.org");
+        let c = Command::new("thing", "definitely-not-a-program-expectation")
+            .hint("install it from example.org");
         let why = c.unavailable().expect("not there");
-        assert!(why.contains("definitely-not-a-program-expectation") && why.contains("example.org"), "{why}");
+        assert!(
+            why.contains("definitely-not-a-program-expectation") && why.contains("example.org"),
+            "{why}"
+        );
         assert!(Command::new("sleeper", "sleep").unavailable().is_none());
     }
 
@@ -860,15 +1020,21 @@ mod tests {
         assert!(running.alive());
         assert_eq!(running.endpoint("path"), Some(here.display().to_string()));
 
-        let gone = Present::new("tool", std::path::Path::new("/definitely/not/here/tool")).hint("build it first");
+        let gone = Present::new("tool", std::path::Path::new("/definitely/not/here/tool"))
+            .hint("build it first");
         let why = gone.unavailable().expect("missing");
-        assert!(why.contains("/definitely/not/here/tool") && why.contains("build it first"), "{why}");
+        assert!(
+            why.contains("/definitely/not/here/tool") && why.contains("build it first"),
+            "{why}"
+        );
         assert!(gone.start().is_err());
     }
 
     #[test]
     fn a_command_that_exits_at_once_is_not_ready() {
-        let c = Command::new("quitter", "true").ready(Ready::Tcp(1)).patience(std::time::Duration::from_secs(2));
+        let c = Command::new("quitter", "true")
+            .ready(Ready::Tcp(1))
+            .patience(std::time::Duration::from_secs(2));
         let err = c.start().err().expect("it quit");
         assert!(err.contains("quitter") && err.contains("exited"), "{err}");
     }
@@ -877,21 +1043,44 @@ mod tests {
     /// with its ports, environment and image.
     #[test]
     fn a_container_runs_detached_with_its_ports_and_environment() {
-        let postgres = Docker::new("database", "postgres:16").container("expectation-test-db").port(5432, 55432).env("POSTGRES_PASSWORD", "test").ready(Ready::Tcp(55432));
+        let postgres = Docker::new("database", "postgres:16")
+            .container("expectation-test-db")
+            .port(5432, 55432)
+            .env("POSTGRES_PASSWORD", "test")
+            .ready(Ready::Tcp(55432));
         assert_eq!(
             postgres.run_args(),
-            vec!["run", "-d", "--rm", "--name", "expectation-test-db", "-p", "55432:5432", "-e", "POSTGRES_PASSWORD=test", "postgres:16"]
+            vec![
+                "run",
+                "-d",
+                "--rm",
+                "--name",
+                "expectation-test-db",
+                "-p",
+                "55432:5432",
+                "-e",
+                "POSTGRES_PASSWORD=test",
+                "postgres:16"
+            ]
         );
         let with_command = Docker::new("x", "img").container("c").arg("--flag");
-        assert_eq!(with_command.run_args().last().map(String::as_str), Some("--flag"), "arguments go after the image");
+        assert_eq!(
+            with_command.run_args().last().map(String::as_str),
+            Some("--flag"),
+            "arguments go after the image"
+        );
     }
 
     /// Without Docker installed, a container service is unavailable and says where to get it.
     #[test]
     fn a_container_needs_docker() {
-        let d = Docker::new("database", "postgres:16").docker_program("definitely-not-docker-expectation");
+        let d = Docker::new("database", "postgres:16")
+            .docker_program("definitely-not-docker-expectation");
         let why = d.unavailable().expect("no docker");
-        assert!(why.contains("Docker") && why.contains("docker.com"), "{why}");
+        assert!(
+            why.contains("Docker") && why.contains("docker.com"),
+            "{why}"
+        );
     }
 
     /// An image that is not there is built from its directory, when it has one, and the
@@ -899,7 +1088,10 @@ mod tests {
     #[test]
     fn an_image_is_built_from_its_directory() {
         let d = Docker::new("server", "expectation-server").build_from("server");
-        assert_eq!(d.build_args().unwrap(), vec!["build", "-q", "-t", "expectation-server", "server"]);
+        assert_eq!(
+            d.build_args().unwrap(),
+            vec!["build", "-q", "-t", "expectation-server", "server"]
+        );
         assert!(Docker::new("x", "img").build_args().is_none());
     }
 }
