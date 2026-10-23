@@ -151,7 +151,9 @@ fn workers_in_parallel_each_get_their_own_driver_and_report_in_plan_order() {
     assert_eq!(statuses(&report), statuses(&serial), "the same results, in the same order");
     let mut built = built.into_inner().unwrap();
     built.sort();
-    assert_eq!(built, vec![0, 1, 2], "one driver for each worker");
+    // A worker builds its driver when it gets a plan, so a fast one can leave another nothing to do.
+    assert!(!built.is_empty() && built.iter().all(|n| *n < 3), "{built:?}");
+    assert_eq!(built.len(), built.iter().collect::<std::collections::BTreeSet<_>>().len(), "at most one driver for each worker");
 
     // More workers than tests is fine, and a defect is still caught.
     let leaky = a.run_parallel(1000, &RunOptions::default(), |_| expectation_harness::Worker::new(world::driver(true)));
