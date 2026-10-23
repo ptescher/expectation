@@ -157,3 +157,43 @@ fn workers_in_parallel_each_get_their_own_driver_and_report_in_plan_order() {
     let leaky = a.run_parallel(1000, &RunOptions::default(), |_| expectation_harness::Worker::new(world::driver(true)));
     assert!(!leaky.passed());
 }
+
+/// Results stay valid while the story is the same: a word added to the vocabulary renumbers the
+/// states and events, and changes nothing a reader sees. A story reworded is another test.
+#[test]
+fn saved_results_survive_an_unrelated_change_to_the_vocabulary_but_not_a_reworded_story() {
+    let copy = |name: &str, edit: &dyn Fn(&str, &str) -> String| {
+        let from = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/kettle");
+        let to = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+        let _ = std::fs::remove_dir_all(&to);
+        std::fs::create_dir_all(&to).unwrap();
+        for f in std::fs::read_dir(&from).unwrap().flatten() {
+            if f.path().extension().is_some_and(|e| e == "expect") {
+                let file = f.file_name().to_string_lossy().into_owned();
+                let text = std::fs::read_to_string(f.path()).unwrap();
+                std::fs::write(to.join(&file), edit(&file, &text)).unwrap();
+            }
+        }
+        Acceptance::load(&to).unwrap_or_else(|e| panic!("{e}")).with_coverage()
+    };
+    let prints = |a: &Acceptance| -> Vec<(String, String)> {
+        a.plans.iter().map(|p| (p.slug.clone(), expectation_story::fingerprint(p))).collect()
+    };
+    let before = prints(&copy("print_before", &|_, t| t.to_string()));
+    // A new state first in the vocabulary: every id after it moves.
+    let moved = copy("print_moved", &|f, t| {
+        if f == "vocabulary.expect" {
+            t.replace("Vocabulary:\n", "Vocabulary:\n  State: the lamp is on | off\n")
+        } else {
+            t.to_string()
+        }
+    });
+    let after = prints(&moved);
+    for (slug, print) in &before {
+        assert_eq!(after.iter().find(|(s, _)| s == slug).map(|(_, p)| p), Some(print), "{slug}");
+    }
+    let reworded = prints(&copy("print_reworded", &|f, t| {
+        if f == "stories.expect" { t.replacen("Then the kettle is heating\n", "Then the kettle is heating\n    And the child lock is off\n", 1) } else { t.to_string() }
+    }));
+    assert!(before.iter().any(|b| !reworded.contains(b)), "a story that is reworded keeps its print");
+}

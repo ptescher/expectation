@@ -5,7 +5,7 @@ pub mod plan;
 pub mod report;
 
 pub use plan::{Because, Check, Origin, Plan, PlanStep, Planned, coverage, coverage_plans, plan_stories, untested, visit_plans};
-pub use report::{CheckResult, PlanResult, Report, Status, StepResult, Verdict, load_results, load_results_for, results_file};
+pub use report::{CheckResult, PlanResult, Report, Status, StepResult, Verdict, fingerprint, load_results, load_results_for, results_file};
 
 #[cfg(test)]
 mod tests {
