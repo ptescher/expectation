@@ -318,6 +318,7 @@ fn print_plan(s: &Suite, p: &Plan) {
                 Because::Arranged => "arranged".to_string(),
                 Because::Expectation(e) => format!("«{}»", s.exp(*e).name),
                 Because::Story(span) => format!("story, {span}"),
+                Because::Setup(x) => format!("setup of «{}»", s.section(*x).name),
             };
             println!(
                 "       check  {}  ({why})",

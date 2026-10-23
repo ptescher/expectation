@@ -233,6 +233,12 @@ pub struct Section {
     /// What its Background adds to its parent's.
     pub setup: Condition,
     pub setup_steps: Vec<StepText>,
+    /// `Follows:` under its Background: the setup that its own is reached from. Where the
+    /// expectations get from there to its `start`, that route is how; otherwise it's what the
+    /// Background's steps say. Either way it is not a start of the state map.
+    pub follows: Option<Condition>,
+    /// The `Follows:` lines as written.
+    pub follows_steps: Vec<StepText>,
     /// `Launch:`: how to start the program under test, if this section says (its sub-sections
     /// inherit it; see [`Suite::launch_of`]).
     pub launch: Option<String>,

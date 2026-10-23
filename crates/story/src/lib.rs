@@ -6,7 +6,7 @@ pub mod report;
 
 pub use plan::{
     Because, Check, Origin, Plan, PlanStep, Planned, coverage, coverage_plans, plan_stories,
-    untested, visit_plans,
+    reaching_plans, untested, visit_plans,
 };
 pub use report::{
     CheckResult, PlanResult, Report, Status, StepResult, Verdict, fingerprint, load_results,
@@ -228,5 +228,75 @@ Story: Boiling
         // With that test too, nothing is left to visit.
         let all: Vec<Plan> = stories.into_iter().chain(visits).collect();
         assert!(visit_plans(s, &a, &all).is_empty());
+    }
+
+    #[test]
+    fn a_follows_gets_a_test_that_walks_the_way_in() {
+        let root = "
+Vocabulary:
+  State: the page is home | billing | settings
+  State: the banner is shown | hidden
+  Event: the user clicks Billing
+";
+        let home = "
+Section: Home
+  The home page.
+Background:
+  Given the page is home
+  And the banner is shown
+Feature: Navigation
+  Expectation: The Billing link opens billing
+    Given the page is home
+    When the user clicks Billing
+    Then the page is billing
+";
+        let billing = "
+Section: Billing
+  Paying.
+Background:
+  Follows: the page is home
+  Given the page is billing
+  And the banner is shown
+";
+        let files = [
+            ("root.expect", root),
+            ("01-home/h.expect", home),
+            ("02-billing/b.expect", billing),
+        ];
+        let l = expectation_language::load_sources("t", &files);
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        let (s, a) = (&l.suite, expectation_graph::analyze(&l.suite));
+        let generated = coverage_plans(s, &a, &[]);
+        let plan = generated
+            .iter()
+            .find(|p| matches!(p.origin, Origin::Reaching { .. }))
+            .expect("a reaching test");
+        assert_eq!(plan.title, "Reaching «Billing»");
+        assert_eq!(
+            s.section(plan.section).name,
+            "Home",
+            "it starts where the setup it follows is"
+        );
+        let given: Vec<&str> = plan.given.iter().map(|t| t.text.as_str()).collect();
+        assert_eq!(given, ["the page is home", "the banner is shown"]);
+        assert_eq!(plan.steps.len(), 1);
+        // The link promises the page; only the section's setup says the banner is shown, so
+        // that's checked because of it.
+        let billing = s.sections.iter().find(|x| x.name == "Billing").unwrap().id;
+        let checks = &plan.steps[0].checks;
+        assert_eq!(checks.len(), 2, "{checks:?}");
+        assert!(matches!(checks[0].because, Because::Expectation(_)));
+        assert_eq!(checks[1].because, Because::Setup(billing));
+        assert_eq!(
+            s.vocabulary.describe(&plan.steps[0].state),
+            "the page is billing and the banner is shown"
+        );
+        // It exercises the link, so coverage doesn't generate another test for it.
+        assert_eq!(
+            generated.len(),
+            1,
+            "{:?}",
+            generated.iter().map(|p| &p.title).collect::<Vec<_>>()
+        );
     }
 }

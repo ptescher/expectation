@@ -178,7 +178,7 @@ impl Site<'_> {
     fn read_url(&self, i: usize) -> String {
         match self.d.plans[i].origin {
             Origin::Story { .. } => self.tutorial_url(i),
-            Origin::Coverage { .. } => self.test_url(i),
+            Origin::Coverage { .. } | Origin::Reaching { .. } => self.test_url(i),
         }
     }
 
@@ -735,6 +735,10 @@ impl Site<'_> {
             Origin::Coverage { target } => {
                 format!("Generated to reach «{}».", self.suite().exp(target).name)
             }
+            Origin::Reaching { section } => format!(
+                "Generated to walk into «{}».",
+                self.suite().section(section).name
+            ),
         };
         let _ = status;
         format!(
@@ -1147,7 +1151,7 @@ impl Site<'_> {
                     Origin::Story { .. } => {
                         format!(r#"<a href="{}">tutorial</a>"#, esc(&self.tutorial_url(i)))
                     }
-                    Origin::Coverage { .. } => "generated".into(),
+                    Origin::Coverage { .. } | Origin::Reaching { .. } => "generated".into(),
                 };
                 let _ = write!(
                     o,
@@ -1205,6 +1209,13 @@ impl Site<'_> {
                     "<p class=\"lede\">Generated. No story reaches {}, so this test takes the shortest route there from the setup of {}.</p>",
                     self.exp_link(target),
                     self.section_link(plan.section)
+                );
+            }
+            Origin::Reaching { section } => {
+                let _ = write!(
+                    o,
+                    "<p class=\"lede\">Generated. The tests in {} start there directly, so this test takes the way in, from the setup it follows, and checks that it gets there.</p>",
+                    self.section_link(section)
                 );
             }
         }
@@ -1314,6 +1325,7 @@ impl Site<'_> {
             Because::Arranged => "arranged".to_string(),
             Because::Expectation(e) => self.exp_link(*e),
             Because::Story(_) => "the story".to_string(),
+            Because::Setup(x) => format!("the setup of {}", self.section_link(*x)),
         };
         let seen = match r {
             Some(r) if !r.passed => match (&r.observed, &r.error) {

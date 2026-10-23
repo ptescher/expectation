@@ -13,17 +13,17 @@ pub struct Before {
     /// How to start the program, from the section's (or its nearest ancestor's) `Launch:`.
     /// Always first, never a numbered step.
     pub launch: Option<String>,
-    /// Start from this section's setup first.
+    /// Start from this section's setup first: the parent's, or the one it follows.
     pub parent: Option<SectionId>,
     /// What to have in place, one sentence each.
     pub items: Vec<String>,
-    /// How to get here from the parent's setup, one sentence per step.
+    /// How to get here from that setup, one sentence per step.
     pub route: Vec<String>,
     /// The route is detail: the items already say how, in the author's words.
     pub route_is_detail: bool,
 }
 
-/// The steps from a section's parent's setup to its own, in the reader's words.
+/// The steps from the setup a section is reached from to its own, in the reader's words.
 pub fn route(d: &Docs, id: SectionId) -> Vec<String> {
     let s = d.suite;
     let Some(route) = d.analysis.section_routes[id.0 as usize].as_ref() else {
@@ -111,9 +111,13 @@ pub fn before(d: &Docs, id: SectionId) -> Option<Before> {
     let detail = said && !route.is_empty();
     Some(Before {
         launch,
-        parent: section
-            .parent
-            .filter(|&p| !s.section(p).start.is_unconstrained()),
+        // A section that follows a setup starts from the section that has it, not its parent.
+        parent: match &section.follows {
+            Some(_) => expectation_graph::followed(s, section),
+            None => section
+                .parent
+                .filter(|&p| !s.section(p).start.is_unconstrained()),
+        },
         items,
         route,
         route_is_detail: detail,
@@ -204,7 +208,7 @@ pub fn short_title(suite: &Suite, plan: &Plan) -> String {
                 st.scenarios[scenario].name.clone()
             }
         }
-        Origin::Coverage { .. } => plan.title.clone(),
+        Origin::Coverage { .. } | Origin::Reaching { .. } => plan.title.clone(),
     }
 }
 
@@ -382,7 +386,7 @@ pub fn find(d: &Docs, name: &str) -> Option<Ref> {
     }
     if let Some(i) = (0..d.plans.len()).find(|&i| match d.plans[i].origin {
         Origin::Story { story, .. } => is(&s.story(story).name) || is(&short_title(s, &d.plans[i])),
-        Origin::Coverage { .. } => false,
+        Origin::Coverage { .. } | Origin::Reaching { .. } => false,
     }) {
         return Some(Ref::Tutorial(i));
     }

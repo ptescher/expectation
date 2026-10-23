@@ -15,6 +15,8 @@ pub struct RawFile {
     pub events: Vec<RawDecl>,
     pub phrases: Vec<RawPhrase>,
     pub background: Vec<RawStep>,
+    /// `Follows:` under the Background: the setup it is reached from.
+    pub follows: Vec<RawStep>,
     pub features: Vec<RawFeature>,
     pub stories: Vec<RawStory>,
     pub terms: Vec<RawTerm>,
@@ -526,6 +528,19 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                 ),
                 _ => diags.push(
                     Diagnostic::error("syntax", "`Docs:` belongs in an Expectation").at(&span, ""),
+                ),
+            }
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("Follows:") {
+            match block {
+                Block::Background => out.follows.push(RawStep {
+                    keyword: Keyword::Given,
+                    text: rest.trim().to_string(),
+                    span,
+                }),
+                _ => diags.push(
+                    Diagnostic::error("syntax", "`Follows:` belongs in a Background").at(&span, ""),
                 ),
             }
             continue;

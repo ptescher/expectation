@@ -634,7 +634,7 @@ fn report(d: &Docs, f: &Facts) -> String {
         for i in tests {
             let kind = match d.plans[i].origin {
                 Origin::Story { .. } => format!("[tutorial](tutorials/{}.md)", d.plans[i].slug),
-                Origin::Coverage { .. } => "generated".into(),
+                Origin::Coverage { .. } | Origin::Reaching { .. } => "generated".into(),
             };
             let _ = writeln!(
                 o,
@@ -790,6 +790,13 @@ fn test_page(d: &Docs, f: &Facts, i: usize) -> String {
                 s.section(plan.section).name
             );
         }
+        Origin::Reaching { section } => {
+            let _ = writeln!(
+                o,
+                "*Generated.* The tests in «{}» start there directly, so this test takes the way in, from the setup it follows, and checks that it gets there.\n",
+                s.section(section).name
+            );
+        }
     }
     let _ = writeln!(o, "**Result:** {}\n", status_mark(f.status[i]));
     if let Some(e) = result.and_then(|r| r.start.error.as_ref()) {
@@ -891,6 +898,7 @@ fn check_line(d: &Docs, c: &Check, r: Option<&CheckResult>) -> String {
         Because::Arranged => " · arranged".to_string(),
         Because::Expectation(e) => format!(" · {}", exp_link(d, *e, true)),
         Because::Story(_) => " · the story".to_string(),
+        Because::Setup(x) => format!(" · the setup of «{}»", d.suite.section(*x).name),
     };
     let seen = match r {
         Some(r) if !r.passed => match (&r.observed, &r.error) {

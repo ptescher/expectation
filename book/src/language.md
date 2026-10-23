@@ -161,11 +161,44 @@ Expectation: <name>
   takes over, and it starts in that setup: the launcher starts the sim, so afterwards the sim
   is "just started". A section whose Background is that setup is then reached from here
   instead of being a start of the state map, which goes on from the setup alone (the
-  launcher's buttons say nothing about the sim). A story keeps both. Tests don't check it;
-  they check the expectation's Then.
+  launcher's buttons say nothing about the sim). Stories and tests don't see it: they stay in
+  the launcher, and check the expectation's Then.
 - `Docs: hidden` keeps it off its topic page. It's still tested, and it's in the test report.
 
 Text before the first step is the expectation's description.
+
+## Backgrounds that follow a setup
+
+A section's Background can say which setup it is reached from:
+
+```gherkin
+Background:
+  Follows: the launcher has just opened
+  Given the station is connected to the TX15
+  And the other plane is silent
+```
+
+The section is reached from that setup, not a start of the state map: only the setup that
+nothing leads to is. Its "Before you begin" starts from the section whose setup it follows.
+
+How it's reached depends on whether the expectations can say:
+
+- **They can.** Where a chain of expectations gets from the followed setup to this one (a
+  website's home page has a link to billing), that chain is the way in. The state map shows
+  its real moves, and the docs give its steps. With coverage on, a generated test
+  "Reaching «Billing»" arranges the followed setup, takes the route and checks everything the
+  section's setup says. The section's own tests arrange its setup directly (a deep link), so
+  this is the test that shows the way in gets to the same place.
+- **They change every state the setup needs, but nothing gets there.** That's an error
+  (`follows-no-way-in`): the route it claims is broken. Changing the link so it goes
+  somewhere else gives you this error.
+- **Some state the setup needs, nothing changes** (the station is connected to the TX15).
+  The Background's steps (and their `Say:`) are what you do, and the state map has one move
+  from the followed setup to the section, named by the section. That move is a claim about
+  how to set up, which nothing tests.
+
+If nothing gets to the setup a section follows, that's a `follows-unreached` warning.
+`Hands over to:` is the same idea for what a tested expectation does.
 
 ## Stories
 
