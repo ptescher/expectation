@@ -313,10 +313,10 @@ impl Report {
     }
 }
 
-/// Every `*.tsv` results file in `dir` (one per driver that has run), merged and lined up
-/// with `plans`. Nothing there: nothing has run.
-/// A short hash of what a plan does and checks, so that results saved for an older version
-/// of it aren't shown as its results.
+/// A short hash of the test as it is written (its title and the lines of its steps), so that
+/// results saved for an older version of it aren't shown as its results. Nothing in it depends on
+/// how the suite numbers its states and events, nor on the code under test: adding a word to the
+/// vocabulary, or changing the app, leaves the results of every unchanged test standing.
 pub fn fingerprint(plan: &Plan) -> String {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     let mut eat = |s: &str| {
@@ -324,18 +324,22 @@ pub fn fingerprint(plan: &Plan) -> String {
             h = (h ^ b as u64).wrapping_mul(0x0100_0000_01b3);
         }
     };
-    eat(&format!("{:?}", plan.start));
+    eat(&plan.title);
+    for t in &plan.given {
+        eat(&t.text);
+    }
     for step in &plan.steps {
         for t in &step.text {
             eat(&t.text);
         }
-        for c in &step.checks {
-            eat(&format!("{:?} {:?}", c.var, c.expect));
-        }
+        // A step with checks the story did not write (a generated test's) still changes the print.
+        eat(&step.checks.len().to_string());
     }
     format!("{h:016x}")
 }
 
+/// Every `*.tsv` results file in `dir` (one per driver that has run), merged and lined up
+/// with `plans`. Nothing there: nothing has run.
 pub fn load_results(dir: &std::path::Path, plans: &[Plan]) -> Report {
     load_results_for(dir, plans, None)
 }
