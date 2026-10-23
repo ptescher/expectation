@@ -33,10 +33,10 @@ fn read_head(reader: &mut impl BufRead) -> Result<(String, usize), String> {
         if line.is_empty() {
             break;
         }
-        if let Some((k, v)) = line.split_once(':') {
-            if k.trim().eq_ignore_ascii_case("content-length") {
-                length = v.trim().parse().map_err(|_| "bad Content-Length")?;
-            }
+        if let Some((k, v)) = line.split_once(':')
+            && k.trim().eq_ignore_ascii_case("content-length")
+        {
+            length = v.trim().parse().map_err(|_| "bad Content-Length")?;
         }
     }
     Ok((first.trim_end().to_string(), length))

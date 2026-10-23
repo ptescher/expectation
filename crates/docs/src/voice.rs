@@ -69,12 +69,12 @@ fn value(var: &Variable, c: &expectation_model::Constraint) -> String {
 
 /// How to change a state: its `Set:`, or "set the dial to 80 %".
 fn set(var: &Variable, c: &expectation_model::Constraint) -> String {
-    if let expectation_model::Constraint::OneOf(mask) = c {
-        if let (VarKind::Enum(values), 1) = (&var.kind, mask.count_ones()) {
-            let one = &values[mask.trailing_zeros() as usize];
-            if let Some((_, text)) = var.sets.iter().find(|(v, _)| v == one) {
-                return text.clone();
-            }
+    if let expectation_model::Constraint::OneOf(mask) = c
+        && let (VarKind::Enum(values), 1) = (&var.kind, mask.count_ones())
+    {
+        let one = &values[mask.trailing_zeros() as usize];
+        if let Some((_, text)) = var.sets.iter().find(|(v, _)| v == one) {
+            return text.clone();
         }
     }
     let v = value(var, c);

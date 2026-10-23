@@ -300,13 +300,13 @@ impl Service for Command {
     }
 
     fn start(&self) -> Result<Box<dyn Running>, String> {
-        if let Ready::Tcp(port) = self.ready {
-            if port_answers(port) {
-                return Err(format!(
-                    "{}: port {port} is already in use (a leftover of an earlier run? stop it first)",
-                    self.name
-                ));
-            }
+        if let Ready::Tcp(port) = self.ready
+            && port_answers(port)
+        {
+            return Err(format!(
+                "{}: port {port} is already in use (a leftover of an earlier run? stop it first)",
+                self.name
+            ));
         }
         let mut cmd = std::process::Command::new(&self.program);
         cmd.args(&self.args)
@@ -608,13 +608,12 @@ impl Service for Docker {
             .ports
             .first()
             .filter(|_| matches!(self.ready, Ready::Tcp(_)))
+            && port_answers(*outside)
         {
-            if port_answers(*outside) {
-                return Err(format!(
-                    "{}: port {outside} is already in use (a leftover of an earlier run? stop it first)",
-                    self.name
-                ));
-            }
+            return Err(format!(
+                "{}: port {outside} is already in use (a leftover of an earlier run? stop it first)",
+                self.name
+            ));
         }
         let out = self
             .docker(&self.run_args())

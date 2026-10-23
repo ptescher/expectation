@@ -429,15 +429,15 @@ fn serve(shared: &Shared, stream: std::net::TcpStream) {
             };
             let app = App::from_json(&hello);
             let mut st = shared.lock();
-            if let Some(p) = &st.platform {
-                if key(p) != key(&app.platform) {
-                    let body = Json::obj([(
-                        "error",
-                        format!("this runner is for {p}, not {}", app.platform).into(),
-                    )]);
-                    drop(st);
-                    return http::respond(&stream, 409, &body.to_string());
-                }
+            if let Some(p) = &st.platform
+                && key(p) != key(&app.platform)
+            {
+                let body = Json::obj([(
+                    "error",
+                    format!("this runner is for {p}, not {}", app.platform).into(),
+                )]);
+                drop(st);
+                return http::respond(&stream, 409, &body.to_string());
             }
             st.session += 1;
             st.app = Some(app);

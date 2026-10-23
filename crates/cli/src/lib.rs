@@ -217,13 +217,12 @@ fn docs(dir: &str, out: &str) {
             .sibling()
         })
         .collect();
-    for i in 0..manuals.len() {
+    for (i, name) in names.iter().enumerate().take(manuals.len()) {
         match docs_of(i, &all) {
             Ok(files) => println!(
                 "wrote {} pages to {out}{}",
                 files.len(),
-                names[i]
-                    .as_ref()
+                name.as_ref()
                     .filter(|_| i > 0)
                     .map(|n| format!(" ({n})"))
                     .unwrap_or_default()
