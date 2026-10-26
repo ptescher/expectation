@@ -272,7 +272,9 @@ Then can also be relative: `the drawing goes up by 1`, `goes down by 10 m`, `sta
 **Glossary and links.** `Term: <name>` and the text under it define a word for the
 glossary. Any text can link to a term, a section, a feature, an expectation or a story with
 `[[its name]]`, and mark code with backticks. A `Docs: hidden` line in an expectation keeps
-it off the topic page; it's still tested, and it's in the test report.
+it off the topic page; it's still tested, and it's in the test report. A `Reference: <label> |
+<url>` line in a term links it to outside documentation (an `http` or `https` URL), which the
+glossary shows under the definition.
 
 **Expectations** read `Given …` (the state before), `When …` (at most one event, plus any
 states the outside world changes, such as the dial) and `Then …` (the state after). States

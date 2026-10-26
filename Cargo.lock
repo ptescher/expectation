@@ -18,6 +18,7 @@ name = "expectation_docs"
 version = "0.1.0"
 dependencies = [
  "expectation_graph",
+ "expectation_language",
  "expectation_model",
  "expectation_story",
  "expectation_theme",
