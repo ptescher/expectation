@@ -83,6 +83,10 @@ pub struct Plan {
     /// Invariants in force at the start.
     pub start_invariants: Vec<ExpId>,
     pub steps: Vec<PlanStep>,
+    /// It exercises an expectation marked `Status: pending` (as a transition, or an invariant
+    /// in force), so it depends on behaviour that isn't built yet: it is reported as pending,
+    /// not run, and verifies nothing.
+    pub pending: bool,
 }
 
 pub struct Planned {
@@ -343,6 +347,14 @@ fn build<'a>(
             break;
         }
     }
+    let pending = start_invariants
+        .iter()
+        .chain(
+            steps
+                .iter()
+                .flat_map(|s| s.fired.iter().chain(&s.invariants)),
+        )
+        .any(|&e| suite.exp(e).pending);
     Plan {
         origin,
         section,
@@ -353,6 +365,7 @@ fn build<'a>(
         start_checks,
         start_invariants,
         steps,
+        pending,
     }
 }
 

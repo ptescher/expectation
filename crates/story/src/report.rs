@@ -1,5 +1,6 @@
 //! Results of running plans, and what they say about each expectation.
 
+use crate::controls::Control;
 use crate::plan::{Because, Check, Plan};
 use expectation_model::{ExpId, Suite, Value};
 use std::fmt::Write;
@@ -12,17 +13,21 @@ pub enum Status {
     Skipped,
     /// Not run, because the driver can't do something it needs yet.
     Unsupported,
+    /// Not run, because it depends on an expectation marked `Status: pending`: behaviour
+    /// written ahead of its implementation. Not a failure, and not a driver gap either.
+    Pending,
     /// No result: it hasn't been run.
     NotRun,
 }
 
 impl Status {
-    fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Status::Passed => "passed",
             Status::Failed => "failed",
             Status::Skipped => "skipped",
             Status::Unsupported => "unsupported",
+            Status::Pending => "pending",
             Status::NotRun => "not-run",
         }
     }
@@ -33,6 +38,7 @@ impl Status {
             Status::Failed,
             Status::Skipped,
             Status::Unsupported,
+            Status::Pending,
             Status::NotRun,
         ]
         .into_iter()
@@ -85,6 +91,10 @@ pub struct PlanResult {
     pub status: Status,
     pub start: StepResult,
     pub steps: Vec<StepResult>,
+    /// The controls the driver listed while the test ran, if it can.
+    pub controls: Vec<Control>,
+    /// The ones the test's actions used (`Control::key`s), not counting arranging the start.
+    pub used: Vec<String>,
 }
 
 impl PlanResult {
@@ -98,6 +108,8 @@ impl PlanResult {
                 .iter()
                 .map(|_| StepResult::with(status))
                 .collect(),
+            controls: vec![],
+            used: vec![],
         }
     }
 }
@@ -118,12 +130,16 @@ pub enum Verdict {
     Untested,
     /// The tests that would check it can't run yet: the driver doesn't support them.
     Unsupported,
+    /// It is marked `Status: pending`: written ahead of the behaviour, so nothing has checked it.
+    /// Unlike `Unsupported`, this is on purpose, and it never counts as verified.
+    Pending,
     /// The tests that would check it haven't run.
     NotRun,
 }
 
 impl Report {
-    /// Nothing failed. Tests that aren't supported yet, or weren't run, don't count against it.
+    /// Nothing failed. Tests that aren't supported yet, are pending, or weren't run, don't count
+    /// against it, and none of them counts as verified either.
     pub fn passed(&self) -> bool {
         !self.results.iter().any(|r| r.status == Status::Failed)
     }
@@ -148,7 +164,9 @@ impl Report {
         let rank = |s: Status| match s {
             Status::NotRun => 0,
             Status::Unsupported => 1,
-            _ => 2,
+            // Pending comes from the suite, so every driver says it; it still beats a driver gap.
+            Status::Pending => 2,
+            _ => 3,
         };
         for (mine, theirs) in self.results.iter_mut().zip(other.results) {
             if rank(theirs.status) > rank(mine.status) {
@@ -201,6 +219,12 @@ impl Report {
                 }
             }
         }
+        // A pending expectation is never anything else, whatever ran around it.
+        for (e, v) in suite.expectations.iter().zip(&mut out) {
+            if e.pending {
+                *v = Verdict::Pending;
+            }
+        }
         out
     }
 
@@ -221,6 +245,20 @@ impl Report {
                 r.status.name(),
                 fingerprint(plan)
             );
+            for c in &r.controls {
+                let _ = writeln!(
+                    out,
+                    "control\t{}\t{}\t{}\t{}\t{}",
+                    field(&c.view),
+                    field(&c.id),
+                    field(&c.kind),
+                    field(&c.label),
+                    opt(&c.event)
+                );
+            }
+            for key in &r.used {
+                let _ = writeln!(out, "used\t{}", field(key));
+            }
             for (n, step) in std::iter::once(&r.start).chain(&r.steps).enumerate() {
                 let _ = writeln!(
                     out,
@@ -271,8 +309,22 @@ impl Report {
                             status,
                             start: StepResult::with(status),
                             steps: vec![],
+                            controls: vec![],
+                            used: vec![],
                         },
                     ));
+                }
+                ["control", view, id, kind, label, rest @ ..] => {
+                    if let Some((_, r)) = current.as_mut() {
+                        let mut c = Control::new(*view, *id, *kind, *label);
+                        c.event = rest.first().and_then(|e| opt(e));
+                        r.controls.push(c);
+                    }
+                }
+                ["used", key] => {
+                    if let Some((_, r)) = current.as_mut() {
+                        r.used.push(key.to_string());
+                    }
                 }
                 ["step", n, status, polls, shot, error] => {
                     let Some((_, r)) = current.as_mut() else {
@@ -400,6 +452,8 @@ pub fn fingerprint(plan: &Plan) -> String {
         }
     };
     eat(&plan.title);
+    // Results saved before it was marked pending (or after it stopped being) aren't its results.
+    eat(if plan.pending { "pending" } else { "" });
     for t in &plan.given {
         eat(&t.text);
     }

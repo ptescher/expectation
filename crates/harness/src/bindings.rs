@@ -12,12 +12,15 @@
 use crate::driver::{Driver, Need, Progress, Screenshot};
 use expectation_model::text;
 use expectation_model::{Event, Value, Variable};
+use expectation_story::Control;
 use std::collections::HashMap;
 
 type Observer<W> = Box<dyn FnMut(&W) -> Value>;
 type Setter<W> = Box<dyn FnMut(&mut W, &Value)>;
 type Action<W> = Box<dyn FnMut(&mut W)>;
 type Advancer<W> = Box<dyn FnMut(&mut W) -> Progress>;
+type Lister<W> = Box<dyn FnMut(&W) -> Vec<Control>>;
+type Taker<W> = Box<dyn FnMut(&mut W) -> Vec<String>>;
 type Shooter<W> = Box<dyn FnMut(&W) -> Screenshot>;
 
 pub struct Bindings<W> {
@@ -30,6 +33,8 @@ pub struct Bindings<W> {
     settle: Option<Action<W>>,
     advance: Option<Advancer<W>>,
     screenshot: Option<Shooter<W>>,
+    controls: Option<Lister<W>>,
+    used: Option<Taker<W>>,
     needs: Vec<String>,
     fresh: Vec<String>,
 }
@@ -46,6 +51,8 @@ impl<W> Bindings<W> {
             settle: None,
             advance: None,
             screenshot: None,
+            controls: None,
+            used: None,
             needs: vec![],
             fresh: vec![],
         }
@@ -104,6 +111,19 @@ impl<W> Bindings<W> {
 
     pub fn on_advance(mut self, f: impl FnMut(&mut W) -> Progress + 'static) -> Self {
         self.advance = Some(Box::new(f));
+        self
+    }
+
+    /// The controls on screen now (see [`Driver::controls`]).
+    pub fn on_controls(mut self, f: impl FnMut(&W) -> Vec<Control> + 'static) -> Self {
+        self.controls = Some(Box::new(f));
+        self
+    }
+
+    /// The keys ([`Control::key`]) of the controls the world's last actions used, emptied as it
+    /// is read (see [`Driver::take_used`]).
+    pub fn on_used(mut self, f: impl FnMut(&mut W) -> Vec<String> + 'static) -> Self {
+        self.used = Some(Box::new(f));
         self
     }
 
@@ -170,6 +190,21 @@ impl<W> Driver for Bindings<W> {
         self.advance
             .as_mut()
             .map_or(Progress::Static, |f| f(&mut self.world))
+    }
+
+    fn controls(&mut self) -> Result<Vec<Control>, String> {
+        Ok(self
+            .controls
+            .as_mut()
+            .map(|f| f(&self.world))
+            .unwrap_or_default())
+    }
+
+    fn take_used(&mut self) -> Vec<String> {
+        self.used
+            .as_mut()
+            .map(|f| f(&mut self.world))
+            .unwrap_or_default()
     }
 
     fn screenshot(&mut self) -> Result<Option<Screenshot>, String> {

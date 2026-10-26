@@ -619,6 +619,30 @@ Term: Bare
     }
 
     #[test]
+    fn an_expectation_can_be_pending() {
+        let body = "Vocabulary:
+ State: the kettle is off | heating
+ Event: the user presses start
+Feature: F
+  Expectation: A
+    Status: pending
+    Given the kettle is off
+    When the user presses start
+    Then the kettle is heating
+  Expectation: B
+    Given the kettle is heating
+    When the user presses start
+    Then the kettle is off
+";
+        let l = glossary_of(body);
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        assert!(l.suite.expectations[0].pending);
+        assert!(!l.suite.expectations[1].pending);
+        assert!(glossary_of(&body.replace("Status: pending", "Status: later")).has_errors());
+        assert!(glossary_of("Term: T\n  Status: pending\n").has_errors());
+    }
+
+    #[test]
     fn a_reference_belongs_in_a_term_once() {
         assert!(glossary_of("Reference: https://e.com/x\n").has_errors());
         assert!(

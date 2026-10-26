@@ -165,6 +165,16 @@ Expectation: <name>
   launcher's buttons say nothing about the sim). Stories and tests don't see it: they stay in
   the launcher, and check the expectation's Then.
 - `Docs: hidden` keeps it off its topic page. It's still tested, and it's in the test report.
+- `Status: pending` says the behaviour is written ahead of its implementation. A pending
+  expectation stays in the model: it appears in the map and the state map, it can be reached,
+  and conflicts with it (pending or required) are still errors. What changes is testing. A test
+  that depends on it, because it fires it or because it is an invariant in force there, is not
+  run; the report shows it as **pending**, which is neither passed, failed nor "not supported
+  yet" (that one means the driver lacks a binding, and is still reported as such for everything
+  else). Pending tests don't fail the run and never count as verified, and the expectation's own
+  verdict is `pending`. Failures in the other tests still fail the run. Remove the line when the
+  behaviour is built. Because an invariant applies wherever its Given holds, a pending invariant
+  makes the tests in its section pending, so prefer pending transitions.
 
 Text before the first step is the expectation's description.
 

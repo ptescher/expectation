@@ -908,6 +908,7 @@ fn expectation(
         hands_over,
         steps: re.steps.iter().map(|s| text_of(s, vocab)).collect(),
         hidden: re.hidden,
+        pending: re.pending,
     }
 }
 

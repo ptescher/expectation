@@ -44,6 +44,9 @@ pub struct Docs<'a> {
     /// The manual's parts and hand-written pages. Set by the docs themselves from the suite's
     /// `outline.txt`; leave it `None`.
     pub outline: Option<&'a outline::Outline>,
+    /// Controls an integration says exist, so one that no run reached still shows in the
+    /// interaction coverage.
+    pub inventory: &'a [expectation_story::Control],
 }
 
 /// The pages of the same manual for another platform.
@@ -95,6 +98,17 @@ fn prune(dir: &Path, written: &[PathBuf]) -> std::io::Result<()> {
 }
 
 impl Docs<'_> {
+    /// The controls the last run found and the tests that used them; none if the tests haven't
+    /// run, or the driver can't list them.
+    pub fn control_rows(&self) -> Vec<expectation_story::ControlRow> {
+        match self.report {
+            Some(r) => {
+                expectation_story::control_coverage(self.suite, self.plans, r, self.inventory)
+            }
+            None => vec![],
+        }
+    }
+
     /// Write the Markdown pages and the HTML site under `dir`. Pages of stories or features
     /// that no longer exist are removed (only the generated kinds, in the folders this writes
     /// to); other files in the directory are left alone.
@@ -320,6 +334,7 @@ fn verdict_label(v: Option<Verdict>) -> &'static str {
         Some(Verdict::Failed) => "failed",
         Some(Verdict::Untested) => "untested",
         Some(Verdict::Unsupported) => "not supported yet",
+        Some(Verdict::Pending) => "pending",
         Some(Verdict::NotRun) | None => "not run",
     }
 }
@@ -330,6 +345,7 @@ fn status_label(s: Status) -> &'static str {
         Status::Failed => "failed",
         Status::Skipped => "skipped",
         Status::Unsupported => "not supported yet",
+        Status::Pending => "pending: not built yet",
         Status::NotRun => "not run",
     }
 }
@@ -338,6 +354,7 @@ fn status_label(s: Status) -> &'static str {
 fn missing_shot(status: Status) -> &'static str {
     match status {
         Status::Unsupported => "Screenshot to come: the tests can't run this step yet.",
+        Status::Pending => "No screenshot: this behaviour is pending, so the test isn't run.",
         Status::Skipped => "No screenshot: the test stopped at an earlier step.",
         Status::NotRun => "No screenshot yet: the tests haven't run.",
         Status::Failed => "No screenshot: the test failed before this step.",
@@ -367,6 +384,7 @@ mod tests {
             suite_dir: None,
             siblings: &[],
             outline: None,
+            inventory: &[],
         };
         let pages = docs.pages();
         let get = |path: &str| {

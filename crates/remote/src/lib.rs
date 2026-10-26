@@ -27,16 +27,25 @@
 //! {"id": 4, "op": "perform", "event": "the user presses lock"}
 //! {"id": 5, "op": "observe", "subject": "the kettle"}
 //! {"id": 6, "op": "screenshot"}
+//! {"id": 7, "op": "controls"}
+//! {"id": 8, "op": "used"}
 //! ```
 //!
 //! A named value is a JSON string and a number is a JSON number. `observe` answers with
 //! `value`; `screenshot` with `png` or `svg`; the rest with just the `id`, or an `error`.
+//!
+//! An app that says `"controls": true` in its hello can list what a person can act on, so the
+//! report can show which controls no test used. `controls` answers with `controls`, a list of
+//! `{"view", "id", "kind", "label", "event"}` (`kind`, `label` and `event` optional: `event` is
+//! the vocabulary event using the control makes happen). `used` answers with `used`, a list of
+//! `{"view", "id"}` for the controls the app's `set` and `perform` acted on since the last
+//! `used`, and empties it.
 
 pub mod client;
 pub mod http;
 pub mod json;
 
-use expectation_harness::{Driver, Need, Progress, Screenshot};
+use expectation_harness::{Control, Driver, Need, Progress, Screenshot};
 use expectation_model::text::key;
 use expectation_model::{Event, Value, Variable};
 use json::Json;
@@ -62,6 +71,8 @@ pub struct App {
     pub events: Vec<String>,
     pub screenshot: bool,
     pub reset: bool,
+    /// It can list its controls and say which ones its actions used.
+    pub controls: bool,
 }
 
 impl App {
@@ -78,6 +89,7 @@ impl App {
             events: list("events"),
             screenshot: flag("screenshot"),
             reset: flag("reset"),
+            controls: flag("controls"),
         }
     }
 
@@ -91,6 +103,7 @@ impl App {
             ("events", self.events.clone().into()),
             ("screenshot", self.screenshot.into()),
             ("reset", self.reset.into()),
+            ("controls", self.controls.into()),
         ])
     }
 
@@ -365,6 +378,49 @@ impl Driver for RemoteDriver {
     fn advance(&mut self) -> Progress {
         std::thread::sleep(self.poll);
         Progress::Advanced
+    }
+
+    fn controls(&mut self) -> Result<Vec<Control>, String> {
+        if !self.shared.lock().app.as_ref().is_some_and(|a| a.controls) {
+            return Ok(vec![]);
+        }
+        let reply = self.call(vec![("op", "controls".into())])?;
+        let text = |c: &Json, k: &str| c.get(k).and_then(Json::as_str).unwrap_or("").to_string();
+        Ok(reply
+            .get("controls")
+            .map(Json::as_array)
+            .unwrap_or_default()
+            .iter()
+            .map(|c| {
+                let mut control = Control::new(
+                    text(c, "view"),
+                    text(c, "id"),
+                    text(c, "kind"),
+                    text(c, "label"),
+                );
+                control.event = c.get("event").and_then(Json::as_str).map(String::from);
+                control
+            })
+            .collect())
+    }
+
+    fn take_used(&mut self) -> Vec<String> {
+        if !self.shared.lock().app.as_ref().is_some_and(|a| a.controls) {
+            return vec![];
+        }
+        let Ok(reply) = self.call(vec![("op", "used".into())]) else {
+            return vec![];
+        };
+        reply
+            .get("used")
+            .map(Json::as_array)
+            .unwrap_or_default()
+            .iter()
+            .map(|u| {
+                let text = |k: &str| u.get(k).and_then(Json::as_str).unwrap_or("");
+                Control::new(text("view"), text("id"), "", "").key()
+            })
+            .collect()
     }
 
     fn screenshot(&mut self) -> Result<Option<Screenshot>, String> {

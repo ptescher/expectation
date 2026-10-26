@@ -276,6 +276,11 @@ it off the topic page; it's still tested, and it's in the test report. A `Refere
 <url>` line in a term links it to outside documentation (an `http` or `https` URL), which the
 glossary shows under the definition.
 
+**Pending.** `Status: pending` in an expectation marks behaviour that is specified before it is
+built. It stays in the model, so conflicts, reachability and the maps still see it, but a test
+that depends on it is reported as pending instead of being run. That's neither a failure nor
+"not supported yet" (a missing driver binding), and it never counts as verified.
+
 **Expectations** read `Given …` (the state before), `When …` (at most one event, plus any
 states the outside world changes, such as the dial) and `Then …` (the state after). States
 the Then doesn't mention keep their values. An expectation without a `When` is an

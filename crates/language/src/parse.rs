@@ -111,6 +111,8 @@ pub struct RawExpectation {
     pub hands_over: Vec<RawStep>,
     /// `Docs: hidden`.
     pub hidden: bool,
+    /// `Status: pending`.
+    pub pending: bool,
 }
 
 #[derive(Debug)]
@@ -266,6 +268,7 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                             overrides: vec![],
                             hands_over: vec![],
                             hidden: false,
+                            pending: false,
                         });
                         Block::Expectation
                     }
@@ -531,6 +534,28 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                 ),
                 _ => diags.push(
                     Diagnostic::error("syntax", "`Docs:` belongs in an Expectation").at(&span, ""),
+                ),
+            }
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("Status:") {
+            match (
+                block,
+                out.features
+                    .last_mut()
+                    .and_then(|f| f.expectations.last_mut()),
+            ) {
+                (Block::Expectation, Some(e)) if rest.trim() == "pending" => e.pending = true,
+                (Block::Expectation, Some(_)) => diags.push(
+                    Diagnostic::error("syntax", "`Status:` can only say `pending`")
+                        .at(&span, "")
+                        .help(
+                            "`Status: pending` marks an expectation written before the behaviour exists",
+                        ),
+                ),
+                _ => diags.push(
+                    Diagnostic::error("syntax", "`Status:` belongs in an Expectation")
+                        .at(&span, ""),
                 ),
             }
             continue;

@@ -34,6 +34,8 @@ enum Here {
     /// Any test's report (stories and generated ones).
     Test(usize),
     Tests,
+    /// The program's controls and which tests used them.
+    Interactions,
     Map,
     /// The app's states and the moves between them.
     States,
@@ -87,6 +89,13 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
         path: "site/tests.html".into(),
         content: site.tests_page(),
     });
+    let controls = d.control_rows();
+    if !controls.is_empty() {
+        pages.push(Page {
+            path: "site/interactions.html".into(),
+            content: site.interactions_page(&controls),
+        });
+    }
     pages.push(Page {
         path: "site/map.html".into(),
         content: site.map_page(),
@@ -223,6 +232,7 @@ impl Site<'_> {
             Some(Verdict::Verified) => "ok",
             Some(Verdict::Failed) => "bad",
             Some(Verdict::Unsupported) => "warn",
+            Some(Verdict::Pending) => "pending",
             _ => "idle",
         };
         format!(r#"<span class="badge {class}">{}</span>"#, verdict_label(v))
@@ -233,6 +243,7 @@ impl Site<'_> {
             Status::Passed => "ok",
             Status::Failed => "bad",
             Status::Unsupported => "warn",
+            Status::Pending => "pending",
             _ => "idle",
         };
         format!(r#"<span class="badge {class}">{}</span>"#, status_label(s))
@@ -309,6 +320,7 @@ impl Site<'_> {
             Here::Tutorial(i) => (self.tutorial_url(i), self.short_title(i)),
             Here::Test(i) => (self.test_url(i), self.d.plans[i].title.clone()),
             Here::Tests => ("tests.html".into(), "Test report".into()),
+            Here::Interactions => ("interactions.html".into(), "Interactions".into()),
             Here::Map => ("map.html".into(), "Map".into()),
             Here::States => ("states.html".into(), "State map".into()),
             Here::Glossary => ("glossary.html".into(), "Glossary".into()),
@@ -495,6 +507,9 @@ impl Site<'_> {
                 "{} not supported yet",
                 r.count(Status::Unsupported)
             ));
+        }
+        if r.count(Status::Pending) > 0 {
+            parts.push(format!("{} pending", r.count(Status::Pending)));
         }
         if r.count(Status::NotRun) > 0 {
             parts.push(format!("{} not run", r.count(Status::NotRun)));
@@ -686,6 +701,7 @@ impl Site<'_> {
             (Some(Verdict::Verified), "ok"),
             (Some(Verdict::Failed), "bad"),
             (Some(Verdict::Unsupported), "warn"),
+            (Some(Verdict::Pending), "pending"),
             (Some(Verdict::Untested), "idle"),
             (Some(Verdict::NotRun), "idle"),
             (None, "idle"),
@@ -1133,6 +1149,15 @@ impl Site<'_> {
             self.tally(&all)
         );
         o.push_str(r#"<p>The tests use the states, actions and shorthand of the <a href="vocabulary.html">test vocabulary</a>. <a href="map.html">The map</a> shows which behaviour leads to which, <a href="states.html">the state map</a> shows the states the app gets into and how to get between them, and <a href="theme.html">the theme</a> shows the colours and type the docs are drawn in.</p>"#);
+        let controls = self.d.control_rows();
+        if !controls.is_empty() {
+            let _ = write!(
+                o,
+                r#"<p>The tests found {} controls, and {} of them were never used: see the <a href="interactions.html">interactions</a>.</p>"#,
+                controls.len(),
+                controls.iter().filter(|r| !r.used()).count()
+            );
+        }
         for section in &s.sections {
             let tests: Vec<usize> = (0..self.d.plans.len())
                 .filter(|&i| self.d.plans[i].section == section.id)
@@ -1175,6 +1200,121 @@ impl Site<'_> {
             o.push_str("</ul>");
         }
         self.page(Here::Tests, "Test report", &o)
+    }
+
+    /// The controls the tests found, and which tests used them.
+    fn interactions_page(&self, rows: &[expectation_story::ControlRow]) -> String {
+        let unused = rows.iter().filter(|r| !r.used()).count();
+        let mut o = format!(
+            "<h1>Interactions</h1><p class=\"lede\">The buttons, fields and other controls the tests found in the program, \
+             and which tests used them. A control is used when a test's action acted on it; arranging a test's start \
+             doesn't count. This is what the driver reported, not proof that these are all the controls there are. \
+             <a href=\"../interactions.json\">interactions.json</a> has it for machines.</p>\
+             <p class=\"tally\"><span class=\"badge idle\">{} controls</span> <span class=\"badge ok\">{} used</span> \
+             <span class=\"badge warn\">{unused} never used</span></p>",
+            rows.len(),
+            rows.len() - unused
+        );
+        o.push_str("<table class=\"tests\"><thead><tr><th>View</th><th>Control</th><th>Behavior specified?</th><th>Authored stories</th><th>Generated tests</th><th>Result</th><th>Gaps</th></tr></thead><tbody>");
+        for r in rows {
+            let links = |v: &[usize], tutorial: bool| -> String {
+                if v.is_empty() {
+                    return "0".into();
+                }
+                let mut parts: Vec<String> = v
+                    .iter()
+                    .take(3)
+                    .map(|&i| {
+                        if tutorial {
+                            format!(
+                                r#"<a href="{}">{}</a>"#,
+                                esc(&self.tutorial_url(i)),
+                                esc(&self.short_title(i))
+                            )
+                        } else {
+                            self.test_link(i)
+                        }
+                    })
+                    .collect();
+                if v.len() > 3 {
+                    parts.push(format!("{} more", v.len() - 3));
+                }
+                parts.join(", ")
+            };
+            let mut generated = r.generated.clone();
+            generated.sort_unstable();
+            generated.dedup();
+            let specified = if r.specified.is_empty() {
+                "No".to_string()
+            } else {
+                let mut parts: Vec<String> = r
+                    .specified
+                    .iter()
+                    .take(3)
+                    .map(|&e| {
+                        let pending = if self.suite().exp(e).pending {
+                            r#" <span class="badge pending">pending</span>"#
+                        } else {
+                            ""
+                        };
+                        format!("{}{pending}", self.exp_link(e))
+                    })
+                    .collect();
+                if r.specified.len() > 3 {
+                    parts.push(format!("{} more", r.specified.len() - 3));
+                }
+                format!("Yes: {}", parts.join(", "))
+            };
+            let (class, label) = if !r.used() {
+                if r.waiting.is_empty() {
+                    ("warn", "never used".to_string())
+                } else {
+                    let w: Vec<String> = r
+                        .waiting
+                        .iter()
+                        .map(|(s, n)| format!("{n} {}", status_label(*s)))
+                        .collect();
+                    ("idle", format!("not verified ({})", w.join(", ")))
+                }
+            } else if r.failed > 0 {
+                ("bad", "failed".to_string())
+            } else if r.passed > 0 {
+                ("ok", "passed".to_string())
+            } else {
+                ("idle", "no result".to_string())
+            };
+            let name = if r.control.label.is_empty() {
+                &r.control.id
+            } else {
+                &r.control.label
+            };
+            let kind = if r.control.kind.is_empty() {
+                String::new()
+            } else {
+                format!(" <span class=\"muted\">({})</span>", esc(&r.control.kind))
+            };
+            let gaps = if r.gaps.is_empty() {
+                "none".to_string()
+            } else {
+                r.gaps
+                    .iter()
+                    .map(|g| g.text())
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            };
+            let _ = write!(
+                o,
+                "<tr><td>{}</td><td><code>{}</code>{kind}</td><td>{specified}</td><td>{}</td><td>{}</td><td><span class=\"badge {class}\">{}</span></td><td>{}</td></tr>",
+                esc(&r.control.view),
+                esc(name),
+                links(&r.authored(), true),
+                links(&generated, false),
+                esc(&label),
+                esc(&gaps)
+            );
+        }
+        o.push_str("</tbody></table>");
+        self.page(Here::Interactions, "Interactions", &o)
     }
 
     fn test_page(&self, i: usize) -> String {
@@ -1222,6 +1362,8 @@ impl Site<'_> {
         if let Some(e) = result.and_then(|r| r.start.error.as_ref()) {
             let class = if status == Status::Unsupported {
                 "note warn"
+            } else if status == Status::Pending {
+                "note"
             } else {
                 "note bad"
             };
@@ -1346,7 +1488,7 @@ impl Site<'_> {
         let mut o = String::from(
             "<h1>Map</h1><p class=\"lede\">Every expectation, placed after the ones that get the system into a state where it applies, starting from each section's setup. Dashed arrows are exceptions, red ones are conflicts nobody has settled, and dashed outlines are invariants. Colours show each expectation's verdict.</p>",
         );
-        o.push_str(r#"<p class="legend"><span class="badge ok">verified</span> <span class="badge bad">failed</span> <span class="badge warn">not supported yet</span> <span class="badge idle">untested</span></p>"#);
+        o.push_str(r#"<p class="legend"><span class="badge ok">verified</span> <span class="badge bad">failed</span> <span class="badge warn">not supported yet</span> <span class="badge pending">pending</span> <span class="badge idle">untested</span></p>"#);
         for section in &s.sections {
             let own: Vec<ExpId> = section
                 .features
@@ -1825,6 +1967,7 @@ blockquote { margin: 0 0 16px; padding: 10px 16px; border-left: 3px solid var(--
 .badge.ok { color: var(--ok); background: var(--ok-fill); border-color: var(--ok-dim); }
 .badge.bad { color: var(--on-warning); background: var(--warning-fill); border-color: var(--warning); }
 .badge.warn { color: var(--caution); background: var(--caution-fill); border-color: var(--caution); }
+.badge.pending { color: var(--info); background: transparent; border-color: var(--info); border-style: dashed; }
 .badge.idle { color: var(--muted); background: var(--off-fill); border-color: var(--off-edge); }
 .tally { display: flex; flex-wrap: wrap; gap: 6px; }
 
@@ -1960,6 +2103,7 @@ svg.dag .node.start rect { fill: var(--screen); stroke: var(--bezel-edge); }
 svg.dag .node.v-ok rect { fill: var(--ok-fill); stroke: var(--ok); }
 svg.dag .node.v-bad rect { fill: var(--warning-fill); stroke: var(--warning); }
 svg.dag .node.v-warn rect { fill: var(--caution-fill); stroke: var(--caution); }
+svg.dag .node.v-pending rect { stroke: var(--info); stroke-dasharray: 2 3; }
 svg.dag .node.invariant rect { stroke-dasharray: 4 3; }
 svg.dag .node.unreachable { opacity: .55; }
 svg.dag .node.outside { opacity: .5; }
