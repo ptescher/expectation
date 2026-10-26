@@ -21,7 +21,7 @@ pub enum Status {
 }
 
 impl Status {
-    fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Status::Passed => "passed",
             Status::Failed => "failed",
@@ -248,11 +248,12 @@ impl Report {
             for c in &r.controls {
                 let _ = writeln!(
                     out,
-                    "control\t{}\t{}\t{}\t{}",
+                    "control\t{}\t{}\t{}\t{}\t{}",
                     field(&c.view),
                     field(&c.id),
                     field(&c.kind),
-                    field(&c.label)
+                    field(&c.label),
+                    opt(&c.event)
                 );
             }
             for key in &r.used {
@@ -313,9 +314,11 @@ impl Report {
                         },
                     ));
                 }
-                ["control", view, id, kind, label] => {
+                ["control", view, id, kind, label, rest @ ..] => {
                     if let Some((_, r)) = current.as_mut() {
-                        r.controls.push(Control::new(*view, *id, *kind, *label));
+                        let mut c = Control::new(*view, *id, *kind, *label);
+                        c.event = rest.first().and_then(|e| opt(e));
+                        r.controls.push(c);
                     }
                 }
                 ["used", key] => {

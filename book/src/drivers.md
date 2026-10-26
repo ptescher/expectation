@@ -89,6 +89,16 @@ Bindings::new(World::default())
     .on_used(|w| std::mem::take(&mut w.used)) // Control::key()s since the last call
 ```
 
+Say which vocabulary event using a control makes happen with `Control::mapped_to("the user
+presses lock")`, and the report joins the control to the behaviour specified for that event and
+the stories about it. Each control then shows its gaps, with the reason: *no event mapping*,
+*event not in the vocabulary*, *no expectation*, *only pending expectations*, *no authored
+story*, *never used by a test*, *no passing execution*. A story that performs the event in a
+section named like the control's view documents the control even if it couldn't run; it still
+isn't verification. The same event on a control in another view is a different row, and what
+covers one doesn't cover the other. An integration that knows controls no run will reach can
+list them with `Acceptance::with_inventory`.
+
 `Driver::controls` is asked after a test's start is arranged and after each step; the report
 keeps the union. `Driver::take_used` is emptied after arranging, so setting a test up doesn't
 count, and read after each step. Give each control an id that doesn't depend on its label, and

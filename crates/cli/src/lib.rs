@@ -193,6 +193,7 @@ fn docs(dir: &str, out: &str) {
             suite_dir: Some(Path::new(dir)),
             siblings,
             outline: None,
+            inventory: &[],
         };
         let tree = match &names[i] {
             Some(n) if i > 0 => Path::new(out)
@@ -213,6 +214,7 @@ fn docs(dir: &str, out: &str) {
                 suite_dir: None,
                 siblings: &[],
                 outline: None,
+                inventory: &[],
             }
             .sibling()
         })

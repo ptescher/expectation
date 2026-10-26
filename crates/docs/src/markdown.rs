@@ -43,7 +43,7 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
         });
         pages.push(Page {
             path: "interactions.json".into(),
-            content: expectation_story::controls_json(&controls, d.plans),
+            content: expectation_story::controls_json(d.suite, &controls, d.plans),
         });
     }
     for i in 0..d.plans.len() {
@@ -715,10 +715,11 @@ fn interactions(d: &Docs, rows: &[ControlRow]) -> String {
     );
     let _ = writeln!(
         o,
-        "**{} controls:** {} used, {} never used.\n",
+        "**{} controls:** {} used, {} never used; {} have a gap.\n",
         rows.len(),
         rows.len() - unused.len(),
-        unused.len()
+        unused.len(),
+        rows.iter().filter(|r| !r.gaps.is_empty()).count()
     );
     if !unused.is_empty() {
         let _ = writeln!(o, "Never used:\n");
@@ -729,20 +730,15 @@ fn interactions(d: &Docs, rows: &[ControlRow]) -> String {
     }
     let _ = writeln!(
         o,
-        "| View | Control | Authored stories | Generated tests | Result |\n| --- | --- | --- | --- | --- |"
+        "| View | Control | Behavior specified? | Authored stories | Generated tests | Result | Gaps |\n\
+         | --- | --- | --- | --- | --- | --- | --- |"
     );
     for r in rows {
-        let links = |v: &[usize], dir: &str, tutorial: bool| -> String {
-            let mut seen: Vec<usize> = vec![];
-            for &i in v {
-                if !seen.contains(&i) {
-                    seen.push(i);
-                }
-            }
-            if seen.is_empty() {
+        let plan_links = |v: &[usize], dir: &str, tutorial: bool| -> String {
+            if v.is_empty() {
                 return "0".into();
             }
-            seen.iter()
+            v.iter()
                 .take(3)
                 .map(|&i| {
                     let p = &d.plans[i];
@@ -753,26 +749,66 @@ fn interactions(d: &Docs, rows: &[ControlRow]) -> String {
                     };
                     format!("[{}]({dir}/{}.md)", title, p.slug)
                 })
-                .chain((seen.len() > 3).then(|| format!("{} more", seen.len() - 3)))
+                .chain((v.len() > 3).then(|| format!("{} more", v.len() - 3)))
                 .collect::<Vec<_>>()
                 .join(", ")
         };
-        let result = if !r.used() {
-            "⚠️ never used"
-        } else if r.failed > 0 {
-            "❌ failed"
-        } else if r.passed > 0 {
-            "✅ passed"
+        let mut generated = r.generated.clone();
+        generated.sort_unstable();
+        generated.dedup();
+        let specified = if r.specified.is_empty() {
+            "No".to_string()
         } else {
-            "⚪ no result"
+            let names: Vec<String> = r
+                .specified
+                .iter()
+                .take(3)
+                .map(|&e| {
+                    let pending = if d.suite.exp(e).pending {
+                        " (pending)"
+                    } else {
+                        ""
+                    };
+                    format!("{}{pending}", exp_link(d, e, false))
+                })
+                .chain((r.specified.len() > 3).then(|| format!("{} more", r.specified.len() - 3)))
+                .collect();
+            format!("Yes: {}", names.join(", "))
+        };
+        let result = if !r.used() {
+            let waiting: Vec<String> = r
+                .waiting
+                .iter()
+                .map(|(s, n)| format!("{n} {}", status_label(*s)))
+                .collect();
+            if waiting.is_empty() {
+                "⚠️ never used".to_string()
+            } else {
+                format!("⚪ not verified ({})", waiting.join(", "))
+            }
+        } else if r.failed > 0 {
+            "❌ failed".into()
+        } else if r.passed > 0 {
+            "✅ passed".into()
+        } else {
+            "⚪ no result".into()
+        };
+        let gaps = if r.gaps.is_empty() {
+            "none".to_string()
+        } else {
+            r.gaps
+                .iter()
+                .map(|g| g.text())
+                .collect::<Vec<_>>()
+                .join("; ")
         };
         let _ = writeln!(
             o,
-            "| {} | {} | {} | {} | {result} |",
+            "| {} | {} | {specified} | {} | {} | {result} | {gaps} |",
             r.control.view,
             control_name(&r.control),
-            links(&r.stories, "tutorials", true),
-            links(&r.generated, "tests", false),
+            plan_links(&r.authored(), "tutorials", true),
+            plan_links(&generated, "tests", false),
         );
     }
     o

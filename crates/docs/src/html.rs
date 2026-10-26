@@ -1215,19 +1215,13 @@ impl Site<'_> {
             rows.len(),
             rows.len() - unused
         );
-        o.push_str("<table class=\"tests\"><thead><tr><th>View</th><th>Control</th><th>Authored stories</th><th>Generated tests</th><th>Result</th></tr></thead><tbody>");
+        o.push_str("<table class=\"tests\"><thead><tr><th>View</th><th>Control</th><th>Behavior specified?</th><th>Authored stories</th><th>Generated tests</th><th>Result</th><th>Gaps</th></tr></thead><tbody>");
         for r in rows {
             let links = |v: &[usize], tutorial: bool| -> String {
-                let mut seen: Vec<usize> = vec![];
-                for &i in v {
-                    if !seen.contains(&i) {
-                        seen.push(i);
-                    }
-                }
-                if seen.is_empty() {
+                if v.is_empty() {
                     return "0".into();
                 }
-                let mut parts: Vec<String> = seen
+                let mut parts: Vec<String> = v
                     .iter()
                     .take(3)
                     .map(|&i| {
@@ -1242,19 +1236,52 @@ impl Site<'_> {
                         }
                     })
                     .collect();
-                if seen.len() > 3 {
-                    parts.push(format!("{} more", seen.len() - 3));
+                if v.len() > 3 {
+                    parts.push(format!("{} more", v.len() - 3));
                 }
                 parts.join(", ")
             };
-            let (class, label) = if !r.used() {
-                ("warn", "never used")
-            } else if r.failed > 0 {
-                ("bad", "failed")
-            } else if r.passed > 0 {
-                ("ok", "passed")
+            let mut generated = r.generated.clone();
+            generated.sort_unstable();
+            generated.dedup();
+            let specified = if r.specified.is_empty() {
+                "No".to_string()
             } else {
-                ("idle", "no result")
+                let mut parts: Vec<String> = r
+                    .specified
+                    .iter()
+                    .take(3)
+                    .map(|&e| {
+                        let pending = if self.suite().exp(e).pending {
+                            r#" <span class="badge pending">pending</span>"#
+                        } else {
+                            ""
+                        };
+                        format!("{}{pending}", self.exp_link(e))
+                    })
+                    .collect();
+                if r.specified.len() > 3 {
+                    parts.push(format!("{} more", r.specified.len() - 3));
+                }
+                format!("Yes: {}", parts.join(", "))
+            };
+            let (class, label) = if !r.used() {
+                if r.waiting.is_empty() {
+                    ("warn", "never used".to_string())
+                } else {
+                    let w: Vec<String> = r
+                        .waiting
+                        .iter()
+                        .map(|(s, n)| format!("{n} {}", status_label(*s)))
+                        .collect();
+                    ("idle", format!("not verified ({})", w.join(", ")))
+                }
+            } else if r.failed > 0 {
+                ("bad", "failed".to_string())
+            } else if r.passed > 0 {
+                ("ok", "passed".to_string())
+            } else {
+                ("idle", "no result".to_string())
             };
             let name = if r.control.label.is_empty() {
                 &r.control.id
@@ -1266,13 +1293,24 @@ impl Site<'_> {
             } else {
                 format!(" <span class=\"muted\">({})</span>", esc(&r.control.kind))
             };
+            let gaps = if r.gaps.is_empty() {
+                "none".to_string()
+            } else {
+                r.gaps
+                    .iter()
+                    .map(|g| g.text())
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            };
             let _ = write!(
                 o,
-                "<tr><td>{}</td><td><code>{}</code>{kind}</td><td>{}</td><td>{}</td><td><span class=\"badge {class}\">{label}</span></td></tr>",
+                "<tr><td>{}</td><td><code>{}</code>{kind}</td><td>{specified}</td><td>{}</td><td>{}</td><td><span class=\"badge {class}\">{}</span></td><td>{}</td></tr>",
                 esc(&r.control.view),
                 esc(name),
-                links(&r.stories, true),
-                links(&r.generated, false)
+                links(&r.authored(), true),
+                links(&generated, false),
+                esc(&label),
+                esc(&gaps)
             );
         }
         o.push_str("</tbody></table>");

@@ -44,6 +44,9 @@ pub struct Docs<'a> {
     /// The manual's parts and hand-written pages. Set by the docs themselves from the suite's
     /// `outline.txt`; leave it `None`.
     pub outline: Option<&'a outline::Outline>,
+    /// Controls an integration says exist, so one that no run reached still shows in the
+    /// interaction coverage.
+    pub inventory: &'a [expectation_story::Control],
 }
 
 /// The pages of the same manual for another platform.
@@ -99,7 +102,9 @@ impl Docs<'_> {
     /// run, or the driver can't list them.
     pub fn control_rows(&self) -> Vec<expectation_story::ControlRow> {
         match self.report {
-            Some(r) => expectation_story::control_coverage(self.plans, r),
+            Some(r) => {
+                expectation_story::control_coverage(self.suite, self.plans, r, self.inventory)
+            }
             None => vec![],
         }
     }
@@ -379,6 +384,7 @@ mod tests {
             suite_dir: None,
             siblings: &[],
             outline: None,
+            inventory: &[],
         };
         let pages = docs.pages();
         let get = |path: &str| {

@@ -213,14 +213,15 @@ impl World {
 }
 
 /// The vocabulary bound to the world.
-/// What is on the kettle's face: four buttons and the dial, and an export button that
-/// nothing in the suite uses.
+/// What is on the kettle's face: four buttons that make the suite's events happen, a dial that
+/// is a state rather than an event (so no event to map it to), and an export button that
+/// nothing in the suite is about.
 pub fn controls() -> Vec<Control> {
     vec![
-        Control::new("Kettle", "start", "button", "Start"),
-        Control::new("Kettle", "reset", "button", "Reset"),
-        Control::new("Kettle", "preset", "button", "Preset"),
-        Control::new("Kettle", "lock", "button", "Lock"),
+        Control::new("Kettle", "start", "button", "Start").mapped_to("the user presses start"),
+        Control::new("Kettle", "reset", "button", "Reset").mapped_to("the user presses reset"),
+        Control::new("Kettle", "preset", "button", "Preset").mapped_to("the user presses preset"),
+        Control::new("Kettle", "lock", "button", "Lock").mapped_to("the user presses lock"),
         Control::new("Kettle", "dial", "dial", ""),
         Control::new("Kettle", "export-log", "button", "Export log"),
     ]
