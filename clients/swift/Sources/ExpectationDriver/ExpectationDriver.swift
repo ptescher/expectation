@@ -15,6 +15,28 @@ import Foundation
 import UIKit
 #endif
 
+/// Something a person can act on: a button, a field, a switch.
+public struct ExpectationControl: Sendable, Equatable {
+    /// The screen or dialog it is in; the same id in two views is two controls.
+    public var view: String
+    /// Stable, and independent of display copy (an accessibility identifier).
+    public var id: String
+    public var kind: String
+    public var label: String
+    /// The vocabulary event using it makes happen, e.g. "the user presses lock".
+    public var event: String?
+
+    public init(view: String, id: String, kind: String = "", label: String = "", event: String? = nil) {
+        self.view = view; self.id = id; self.kind = kind; self.label = label; self.event = event
+    }
+
+    var json: [String: Any] {
+        var o: [String: Any] = ["view": view, "id": id, "kind": kind, "label": label]
+        if let event { o["event"] = event }
+        return o
+    }
+}
+
 /// A state's value: a name ("heating") or a number (80).
 public enum ExpectationValue: Sendable, Equatable, ExpressibleByStringLiteral, ExpressibleByFloatLiteral, ExpressibleByIntegerLiteral {
     case name(String)
@@ -42,6 +64,9 @@ public final class ExpectationDriver {
     public typealias Action = @MainActor () -> Void
     /// PNG bytes.
     public typealias Shooter = @MainActor () -> Data?
+    public typealias Controls = @MainActor () -> [ExpectationControl]
+    /// The `(view, id)` of the controls used since the last call; empty it as you return.
+    public typealias Used = @MainActor () -> [(view: String, id: String)]
 
     private let platform: String
     private let app: String
@@ -51,6 +76,8 @@ public final class ExpectationDriver {
     private var events: [(String, Action)] = []
     private var reset: Action?
     private var shooter: Shooter?
+    private var controlsList: Controls?
+    private var usedList: Used?
     private var task: Task<Void, Never>?
 
     public init(platform: String, app: String) {
@@ -81,6 +108,16 @@ public final class ExpectationDriver {
         reset = f; return self
     }
 
+    /// Lists what a person can act on now, so the report can show which controls no test used.
+    @discardableResult public func controls(_ f: @escaping Controls) -> Self {
+        controlsList = f; return self
+    }
+
+    /// The controls `set` and `perform` acted on since the last call; empty it as you return.
+    @discardableResult public func used(_ f: @escaping Used) -> Self {
+        usedList = f; return self
+    }
+
     /// Replaces the default screenshot (the key window, on UIKit platforms). `nil` takes none,
     /// and the runner can take its own from outside.
     @discardableResult public func screenshot(_ f: Shooter?) -> Self {
@@ -104,6 +141,7 @@ public final class ExpectationDriver {
             "platform": platform, "app": app,
             "observe": observers.map(\.0), "set": setters.map(\.0), "arrange": arrangers.map(\.0),
             "events": events.map(\.0), "screenshot": shooter != nil, "reset": reset != nil,
+            "controls": controlsList != nil,
         ]
     }
 
@@ -177,6 +215,12 @@ public final class ExpectationDriver {
         case "screenshot":
             guard let png = shooter?() else { return ["error": "no screenshot"] }
             return ["png": png.base64EncodedString()]
+        case "controls":
+            guard let f = controlsList else { return ["error": "no controls"] }
+            return ["controls": f().map(\.json)]
+        case "used":
+            guard let f = usedList else { return ["error": "no used"] }
+            return ["used": f().map { ["view": $0.view, "id": $0.id] }]
         default:
             return ["error": "unknown command \(c["op"] ?? "?")"]
         }

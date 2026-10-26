@@ -1,7 +1,7 @@
 //! A whole suite through the wire: the runner listens, an app embeds the Rust client on its own
 //! thread, and every command and answer crosses HTTP.
 
-use expectation_harness::{Acceptance, RunOptions};
+use expectation_harness::{Acceptance, Control, RunOptions};
 use expectation_remote::RemoteDriver;
 use expectation_remote::client::{Client, Handlers, Reply};
 use expectation_story::Status;
@@ -37,6 +37,7 @@ Story: A day at the zoo
 struct Turnstile {
     unlocked: bool,
     coins: u32,
+    used: Vec<(String, String)>,
 }
 
 fn handlers(broken: bool) -> Handlers<Turnstile> {
@@ -50,10 +51,23 @@ fn handlers(broken: bool) -> Handlers<Turnstile> {
         })
         .arrange("the coin box", |t, v| t.coins = v.as_f64().unwrap() as u32)
         .on("a visitor inserts a coin", move |t| {
+            t.used.push(("Gate".into(), "coin-slot".into()));
             t.coins += 1;
             t.unlocked = !broken;
         })
-        .on("a visitor pushes the arm", |t| t.unlocked = false)
+        .on("a visitor pushes the arm", |t| {
+            t.used.push(("Gate".into(), "arm".into()));
+            t.unlocked = false
+        })
+        .on_controls(|_| {
+            vec![
+                Control::new("Gate", "coin-slot", "slot", "Coins")
+                    .mapped_to("a visitor inserts a coin"),
+                Control::new("Gate", "arm", "lever", "").mapped_to("a visitor pushes the arm"),
+                Control::new("Gate", "donate", "button", "Donate"),
+            ]
+        })
+        .on_used(|t| std::mem::take(&mut t.used))
         .on_reset(|t| *t = Turnstile::default())
         .on_screenshot(|t| Ok(Reply::Svg(format!("<svg><text>{}</text></svg>", t.coins))))
 }
@@ -152,4 +166,28 @@ fn a_runner_for_one_platform_turns_others_away() {
             .platform,
         "ios"
     );
+}
+
+#[test]
+fn controls_and_which_were_used_cross_the_wire() {
+    let (report, acceptance) = run(false);
+    assert!(report.passed());
+    let rows =
+        expectation_story::control_coverage(&acceptance.suite, &acceptance.plans, &report, &[]);
+    let by = |id: &str| rows.iter().find(|r| r.control.id == id).unwrap();
+    assert_eq!(rows.len(), 3);
+    // Kind, label and the event mapping all came over the wire.
+    assert_eq!(by("coin-slot").control.kind, "slot");
+    assert_eq!(by("coin-slot").control.label, "Coins");
+    assert_eq!(
+        by("coin-slot").control.event.as_deref(),
+        Some("a visitor inserts a coin")
+    );
+    assert!(by("coin-slot").used() && by("coin-slot").verified());
+    assert!(by("arm").used());
+    // Nothing used the donate button, and nothing says what it does.
+    let donate = by("donate");
+    assert!(!donate.used());
+    assert_eq!(donate.gaps[0], expectation_story::Gap::NoEventMapping);
+    assert!(!by("coin-slot").stories.is_empty());
 }

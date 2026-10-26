@@ -116,7 +116,7 @@ JSON over HTTP/1.1. Anything that can make an HTTP request can be a client.
 
 | Request | Body | Answer |
 | --- | --- | --- |
-| `POST /hello` | `{"platform", "app", "observe": [..], "set": [..], "arrange": [..], "events": [..], "screenshot": bool, "reset": bool}` | `{"session": n}` |
+| `POST /hello` | `{"platform", "app", "observe": [..], "set": [..], "arrange": [..], "events": [..], "screenshot": bool, "reset": bool, "controls": bool}` | `{"session": n}` |
 | `GET /next?session=n` | | a command (200), nothing yet (204: ask again), or 410: say hello again |
 | `POST /reply?session=n` | `{"id", "value"}`, `{"id", "png"}`, `{"id", "svg"}`, `{"id"}` or `{"id", "error"}` | 204 |
 
@@ -129,10 +129,20 @@ A command is one of:
 {"id": 4, "op": "perform", "event": "the user presses lock"}
 {"id": 5, "op": "observe", "subject": "the kettle"}
 {"id": 6, "op": "screenshot"}
+{"id": 7, "op": "controls"}
+{"id": 8, "op": "used"}
 ```
 
 Terms are the app's own spelling from its hello. A named value is a JSON string and a number
 is a JSON number. `png` is base64.
+
+An app that says `"controls": true` can list what a person can act on, and the report then
+shows which controls no test used (see [Controls](drivers.md#controls-what-exists-and-what-was-used)).
+`controls` answers with `controls`, a list of `{"view", "id", "kind", "label", "event"}` (the last
+three optional; `event` is the vocabulary event using the control makes happen). `used` answers
+with `used`, a list of `{"view", "id"}` for the controls `set` and `perform` acted on since the
+last `used`, and empties it. In Rust that is `Handlers::on_controls` and `on_used`, in JavaScript
+`onControls` and `onUsed`, in Swift `controls` and `used`.
 
 ## Events: real taps or the app's actions?
 
