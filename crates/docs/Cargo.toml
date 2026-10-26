@@ -11,3 +11,6 @@ expectation_model = { path = "../model" }
 expectation_graph = { path = "../graph" }
 expectation_story = { path = "../story" }
 expectation_theme = { path = "../theme" }
+
+[dev-dependencies]
+expectation_language = { path = "../language" }

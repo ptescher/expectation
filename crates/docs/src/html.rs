@@ -1658,6 +1658,14 @@ impl Site<'_> {
             for p in paragraphs(&t.description) {
                 let _ = write!(o, "<p>{}</p>", self.prose(&p));
             }
+            if let Some(r) = &t.reference {
+                let _ = write!(
+                    o,
+                    r#"<p class="reference">Reference: <a href="{}" rel="noopener noreferrer">{}</a></p>"#,
+                    esc(&r.url),
+                    esc(r.text())
+                );
+            }
             o.push_str("</dd>");
         }
         o.push_str("</dl>");

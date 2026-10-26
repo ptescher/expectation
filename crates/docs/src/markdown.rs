@@ -687,8 +687,26 @@ fn glossary(d: &Docs) -> String {
         for p in paragraphs(&t.description) {
             let _ = writeln!(o, "{}\n", prose(d, &p, false));
         }
+        if let Some(r) = &t.reference {
+            let _ = writeln!(o, "Reference: {}\n", md_link(r.text(), &r.url));
+        }
     }
     o
+}
+
+/// A Markdown link whose text and address can't break out of it.
+fn md_link(text: &str, url: &str) -> String {
+    let mut t = String::new();
+    for c in text.chars() {
+        if matches!(
+            c,
+            '\\' | '[' | ']' | '`' | '*' | '_' | '<' | '>' | '&' | '|'
+        ) {
+            t.push('\\');
+        }
+        t.push(c);
+    }
+    format!("[{t}]({})", url.replace('(', "%28").replace(')', "%29"))
 }
 
 fn vocabulary(d: &Docs) -> String {

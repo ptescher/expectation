@@ -350,6 +350,76 @@ mod tests {
     use super::*;
     use expectation_model::{Keyword, Span};
 
+    fn glossary_pages(reference: Option<&str>) -> (String, String) {
+        let reference = reference
+            .map(|r| format!("  Reference: {r}\n"))
+            .unwrap_or_default();
+        let src = format!("Suite: S\nTerm: Account\n  The customer's account.\n{reference}");
+        let loaded = expectation_language::load_sources("S", &[("s.expect", &src)]);
+        assert!(!loaded.has_errors(), "{}", loaded.render_diagnostics());
+        let suite = loaded.suite;
+        let analysis = expectation_graph::analyze(&suite);
+        let docs = Docs {
+            suite: &suite,
+            analysis: &analysis,
+            plans: &[],
+            report: None,
+            suite_dir: None,
+            siblings: &[],
+            outline: None,
+        };
+        let pages = docs.pages();
+        let get = |path: &str| {
+            pages
+                .iter()
+                .find(|p| p.path == path)
+                .unwrap_or_else(|| panic!("no {path}"))
+                .content
+                .clone()
+        };
+        (get("glossary.md"), get("site/glossary.html"))
+    }
+
+    #[test]
+    fn a_term_links_to_its_outside_reference_in_both_formats() {
+        let (md, html) = glossary_pages(Some(
+            "AccountResponse | https://api.example.com/docs/models/AccountResponse",
+        ));
+        assert!(md.contains("**Account**"));
+        assert!(md.contains(
+            "Reference: [AccountResponse](https://api.example.com/docs/models/AccountResponse)"
+        ));
+        assert!(html.contains(r#"<dt id="account">Account</dt>"#));
+        assert!(html.contains(
+            r#"<a href="https://api.example.com/docs/models/AccountResponse" rel="noopener noreferrer">AccountResponse</a>"#
+        ));
+    }
+
+    #[test]
+    fn a_reference_cannot_break_out_of_its_link() {
+        let (md, html) = glossary_pages(Some("A]<b>\"x\" & (y) | https://e.com/a?b=1&c=2(d)"));
+        assert!(
+            md.contains(r#"[A\]\<b\>"x" \& (y)](https://e.com/a?b=1&c=2%28d%29)"#),
+            "{md}"
+        );
+        assert!(
+            html.contains("A]&lt;b&gt;&quot;x&quot; &amp; (y)</a>"),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"href="https://e.com/a?b=1&amp;c=2(d)""#),
+            "{html}"
+        );
+        assert!(!html.contains("<b>"));
+    }
+
+    #[test]
+    fn a_term_without_a_reference_has_no_reference_line() {
+        let (md, html) = glossary_pages(None);
+        assert!(!md.contains("Reference:"));
+        assert!(!html.contains("Reference:"));
+    }
+
     #[test]
     fn narratives_read_as_one_sentence() {
         let lines = [

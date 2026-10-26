@@ -45,10 +45,22 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
                 );
                 continue;
             }
+            let reference = t.reference.as_ref().and_then(|(text, span)| {
+                expectation_model::Reference::parse(text)
+                    .map_err(|e| {
+                        diags.push(
+                            Diagnostic::error("reference", e)
+                                .at(span, "")
+                                .help("write `Reference: <label> | https://…`, or just the URL"),
+                        )
+                    })
+                    .ok()
+            });
             suite.glossary.push(expectation_model::Term {
                 name: t.name.clone(),
                 slug: text::slug(&t.name),
                 description: t.description.clone(),
+                reference,
                 span: t.span.clone(),
             });
         }

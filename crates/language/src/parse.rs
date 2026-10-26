@@ -32,6 +32,8 @@ pub struct RawTerm {
     pub name: String,
     pub span: Span,
     pub description: Vec<String>,
+    /// `Reference: <label> | <url>`: where outside documentation explains the term.
+    pub reference: Option<(String, Span)>,
 }
 
 /// A `State:` or `Event:` line, with the `Say:` or `Set:` line under it, and a state's
@@ -292,6 +294,7 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                         name: title,
                         span,
                         description: vec![],
+                        reference: None,
                     });
                     Block::Term
                 }
@@ -528,6 +531,21 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                 ),
                 _ => diags.push(
                     Diagnostic::error("syntax", "`Docs:` belongs in an Expectation").at(&span, ""),
+                ),
+            }
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("Reference:") {
+            match (block, out.terms.last_mut()) {
+                (Block::Term, Some(t)) if t.reference.is_none() => {
+                    t.reference = Some((rest.trim().to_string(), span))
+                }
+                (Block::Term, Some(_)) => diags
+                    .push(Diagnostic::error("syntax", "a Term has one `Reference:`").at(&span, "")),
+                _ => diags.push(
+                    Diagnostic::error("syntax", "`Reference:` belongs in a Term")
+                        .at(&span, "")
+                        .help("add a `Term: <name>` line above it"),
                 ),
             }
             continue;

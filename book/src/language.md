@@ -90,6 +90,7 @@ expectations in their own top-level section.
 | `Event: <phrase>` | Something that happens. |
 | `Phrase: <name>` | A step of your own, made of other steps. |
 | `Term: <name>` | A word for the glossary, defined by the text under it. |
+| `Reference: <label> \| <url>` | In a Term: a link to outside documentation. |
 
 A state can use `are`, `has` or `have` instead of `is` ("the drawing has 0..650 shapes"),
 and steps about it read the same way. Vocabularies from all files merge into one, so a
@@ -229,6 +230,21 @@ Story: <name>
 `Term: <name>` and the text under it define a word for the glossary. Any text can link to a
 term, a section, a feature, an expectation or a story with `[[its name]]`, and mark code with
 backticks.
+
+A term can point to documentation outside the suite with a `Reference:` line, either
+`Reference: <label> | <url>` or just `Reference: <url>`. The glossary shows it as a link under
+the definition, using the label when there is one. The term keeps its own name and anchor, so
+the label can be a different name for the same thing, such as an API schema:
+
+```
+Term: Account
+  The customer's account within this domain.
+  Reference: AccountResponse | https://api.example.com/docs/models/AccountResponse
+```
+
+Only `http` and `https` URLs are accepted, without spaces, quotes or angle brackets. A term
+has at most one reference, and it is documentation only: it changes nothing in the vocabulary
+or the tests.
 
 ## Platforms
 

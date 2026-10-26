@@ -563,6 +563,70 @@ Story: S
         ));
     }
 
+    fn glossary_of(src: &str) -> Loaded {
+        load_sources("t", &[("t.expect", src)])
+    }
+
+    #[test]
+    fn a_term_can_name_outside_documentation() {
+        let l = glossary_of(
+            "Term: Account
+  The customer's account within this domain.
+  Reference: AccountResponse | https://api.example.com/docs/models/AccountResponse
+Term: Plain
+  No reference.
+Term: Bare
+  Reference: https://example.com/bare
+",
+        );
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        let g = &l.suite.glossary;
+        assert_eq!(g[0].name, "Account");
+        assert_eq!(g[0].slug, "account");
+        assert_eq!(
+            g[0].description,
+            vec!["The customer's account within this domain."]
+        );
+        let r = g[0].reference.as_ref().unwrap();
+        assert_eq!(r.url, "https://api.example.com/docs/models/AccountResponse");
+        assert_eq!(r.label.as_deref(), Some("AccountResponse"));
+        assert!(g[1].reference.is_none());
+        assert_eq!(
+            g[2].reference.as_ref().unwrap().text(),
+            "https://example.com/bare"
+        );
+    }
+
+    #[test]
+    fn unsafe_reference_urls_are_errors() {
+        for url in [
+            "javascript:alert(1)",
+            "JavaScript:alert(1)",
+            "data:text/html,hi",
+            "file:///etc/passwd",
+            "//example.com/x",
+            "https://",
+            "https://e.com/a b",
+            "https://e.com/\"onclick=\"x",
+            "https://e.com/<script>",
+            "ftp://e.com/x",
+            "",
+        ] {
+            let l = glossary_of(&format!("Term: T\n  Reference: L | {url}\n"));
+            assert!(l.has_errors(), "{url:?} should be refused");
+            assert!(l.suite.glossary[0].reference.is_none());
+        }
+    }
+
+    #[test]
+    fn a_reference_belongs_in_a_term_once() {
+        assert!(glossary_of("Reference: https://e.com/x\n").has_errors());
+        assert!(
+            glossary_of("Term: T\n  Reference: https://e.com/a\n  Reference: https://e.com/b\n")
+                .has_errors()
+        );
+    }
+
     #[test]
     fn docs_lines_say_what_the_reader_sees() {
         let src = "Vocabulary:
