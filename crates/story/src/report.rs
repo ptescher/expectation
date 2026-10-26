@@ -12,6 +12,9 @@ pub enum Status {
     Skipped,
     /// Not run, because the driver can't do something it needs yet.
     Unsupported,
+    /// Not run, because it depends on an expectation marked `Status: pending`: behaviour
+    /// written ahead of its implementation. Not a failure, and not a driver gap either.
+    Pending,
     /// No result: it hasn't been run.
     NotRun,
 }
@@ -23,6 +26,7 @@ impl Status {
             Status::Failed => "failed",
             Status::Skipped => "skipped",
             Status::Unsupported => "unsupported",
+            Status::Pending => "pending",
             Status::NotRun => "not-run",
         }
     }
@@ -33,6 +37,7 @@ impl Status {
             Status::Failed,
             Status::Skipped,
             Status::Unsupported,
+            Status::Pending,
             Status::NotRun,
         ]
         .into_iter()
@@ -118,12 +123,16 @@ pub enum Verdict {
     Untested,
     /// The tests that would check it can't run yet: the driver doesn't support them.
     Unsupported,
+    /// It is marked `Status: pending`: written ahead of the behaviour, so nothing has checked it.
+    /// Unlike `Unsupported`, this is on purpose, and it never counts as verified.
+    Pending,
     /// The tests that would check it haven't run.
     NotRun,
 }
 
 impl Report {
-    /// Nothing failed. Tests that aren't supported yet, or weren't run, don't count against it.
+    /// Nothing failed. Tests that aren't supported yet, are pending, or weren't run, don't count
+    /// against it, and none of them counts as verified either.
     pub fn passed(&self) -> bool {
         !self.results.iter().any(|r| r.status == Status::Failed)
     }
@@ -148,7 +157,9 @@ impl Report {
         let rank = |s: Status| match s {
             Status::NotRun => 0,
             Status::Unsupported => 1,
-            _ => 2,
+            // Pending comes from the suite, so every driver says it; it still beats a driver gap.
+            Status::Pending => 2,
+            _ => 3,
         };
         for (mine, theirs) in self.results.iter_mut().zip(other.results) {
             if rank(theirs.status) > rank(mine.status) {
@@ -199,6 +210,12 @@ impl Report {
                         out[e.0 as usize] = verdict;
                     }
                 }
+            }
+        }
+        // A pending expectation is never anything else, whatever ran around it.
+        for (e, v) in suite.expectations.iter().zip(&mut out) {
+            if e.pending {
+                *v = Verdict::Pending;
             }
         }
         out
@@ -400,6 +417,8 @@ pub fn fingerprint(plan: &Plan) -> String {
         }
     };
     eat(&plan.title);
+    // Results saved before it was marked pending (or after it stopped being) aren't its results.
+    eat(if plan.pending { "pending" } else { "" });
     for t in &plan.given {
         eat(&t.text);
     }

@@ -66,6 +66,7 @@ fn verdict_mark(v: Option<Verdict>) -> String {
         Some(Verdict::Verified) => "✅",
         Some(Verdict::Failed) => "❌",
         Some(Verdict::Unsupported) => "🚧",
+        Some(Verdict::Pending) => "📝",
         _ => "⚪",
     };
     format!("{icon} {}", verdict_label(v))
@@ -77,6 +78,7 @@ fn status_mark(s: Status) -> String {
         Status::Failed => "❌",
         Status::Skipped => "⏭️",
         Status::Unsupported => "🚧",
+        Status::Pending => "📝",
         Status::NotRun => "⚪",
     };
     format!("{icon} {}", status_label(s))
@@ -604,16 +606,18 @@ fn report(d: &Docs, f: &Facts) -> String {
             let count = |x: Verdict| v.iter().filter(|&&y| y == x).count();
             let _ = writeln!(
                 o,
-                "**{} tests:** {} passed, {} failed, {} not supported yet. **{} expectations:** {} verified, {} failed, \
-                 {} not supported yet, {} untested.\n",
+                "**{} tests:** {} passed, {} failed, {} not supported yet, {} pending. **{} expectations:** {} verified, \
+                 {} failed, {} not supported yet, {} pending, {} untested.\n",
                 r.results.len(),
                 r.count(Status::Passed),
                 r.count(Status::Failed),
                 r.count(Status::Unsupported),
+                r.count(Status::Pending),
                 s.expectations.len(),
                 count(Verdict::Verified),
                 count(Verdict::Failed),
                 count(Verdict::Unsupported),
+                count(Verdict::Pending),
                 count(Verdict::Untested)
             );
         }
@@ -654,6 +658,7 @@ fn report(d: &Docs, f: &Facts) -> String {
         f.verdict(e).map(|v| match v {
             Verdict::Verified => "passed",
             Verdict::Failed => "failed",
+            Verdict::Pending => "pending",
             Verdict::Untested | Verdict::Unsupported | Verdict::NotRun => "untested",
         })
     };

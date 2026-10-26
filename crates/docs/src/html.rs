@@ -223,6 +223,7 @@ impl Site<'_> {
             Some(Verdict::Verified) => "ok",
             Some(Verdict::Failed) => "bad",
             Some(Verdict::Unsupported) => "warn",
+            Some(Verdict::Pending) => "pending",
             _ => "idle",
         };
         format!(r#"<span class="badge {class}">{}</span>"#, verdict_label(v))
@@ -233,6 +234,7 @@ impl Site<'_> {
             Status::Passed => "ok",
             Status::Failed => "bad",
             Status::Unsupported => "warn",
+            Status::Pending => "pending",
             _ => "idle",
         };
         format!(r#"<span class="badge {class}">{}</span>"#, status_label(s))
@@ -496,6 +498,9 @@ impl Site<'_> {
                 r.count(Status::Unsupported)
             ));
         }
+        if r.count(Status::Pending) > 0 {
+            parts.push(format!("{} pending", r.count(Status::Pending)));
+        }
         if r.count(Status::NotRun) > 0 {
             parts.push(format!("{} not run", r.count(Status::NotRun)));
         }
@@ -686,6 +691,7 @@ impl Site<'_> {
             (Some(Verdict::Verified), "ok"),
             (Some(Verdict::Failed), "bad"),
             (Some(Verdict::Unsupported), "warn"),
+            (Some(Verdict::Pending), "pending"),
             (Some(Verdict::Untested), "idle"),
             (Some(Verdict::NotRun), "idle"),
             (None, "idle"),
@@ -1222,6 +1228,8 @@ impl Site<'_> {
         if let Some(e) = result.and_then(|r| r.start.error.as_ref()) {
             let class = if status == Status::Unsupported {
                 "note warn"
+            } else if status == Status::Pending {
+                "note"
             } else {
                 "note bad"
             };
@@ -1346,7 +1354,7 @@ impl Site<'_> {
         let mut o = String::from(
             "<h1>Map</h1><p class=\"lede\">Every expectation, placed after the ones that get the system into a state where it applies, starting from each section's setup. Dashed arrows are exceptions, red ones are conflicts nobody has settled, and dashed outlines are invariants. Colours show each expectation's verdict.</p>",
         );
-        o.push_str(r#"<p class="legend"><span class="badge ok">verified</span> <span class="badge bad">failed</span> <span class="badge warn">not supported yet</span> <span class="badge idle">untested</span></p>"#);
+        o.push_str(r#"<p class="legend"><span class="badge ok">verified</span> <span class="badge bad">failed</span> <span class="badge warn">not supported yet</span> <span class="badge pending">pending</span> <span class="badge idle">untested</span></p>"#);
         for section in &s.sections {
             let own: Vec<ExpId> = section
                 .features
@@ -1825,6 +1833,7 @@ blockquote { margin: 0 0 16px; padding: 10px 16px; border-left: 3px solid var(--
 .badge.ok { color: var(--ok); background: var(--ok-fill); border-color: var(--ok-dim); }
 .badge.bad { color: var(--on-warning); background: var(--warning-fill); border-color: var(--warning); }
 .badge.warn { color: var(--caution); background: var(--caution-fill); border-color: var(--caution); }
+.badge.pending { color: var(--info); background: transparent; border-color: var(--info); border-style: dashed; }
 .badge.idle { color: var(--muted); background: var(--off-fill); border-color: var(--off-edge); }
 .tally { display: flex; flex-wrap: wrap; gap: 6px; }
 
@@ -1960,6 +1969,7 @@ svg.dag .node.start rect { fill: var(--screen); stroke: var(--bezel-edge); }
 svg.dag .node.v-ok rect { fill: var(--ok-fill); stroke: var(--ok); }
 svg.dag .node.v-bad rect { fill: var(--warning-fill); stroke: var(--warning); }
 svg.dag .node.v-warn rect { fill: var(--caution-fill); stroke: var(--caution); }
+svg.dag .node.v-pending rect { stroke: var(--info); stroke-dasharray: 2 3; }
 svg.dag .node.invariant rect { stroke-dasharray: 4 3; }
 svg.dag .node.unreachable { opacity: .55; }
 svg.dag .node.outside { opacity: .5; }
