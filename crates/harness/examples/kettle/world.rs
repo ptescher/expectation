@@ -2,7 +2,7 @@
 //! takes 0.22 s, and while the child lock is on the dial and the buttons don't reach it.
 //! Screenshots are SVG.
 
-use expectation_harness::{Bindings, Progress, Screenshot};
+use expectation_harness::{Bindings, Control, Progress, Screenshot};
 use std::fmt::Write;
 
 pub const PRESETS: [&str; 3] = ["WARM", "HOT", "BOIL"];
@@ -29,6 +29,8 @@ pub struct World {
     start_hold: f64,
     /// A seeded defect for demos: the child lock lets the dial through.
     pub lock_leaks: bool,
+    /// The controls the last actions used, as `Control::key`s.
+    pub used: Vec<String>,
 }
 
 impl World {
@@ -42,6 +44,7 @@ impl World {
             time: 0.0,
             start_hold: 0.0,
             lock_leaks,
+            used: vec![],
         }
     }
 
@@ -210,13 +213,35 @@ impl World {
 }
 
 /// The vocabulary bound to the world.
+/// What is on the kettle's face: four buttons and the dial, and an export button that
+/// nothing in the suite uses.
+pub fn controls() -> Vec<Control> {
+    vec![
+        Control::new("Kettle", "start", "button", "Start"),
+        Control::new("Kettle", "reset", "button", "Reset"),
+        Control::new("Kettle", "preset", "button", "Preset"),
+        Control::new("Kettle", "lock", "button", "Lock"),
+        Control::new("Kettle", "dial", "dial", ""),
+        Control::new("Kettle", "export-log", "button", "Export log"),
+    ]
+}
+
+impl World {
+    fn used(&mut self, id: &str) {
+        self.used.push(Control::new("Kettle", id, "", "").key());
+    }
+}
+
 pub fn driver(lock_leaks: bool) -> Bindings<World> {
     Bindings::new(World::new(lock_leaks))
         .observe("the kettle", |w| w.phase_name())
         .observe("the dial", |w| w.dial)
         .observe("the preset", |w| PRESETS[w.preset])
         .observe("the child lock", |w| if w.lock { "on" } else { "off" })
-        .set("the dial", |w, v| w.dial = v.as_f64().unwrap())
+        .set("the dial", |w, v| {
+            w.used("dial");
+            w.dial = v.as_f64().unwrap()
+        })
         .arrange("the kettle", |w, v| match v.as_str() {
             Some("off") => w.reset(),
             Some("starting") => w.phase = Phase::Starting { t: 0.0 },
@@ -230,10 +255,24 @@ pub fn driver(lock_leaks: bool) -> Bindings<World> {
             w.preset = PRESETS.iter().position(|p| Some(*p) == v.as_str()).unwrap()
         })
         .arrange("the child lock", |w, v| w.lock = v.as_str() == Some("on"))
-        .on("the user presses start", World::start)
-        .on("the user presses reset", World::reset)
-        .on("the user presses preset", World::press_preset)
-        .on("the user presses lock", World::press_lock)
+        .on("the user presses start", |w| {
+            w.used("start");
+            w.start()
+        })
+        .on("the user presses reset", |w| {
+            w.used("reset");
+            w.reset()
+        })
+        .on("the user presses preset", |w| {
+            w.used("preset");
+            w.press_preset()
+        })
+        .on("the user presses lock", |w| {
+            w.used("lock");
+            w.press_lock()
+        })
+        .on_controls(|_| controls())
+        .on_used(|w| std::mem::take(&mut w.used))
         .on("the water runs out", World::run_out)
         .on_reset(|w| *w = World::new(w.lock_leaks))
         // A second after each action, then 0.1 s per extra look.

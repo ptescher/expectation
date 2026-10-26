@@ -95,6 +95,15 @@ fn prune(dir: &Path, written: &[PathBuf]) -> std::io::Result<()> {
 }
 
 impl Docs<'_> {
+    /// The controls the last run found and the tests that used them; none if the tests haven't
+    /// run, or the driver can't list them.
+    pub fn control_rows(&self) -> Vec<expectation_story::ControlRow> {
+        match self.report {
+            Some(r) => expectation_story::control_coverage(self.plans, r),
+            None => vec![],
+        }
+    }
+
     /// Write the Markdown pages and the HTML site under `dir`. Pages of stories or features
     /// that no longer exist are removed (only the generated kinds, in the folders this writes
     /// to); other files in the directory are left alone.

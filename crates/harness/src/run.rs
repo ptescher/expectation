@@ -3,7 +3,9 @@
 use crate::driver::{Driver, Need, Progress};
 use crate::service::Services;
 use expectation_model::{Suite, Trigger};
-use expectation_story::{Check, CheckResult, Plan, PlanResult, Report, Status, StepResult};
+use expectation_story::{
+    Check, CheckResult, Control, Plan, PlanResult, Report, Status, StepResult,
+};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -14,6 +16,10 @@ pub struct RunOptions {
     pub docs_dir: Option<PathBuf>,
     /// How many times to [`Driver::advance`] while waiting for a step's checks to hold.
     pub patience: u32,
+    /// Ask the driver for its controls and which ones each test used (see
+    /// [`Driver::controls`]). Cheap for a driver that has none; a driver that walks a UI tree can
+    /// turn it off.
+    pub controls: bool,
 }
 
 impl Default for RunOptions {
@@ -21,6 +27,7 @@ impl Default for RunOptions {
         RunOptions {
             docs_dir: None,
             patience: 100,
+            controls: true,
         }
     }
 }
@@ -253,6 +260,8 @@ fn run_plan(
         status: Status::Failed,
         start,
         steps: plan.steps.iter().map(|_| StepResult::skipped()).collect(),
+        controls: vec![],
+        used: vec![],
     };
 
     if let Some(r) = pending(suite, plan) {
@@ -297,6 +306,11 @@ fn run_plan(
         }
     }
     driver.settle();
+    // Setting the test up is not using the controls.
+    let mut seen = Seen::new(opts.controls);
+    seen.take(driver);
+    seen.used.clear();
+    seen.look(driver);
     let mut start = observe(suite, driver, &plan.start_checks, opts.patience);
     start.screenshot = shoot(driver, 0);
 
@@ -307,9 +321,12 @@ fn run_plan(
             steps.push(StepResult::skipped());
             continue;
         }
-        let mut r = match act(suite, driver, &step.action) {
+        let acted = act(suite, driver, &step.action);
+        seen.take(driver);
+        let mut r = match acted {
             Ok(()) => {
                 driver.settle();
+                seen.look(driver);
                 observe(suite, driver, &step.checks, opts.patience)
             }
             Err(e) => failed(e),
@@ -322,6 +339,47 @@ fn run_plan(
         status: if ok { Status::Passed } else { Status::Failed },
         start,
         steps,
+        controls: seen.controls,
+        used: seen.used,
+    }
+}
+
+/// The controls a test saw, and which of them its actions used.
+struct Seen {
+    on: bool,
+    controls: Vec<Control>,
+    used: Vec<String>,
+}
+
+impl Seen {
+    fn new(on: bool) -> Self {
+        Seen {
+            on,
+            controls: vec![],
+            used: vec![],
+        }
+    }
+
+    fn look(&mut self, driver: &mut dyn Driver) {
+        if !self.on {
+            return;
+        }
+        for c in driver.controls().unwrap_or_default() {
+            if !self.controls.iter().any(|k| k.key() == c.key()) {
+                self.controls.push(c);
+            }
+        }
+    }
+
+    fn take(&mut self, driver: &mut dyn Driver) {
+        if !self.on {
+            return;
+        }
+        for key in driver.take_used() {
+            if !self.used.contains(&key) {
+                self.used.push(key);
+            }
+        }
     }
 }
 

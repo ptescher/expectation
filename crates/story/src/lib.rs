@@ -1,9 +1,11 @@
 //! User stories as acceptance tests: [`plan`] compiles stories (and generated coverage
 //! routes) into test plans, and [`report`] holds what happened when they ran.
 
+pub mod controls;
 pub mod plan;
 pub mod report;
 
+pub use controls::{Control, ControlRow, control_coverage, controls_json};
 pub use plan::{
     Because, Check, Origin, Plan, PlanStep, Planned, coverage, coverage_plans, plan_stories,
     reaching_plans, untested, visit_plans,

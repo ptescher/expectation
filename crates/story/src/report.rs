@@ -1,5 +1,6 @@
 //! Results of running plans, and what they say about each expectation.
 
+use crate::controls::Control;
 use crate::plan::{Because, Check, Plan};
 use expectation_model::{ExpId, Suite, Value};
 use std::fmt::Write;
@@ -90,6 +91,10 @@ pub struct PlanResult {
     pub status: Status,
     pub start: StepResult,
     pub steps: Vec<StepResult>,
+    /// The controls the driver listed while the test ran, if it can.
+    pub controls: Vec<Control>,
+    /// The ones the test's actions used (`Control::key`s), not counting arranging the start.
+    pub used: Vec<String>,
 }
 
 impl PlanResult {
@@ -103,6 +108,8 @@ impl PlanResult {
                 .iter()
                 .map(|_| StepResult::with(status))
                 .collect(),
+            controls: vec![],
+            used: vec![],
         }
     }
 }
@@ -238,6 +245,19 @@ impl Report {
                 r.status.name(),
                 fingerprint(plan)
             );
+            for c in &r.controls {
+                let _ = writeln!(
+                    out,
+                    "control\t{}\t{}\t{}\t{}",
+                    field(&c.view),
+                    field(&c.id),
+                    field(&c.kind),
+                    field(&c.label)
+                );
+            }
+            for key in &r.used {
+                let _ = writeln!(out, "used\t{}", field(key));
+            }
             for (n, step) in std::iter::once(&r.start).chain(&r.steps).enumerate() {
                 let _ = writeln!(
                     out,
@@ -288,8 +308,20 @@ impl Report {
                             status,
                             start: StepResult::with(status),
                             steps: vec![],
+                            controls: vec![],
+                            used: vec![],
                         },
                     ));
+                }
+                ["control", view, id, kind, label] => {
+                    if let Some((_, r)) = current.as_mut() {
+                        r.controls.push(Control::new(*view, *id, *kind, *label));
+                    }
+                }
+                ["used", key] => {
+                    if let Some((_, r)) = current.as_mut() {
+                        r.used.push(key.to_string());
+                    }
                 }
                 ["step", n, status, polls, shot, error] => {
                     let Some((_, r)) = current.as_mut() else {

@@ -9,7 +9,9 @@ use crate::{
 use expectation_graph::Node;
 use expectation_model::text::paragraphs;
 use expectation_model::{ExpId, PhraseBody, SectionId, StepText, Suite};
-use expectation_story::{Because, Check, CheckResult, Origin, Plan, Status, StepResult, Verdict};
+use expectation_story::{
+    Because, Check, CheckResult, ControlRow, Origin, Plan, Status, StepResult, Verdict,
+};
 use std::fmt::Write;
 
 const GENERATED: &str = "<!-- Generated from the suite's .expect files by Expectation (github.com/ptescher/expectation); edit those, not this. -->";
@@ -33,6 +35,17 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
             content: vocabulary(d),
         },
     ];
+    let controls = d.control_rows();
+    if !controls.is_empty() {
+        pages.push(Page {
+            path: "interactions.md".into(),
+            content: interactions(d, &controls),
+        });
+        pages.push(Page {
+            path: "interactions.json".into(),
+            content: expectation_story::controls_json(&controls, d.plans),
+        });
+    }
     for i in 0..d.plans.len() {
         pages.push(Page {
             path: format!("tests/{}.md", d.plans[i].slug),
@@ -623,6 +636,15 @@ fn report(d: &Docs, f: &Facts) -> String {
         }
         _ => o.push_str("The tests haven't run.\n\n"),
     }
+    let controls = d.control_rows();
+    if !controls.is_empty() {
+        let unused = controls.iter().filter(|r| !r.used()).count();
+        let _ = writeln!(
+            o,
+            "**Controls:** {} found, {unused} never used. See the [interactions](interactions.md).\n",
+            controls.len()
+        );
+    }
     for section in &s.sections {
         let tests: Vec<usize> = (0..d.plans.len())
             .filter(|&i| d.plans[i].section == section.id)
@@ -676,6 +698,94 @@ fn report(d: &Docs, f: &Facts) -> String {
         expectation_graph::states::mermaid(s, &map)
     );
     o
+}
+
+/// Every control the driver listed, and the tests that used it: the ones nothing used are the
+/// behaviour nobody has tried.
+fn interactions(d: &Docs, rows: &[ControlRow]) -> String {
+    let unused: Vec<&ControlRow> = rows.iter().filter(|r| !r.used()).collect();
+    let mut o = String::new();
+    let _ = writeln!(
+        o,
+        "{GENERATED}\n\n[{}](README.md) › [Test report](tests.md)\n\n# Interactions\n\nThe buttons, fields and other \
+         controls the tests found in the program, and which tests used them. A control is *used* when a test's \
+         action acted on it; arranging a test's start doesn't count. The list is what the driver reported, not \
+         proof that these are all the controls there are. Machine-readable: [interactions.json](interactions.json).\n",
+        d.suite.name
+    );
+    let _ = writeln!(
+        o,
+        "**{} controls:** {} used, {} never used.\n",
+        rows.len(),
+        rows.len() - unused.len(),
+        unused.len()
+    );
+    if !unused.is_empty() {
+        let _ = writeln!(o, "Never used:\n");
+        for r in &unused {
+            let _ = writeln!(o, "- {}", control_name(&r.control));
+        }
+        o.push('\n');
+    }
+    let _ = writeln!(
+        o,
+        "| View | Control | Authored stories | Generated tests | Result |\n| --- | --- | --- | --- | --- |"
+    );
+    for r in rows {
+        let links = |v: &[usize], dir: &str, tutorial: bool| -> String {
+            let mut seen: Vec<usize> = vec![];
+            for &i in v {
+                if !seen.contains(&i) {
+                    seen.push(i);
+                }
+            }
+            if seen.is_empty() {
+                return "0".into();
+            }
+            seen.iter()
+                .take(3)
+                .map(|&i| {
+                    let p = &d.plans[i];
+                    let title = if tutorial {
+                        manual::short_title(d.suite, p)
+                    } else {
+                        p.title.clone()
+                    };
+                    format!("[{}]({dir}/{}.md)", title, p.slug)
+                })
+                .chain((seen.len() > 3).then(|| format!("{} more", seen.len() - 3)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let result = if !r.used() {
+            "⚠️ never used"
+        } else if r.failed > 0 {
+            "❌ failed"
+        } else if r.passed > 0 {
+            "✅ passed"
+        } else {
+            "⚪ no result"
+        };
+        let _ = writeln!(
+            o,
+            "| {} | {} | {} | {} | {result} |",
+            r.control.view,
+            control_name(&r.control),
+            links(&r.stories, "tutorials", true),
+            links(&r.generated, "tests", false),
+        );
+    }
+    o
+}
+
+/// "Start (button)", or the id when it has no label.
+fn control_name(c: &expectation_story::Control) -> String {
+    let name = if c.label.is_empty() { &c.id } else { &c.label };
+    if c.kind.is_empty() {
+        format!("`{name}`")
+    } else {
+        format!("`{name}` ({})", c.kind)
+    }
 }
 
 fn glossary(d: &Docs) -> String {

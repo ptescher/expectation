@@ -77,6 +77,26 @@ catch up, and keeps the gap visible.
 A driver that can arrange some values of a state and not others overrides
 `Driver::can_arrange`.
 
+## Controls: what exists, and what was used
+
+A driver can list the buttons, fields, switches and links a person can act on, and say which ones
+its actions used. Then the report shows every control the tests found and which of them no test
+ever used, as `interactions.md`, `site/interactions.html` and `interactions.json` (for CI).
+
+```ignore
+Bindings::new(World::default())
+    .on_controls(|w| vec![Control::new("Settings", "export-log", "button", "Export log")])
+    .on_used(|w| std::mem::take(&mut w.used)) // Control::key()s since the last call
+```
+
+`Driver::controls` is asked after a test's start is arranged and after each step; the report
+keeps the union. `Driver::take_used` is emptied after arranging, so setting a test up doesn't
+count, and read after each step. Give each control an id that doesn't depend on its label, and
+the view it is in: the same id in two views is two controls. A story and a generated test are
+counted separately, and a control used only by tests that failed is not shown as working. The
+list is what the driver reported, not proof that nothing else is on screen. Turn it off with
+`RunOptions { controls: false, .. }` if listing is slow.
+
 ## The Driver trait
 
 For full control, implement `Driver` yourself. Only `set`, `perform` and `observe` are

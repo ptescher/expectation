@@ -34,6 +34,8 @@ enum Here {
     /// Any test's report (stories and generated ones).
     Test(usize),
     Tests,
+    /// The program's controls and which tests used them.
+    Interactions,
     Map,
     /// The app's states and the moves between them.
     States,
@@ -87,6 +89,13 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
         path: "site/tests.html".into(),
         content: site.tests_page(),
     });
+    let controls = d.control_rows();
+    if !controls.is_empty() {
+        pages.push(Page {
+            path: "site/interactions.html".into(),
+            content: site.interactions_page(&controls),
+        });
+    }
     pages.push(Page {
         path: "site/map.html".into(),
         content: site.map_page(),
@@ -311,6 +320,7 @@ impl Site<'_> {
             Here::Tutorial(i) => (self.tutorial_url(i), self.short_title(i)),
             Here::Test(i) => (self.test_url(i), self.d.plans[i].title.clone()),
             Here::Tests => ("tests.html".into(), "Test report".into()),
+            Here::Interactions => ("interactions.html".into(), "Interactions".into()),
             Here::Map => ("map.html".into(), "Map".into()),
             Here::States => ("states.html".into(), "State map".into()),
             Here::Glossary => ("glossary.html".into(), "Glossary".into()),
@@ -1139,6 +1149,15 @@ impl Site<'_> {
             self.tally(&all)
         );
         o.push_str(r#"<p>The tests use the states, actions and shorthand of the <a href="vocabulary.html">test vocabulary</a>. <a href="map.html">The map</a> shows which behaviour leads to which, <a href="states.html">the state map</a> shows the states the app gets into and how to get between them, and <a href="theme.html">the theme</a> shows the colours and type the docs are drawn in.</p>"#);
+        let controls = self.d.control_rows();
+        if !controls.is_empty() {
+            let _ = write!(
+                o,
+                r#"<p>The tests found {} controls, and {} of them were never used: see the <a href="interactions.html">interactions</a>.</p>"#,
+                controls.len(),
+                controls.iter().filter(|r| !r.used()).count()
+            );
+        }
         for section in &s.sections {
             let tests: Vec<usize> = (0..self.d.plans.len())
                 .filter(|&i| self.d.plans[i].section == section.id)
@@ -1181,6 +1200,83 @@ impl Site<'_> {
             o.push_str("</ul>");
         }
         self.page(Here::Tests, "Test report", &o)
+    }
+
+    /// The controls the tests found, and which tests used them.
+    fn interactions_page(&self, rows: &[expectation_story::ControlRow]) -> String {
+        let unused = rows.iter().filter(|r| !r.used()).count();
+        let mut o = format!(
+            "<h1>Interactions</h1><p class=\"lede\">The buttons, fields and other controls the tests found in the program, \
+             and which tests used them. A control is used when a test's action acted on it; arranging a test's start \
+             doesn't count. This is what the driver reported, not proof that these are all the controls there are. \
+             <a href=\"../interactions.json\">interactions.json</a> has it for machines.</p>\
+             <p class=\"tally\"><span class=\"badge idle\">{} controls</span> <span class=\"badge ok\">{} used</span> \
+             <span class=\"badge warn\">{unused} never used</span></p>",
+            rows.len(),
+            rows.len() - unused
+        );
+        o.push_str("<table class=\"tests\"><thead><tr><th>View</th><th>Control</th><th>Authored stories</th><th>Generated tests</th><th>Result</th></tr></thead><tbody>");
+        for r in rows {
+            let links = |v: &[usize], tutorial: bool| -> String {
+                let mut seen: Vec<usize> = vec![];
+                for &i in v {
+                    if !seen.contains(&i) {
+                        seen.push(i);
+                    }
+                }
+                if seen.is_empty() {
+                    return "0".into();
+                }
+                let mut parts: Vec<String> = seen
+                    .iter()
+                    .take(3)
+                    .map(|&i| {
+                        if tutorial {
+                            format!(
+                                r#"<a href="{}">{}</a>"#,
+                                esc(&self.tutorial_url(i)),
+                                esc(&self.short_title(i))
+                            )
+                        } else {
+                            self.test_link(i)
+                        }
+                    })
+                    .collect();
+                if seen.len() > 3 {
+                    parts.push(format!("{} more", seen.len() - 3));
+                }
+                parts.join(", ")
+            };
+            let (class, label) = if !r.used() {
+                ("warn", "never used")
+            } else if r.failed > 0 {
+                ("bad", "failed")
+            } else if r.passed > 0 {
+                ("ok", "passed")
+            } else {
+                ("idle", "no result")
+            };
+            let name = if r.control.label.is_empty() {
+                &r.control.id
+            } else {
+                &r.control.label
+            };
+            let kind = if r.control.kind.is_empty() {
+                String::new()
+            } else {
+                format!(" <span class=\"muted\">({})</span>", esc(&r.control.kind))
+            };
+            let _ = write!(
+                o,
+                "<tr><td>{}</td><td><code>{}</code>{kind}</td><td>{}</td><td>{}</td><td><span class=\"badge {class}\">{label}</span></td></tr>",
+                esc(&r.control.view),
+                esc(name),
+                links(&r.stories, true),
+                links(&r.generated, false)
+            );
+        }
+        o.push_str("</tbody></table>");
+        self.page(Here::Interactions, "Interactions", &o)
     }
 
     fn test_page(&self, i: usize) -> String {

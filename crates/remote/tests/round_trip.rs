@@ -89,6 +89,7 @@ fn run(broken: bool) -> (expectation_story::Report, Acceptance) {
         &RunOptions {
             docs_dir: Some(docs),
             patience: 10,
+            ..Default::default()
         },
     );
     (report, acceptance)
