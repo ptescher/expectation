@@ -174,6 +174,9 @@ pub struct Expectation {
     pub steps: Vec<StepText>,
     /// `Docs: hidden`: tested, but left out of the reading pages (it's only in the test report).
     pub hidden: bool,
+    /// `Status: pending`: written ahead of the behaviour. It stays in the model (states,
+    /// reachability, conflicts), but a test that depends on it is reported as pending, not run.
+    pub pending: bool,
 }
 
 impl Expectation {

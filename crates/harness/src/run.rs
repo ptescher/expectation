@@ -131,6 +131,9 @@ fn run_served(
     services: &mut Services,
     launched: &mut Option<String>,
 ) -> PlanResult {
+    if let Some(r) = pending(suite, plan) {
+        return r;
+    }
     let needs = driver.needs();
     let names: Vec<&str> = needs.iter().map(String::as_str).collect();
     let fresh = driver.fresh();
@@ -163,6 +166,36 @@ fn needs<'a>(suite: &'a Suite, plan: &Plan) -> Vec<Need<'a>> {
         out.extend(step.checks.iter().map(observe));
     }
     out
+}
+
+/// A plan that depends on an expectation marked `Status: pending` is not run, before anything
+/// else is asked of the driver: it is neither a pass nor a failure, and it is not a driver gap
+/// (that is [`unsupported`], which a pending plan never reaches), so a consumer can tell the
+/// behaviour that is intentionally not built from a binding that is unexpectedly missing.
+fn pending(suite: &Suite, plan: &Plan) -> Option<PlanResult> {
+    if !plan.pending {
+        return None;
+    }
+    let mut names: Vec<String> = plan
+        .start_invariants
+        .iter()
+        .chain(
+            plan.steps
+                .iter()
+                .flat_map(|s| s.fired.iter().chain(&s.invariants)),
+        )
+        .map(|&e| suite.exp(e))
+        .filter(|e| e.pending)
+        .map(|e| format!("«{}»", e.name))
+        .collect();
+    names.sort();
+    names.dedup();
+    let mut r = PlanResult::with(Status::Pending, plan);
+    r.start.error = Some(format!(
+        "Pending: it depends on {}, which isn't built yet.",
+        expectation_model::text::join_and(&names)
+    ));
+    Some(r)
 }
 
 /// A plan the driver cannot run yet is not run and not failed: the result says what it lacks.
@@ -222,6 +255,9 @@ fn run_plan(
         steps: plan.steps.iter().map(|_| StepResult::skipped()).collect(),
     };
 
+    if let Some(r) = pending(suite, plan) {
+        return r;
+    }
     if let Some(r) = unsupported(suite, plan, driver) {
         return r;
     }

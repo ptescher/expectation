@@ -320,6 +320,7 @@ fn verdict_label(v: Option<Verdict>) -> &'static str {
         Some(Verdict::Failed) => "failed",
         Some(Verdict::Untested) => "untested",
         Some(Verdict::Unsupported) => "not supported yet",
+        Some(Verdict::Pending) => "pending",
         Some(Verdict::NotRun) | None => "not run",
     }
 }
@@ -330,6 +331,7 @@ fn status_label(s: Status) -> &'static str {
         Status::Failed => "failed",
         Status::Skipped => "skipped",
         Status::Unsupported => "not supported yet",
+        Status::Pending => "pending: not built yet",
         Status::NotRun => "not run",
     }
 }
@@ -338,6 +340,7 @@ fn status_label(s: Status) -> &'static str {
 fn missing_shot(status: Status) -> &'static str {
     match status {
         Status::Unsupported => "Screenshot to come: the tests can't run this step yet.",
+        Status::Pending => "No screenshot: this behaviour is pending, so the test isn't run.",
         Status::Skipped => "No screenshot: the test stopped at an earlier step.",
         Status::NotRun => "No screenshot yet: the tests haven't run.",
         Status::Failed => "No screenshot: the test failed before this step.",

@@ -73,6 +73,7 @@ pub fn mermaid(
         "  classDef passed fill:{},stroke:{},color:{}\n  \
          classDef failed fill:{},stroke:{},color:{}\n  \
          classDef untested fill:{},stroke:{},color:{}\n  \
+         classDef pending fill:{},stroke:{},stroke-dasharray:2 3,color:{}\n  \
          classDef unreachable stroke-dasharray:4 3,color:{}\n",
         P.ok_fill.css(),
         P.ok.css(),
@@ -82,6 +83,9 @@ pub fn mermaid(
         P.on_warning.css(),
         P.off_fill.css(),
         P.bezel_edge.css(),
+        P.text.css(),
+        P.off_fill.css(),
+        P.info.css(),
         P.text.css(),
         P.muted.css(),
     );
