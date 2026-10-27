@@ -37,6 +37,8 @@ class ExpectationDriver {
     this.events = new Map();
     this.resetHandler = null;
     this.screenshotHandler = null;
+    this.controlsHandler = null;
+    this.usedHandler = null;
     this.running = false;
   }
 
@@ -48,6 +50,15 @@ class ExpectationDriver {
   /** `f` returns a base64 PNG (or a promise of one). Without it, the runner can take its own. */
   onScreenshot(f) { this.screenshotHandler = f; return this; }
 
+  /**
+   * `f` returns what a person can act on now: `[{ view, id, kind?, label?, event? }]`, where
+   * `event` is the vocabulary event using the control makes happen. The report then shows which
+   * controls no test used.
+   */
+  onControls(f) { this.controlsHandler = f; return this; }
+  /** `f` returns `[{ view, id }]` for the controls `set` and `perform` acted on since the last call, and empties it. */
+  onUsed(f) { this.usedHandler = f; return this; }
+
   hello() {
     return {
       platform: this.platform,
@@ -58,6 +69,7 @@ class ExpectationDriver {
       events: [...this.events.keys()],
       screenshot: !!this.screenshotHandler,
       reset: !!this.resetHandler,
+      controls: !!this.controlsHandler,
     };
   }
 
@@ -127,6 +139,14 @@ class ExpectationDriver {
         case 'screenshot': {
           if (!this.screenshotHandler) return { error: 'no screenshot' };
           return { png: await this.screenshotHandler() };
+        }
+        case 'controls': {
+          if (!this.controlsHandler) return { error: 'no controls' };
+          return { controls: await this.controlsHandler() };
+        }
+        case 'used': {
+          if (!this.usedHandler) return { error: 'no used' };
+          return { used: await this.usedHandler() };
         }
         default:
           return { error: `unknown command ${c.op}` };

@@ -90,6 +90,7 @@ expectations in their own top-level section.
 | `Event: <phrase>` | Something that happens. |
 | `Phrase: <name>` | A step of your own, made of other steps. |
 | `Term: <name>` | A word for the glossary, defined by the text under it. |
+| `Reference: <label> \| <url>` | In a Term: a link to outside documentation. |
 
 A state can use `are`, `has` or `have` instead of `is` ("the drawing has 0..650 shapes"),
 and steps about it read the same way. Vocabularies from all files merge into one, so a
@@ -164,6 +165,16 @@ Expectation: <name>
   launcher's buttons say nothing about the sim). Stories and tests don't see it: they stay in
   the launcher, and check the expectation's Then.
 - `Docs: hidden` keeps it off its topic page. It's still tested, and it's in the test report.
+- `Status: pending` says the behaviour is written ahead of its implementation. A pending
+  expectation stays in the model: it appears in the map and the state map, it can be reached,
+  and conflicts with it (pending or required) are still errors. What changes is testing. A test
+  that depends on it, because it fires it or because it is an invariant in force there, is not
+  run; the report shows it as **pending**, which is neither passed, failed nor "not supported
+  yet" (that one means the driver lacks a binding, and is still reported as such for everything
+  else). Pending tests don't fail the run and never count as verified, and the expectation's own
+  verdict is `pending`. Failures in the other tests still fail the run. Remove the line when the
+  behaviour is built. Because an invariant applies wherever its Given holds, a pending invariant
+  makes the tests in its section pending, so prefer pending transitions.
 
 Text before the first step is the expectation's description.
 
@@ -229,6 +240,21 @@ Story: <name>
 `Term: <name>` and the text under it define a word for the glossary. Any text can link to a
 term, a section, a feature, an expectation or a story with `[[its name]]`, and mark code with
 backticks.
+
+A term can point to documentation outside the suite with a `Reference:` line, either
+`Reference: <label> | <url>` or just `Reference: <url>`. The glossary shows it as a link under
+the definition, using the label when there is one. The term keeps its own name and anchor, so
+the label can be a different name for the same thing, such as an API schema:
+
+```
+Term: Account
+  The customer's account within this domain.
+  Reference: AccountResponse | https://api.example.com/docs/models/AccountResponse
+```
+
+Only `http` and `https` URLs are accepted, without spaces, quotes or angle brackets. A term
+has at most one reference, and it is documentation only: it changes nothing in the vocabulary
+or the tests.
 
 ## Platforms
 

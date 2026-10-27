@@ -21,6 +21,7 @@ use crate::http;
 use crate::json::{Json, base64_encode};
 use crate::{App, DEFAULT_ADDR};
 use expectation_model::Value;
+use expectation_story::Control;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::Duration;
 
@@ -28,11 +29,25 @@ use std::time::Duration;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
     Reset,
-    Arrange { subject: String, value: Value },
-    Set { subject: String, value: Value },
-    Perform { event: String },
-    Observe { subject: String },
+    Arrange {
+        subject: String,
+        value: Value,
+    },
+    Set {
+        subject: String,
+        value: Value,
+    },
+    Perform {
+        event: String,
+    },
+    Observe {
+        subject: String,
+    },
     Screenshot,
+    /// List what a person can act on.
+    Controls,
+    /// Which controls `Set` and `Perform` acted on since this was last asked.
+    Used,
 }
 
 /// What the app answers.
@@ -42,6 +57,9 @@ pub enum Reply {
     Value(Value),
     Png(Vec<u8>),
     Svg(String),
+    Controls(Vec<Control>),
+    /// `(view, id)` of each control used.
+    Used(Vec<(String, String)>),
 }
 
 /// A command waiting for its answer. Answer every one, or the runner times out.
@@ -145,6 +163,35 @@ fn run(addr: &str, hello: &App, requests: &Sender<Request>) {
                 Ok(Reply::Value(Value::Number(n))) => body.push(("value", Json::Num(n))),
                 Ok(Reply::Png(bytes)) => body.push(("png", Json::Str(base64_encode(&bytes)))),
                 Ok(Reply::Svg(svg)) => body.push(("svg", Json::Str(svg))),
+                Ok(Reply::Controls(list)) => body.push((
+                    "controls",
+                    Json::Arr(
+                        list.into_iter()
+                            .map(|c| {
+                                let mut f = vec![
+                                    ("view", Json::Str(c.view)),
+                                    ("id", Json::Str(c.id)),
+                                    ("kind", Json::Str(c.kind)),
+                                    ("label", Json::Str(c.label)),
+                                ];
+                                if let Some(e) = c.event {
+                                    f.push(("event", Json::Str(e)));
+                                }
+                                Json::obj(f)
+                            })
+                            .collect(),
+                    ),
+                )),
+                Ok(Reply::Used(list)) => body.push((
+                    "used",
+                    Json::Arr(
+                        list.into_iter()
+                            .map(|(view, id)| {
+                                Json::obj([("view", Json::Str(view)), ("id", Json::Str(id))])
+                            })
+                            .collect(),
+                    ),
+                )),
                 Err(e) => body.push(("error", Json::Str(e))),
             }
             let posted = http::request(
@@ -190,6 +237,8 @@ fn parse(c: &Json) -> Result<Command, String> {
             subject: text("subject")?,
         },
         Some("screenshot") => Command::Screenshot,
+        Some("controls") => Command::Controls,
+        Some("used") => Command::Used,
         other => return Err(format!("unknown command {other:?}")),
     })
 }
@@ -197,6 +246,8 @@ fn parse(c: &Json) -> Result<Command, String> {
 type Observer<W> = Box<dyn Fn(&W) -> Value + Send>;
 type Setter<W> = Box<dyn Fn(&mut W, &Value) + Send>;
 type Action<W> = Box<dyn Fn(&mut W) + Send>;
+type Lister<W> = Box<dyn Fn(&W) -> Vec<Control> + Send>;
+type Taker<W> = Box<dyn Fn(&mut W) -> Vec<(String, String)> + Send>;
 type Shooter<W> = Box<dyn Fn(&W) -> Result<Reply, String> + Send>;
 
 /// The vocabulary bound to an app of type `W`, one closure per term, like
@@ -208,6 +259,8 @@ pub struct Handlers<W> {
     events: Vec<(String, Action<W>)>,
     reset: Option<Action<W>>,
     screenshot: Option<Shooter<W>>,
+    controls: Option<Lister<W>>,
+    used: Option<Taker<W>>,
 }
 
 impl<W> Default for Handlers<W> {
@@ -219,6 +272,8 @@ impl<W> Default for Handlers<W> {
             events: vec![],
             reset: None,
             screenshot: None,
+            controls: None,
+            used: None,
         }
     }
 }
@@ -266,6 +321,19 @@ impl<W> Handlers<W> {
         self
     }
 
+    /// The controls a person can act on now, so the report can say which no test used.
+    pub fn on_controls(mut self, f: impl Fn(&W) -> Vec<Control> + Send + 'static) -> Self {
+        self.controls = Some(Box::new(f));
+        self
+    }
+
+    /// The `(view, id)` of the controls `set` and `perform` acted on since the last call, which
+    /// it empties.
+    pub fn on_used(mut self, f: impl Fn(&mut W) -> Vec<(String, String)> + Send + 'static) -> Self {
+        self.used = Some(Box::new(f));
+        self
+    }
+
     /// The hello that tells the runner what these handlers can do.
     pub fn hello(&self, platform: &str, app: &str) -> App {
         let names = |v: Vec<&String>| v.into_iter().cloned().collect();
@@ -278,6 +346,7 @@ impl<W> Handlers<W> {
             events: names(self.events.iter().map(|(k, _)| k).collect()),
             screenshot: self.screenshot.is_some(),
             reset: self.reset.is_some(),
+            controls: self.controls.is_some(),
         }
     }
 
@@ -308,6 +377,18 @@ impl<W> Handlers<W> {
             Command::Perform { event } => find(&self.events, event)?(world),
             Command::Observe { subject } => {
                 return Ok(Reply::Value(find(&self.observers, subject)?(world)));
+            }
+            Command::Controls => {
+                return match &self.controls {
+                    Some(f) => Ok(Reply::Controls(f(world))),
+                    None => Err("this app lists no controls".into()),
+                };
+            }
+            Command::Used => {
+                return match &self.used {
+                    Some(f) => Ok(Reply::Used(f(world))),
+                    None => Err("this app doesn't track which controls it used".into()),
+                };
             }
             Command::Screenshot => {
                 return match &self.screenshot {

@@ -1,6 +1,7 @@
 //! The system under test, as the runner sees it.
 
 use expectation_model::{Event, Value, Variable};
+use expectation_story::Control;
 
 /// Whether waiting could change anything.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -124,6 +125,21 @@ pub trait Driver {
     /// Let a little time pass before the runner observes again.
     fn advance(&mut self) -> Progress {
         Progress::Static
+    }
+
+    /// Everything a person can act on right now (buttons, fields, switches, links), with a stable
+    /// id and the view each is in. The runner asks after arranging a test's start and after each
+    /// step, and keeps the union, so the inventory is whatever the tests got to see. A driver
+    /// that can't list its controls leaves the default, and the report has no control coverage.
+    fn controls(&mut self) -> Result<Vec<Control>, String> {
+        Ok(vec![])
+    }
+
+    /// The controls ([`Control::key`]) that [`Driver::set`] and [`Driver::perform`] acted on
+    /// since this was last called. The runner empties it after arranging the start, so setting
+    /// a test up doesn't count as using the control, and reads it after every step.
+    fn take_used(&mut self) -> Vec<String> {
+        vec![]
     }
 
     fn screenshot(&mut self) -> Result<Option<Screenshot>, String> {

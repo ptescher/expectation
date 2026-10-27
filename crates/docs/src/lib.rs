@@ -44,6 +44,9 @@ pub struct Docs<'a> {
     /// The manual's parts and hand-written pages. Set by the docs themselves from the suite's
     /// `outline.txt`; leave it `None`.
     pub outline: Option<&'a outline::Outline>,
+    /// Controls an integration says exist, so one that no run reached still shows in the
+    /// interaction coverage.
+    pub inventory: &'a [expectation_story::Control],
 }
 
 /// The pages of the same manual for another platform.
@@ -95,6 +98,17 @@ fn prune(dir: &Path, written: &[PathBuf]) -> std::io::Result<()> {
 }
 
 impl Docs<'_> {
+    /// The controls the last run found and the tests that used them; none if the tests haven't
+    /// run, or the driver can't list them.
+    pub fn control_rows(&self) -> Vec<expectation_story::ControlRow> {
+        match self.report {
+            Some(r) => {
+                expectation_story::control_coverage(self.suite, self.plans, r, self.inventory)
+            }
+            None => vec![],
+        }
+    }
+
     /// Write the Markdown pages and the HTML site under `dir`. Pages of stories or features
     /// that no longer exist are removed (only the generated kinds, in the folders this writes
     /// to); other files in the directory are left alone.
@@ -320,6 +334,7 @@ fn verdict_label(v: Option<Verdict>) -> &'static str {
         Some(Verdict::Failed) => "failed",
         Some(Verdict::Untested) => "untested",
         Some(Verdict::Unsupported) => "not supported yet",
+        Some(Verdict::Pending) => "pending",
         Some(Verdict::NotRun) | None => "not run",
     }
 }
@@ -330,6 +345,7 @@ fn status_label(s: Status) -> &'static str {
         Status::Failed => "failed",
         Status::Skipped => "skipped",
         Status::Unsupported => "not supported yet",
+        Status::Pending => "pending: not built yet",
         Status::NotRun => "not run",
     }
 }
@@ -338,6 +354,7 @@ fn status_label(s: Status) -> &'static str {
 fn missing_shot(status: Status) -> &'static str {
     match status {
         Status::Unsupported => "Screenshot to come: the tests can't run this step yet.",
+        Status::Pending => "No screenshot: this behaviour is pending, so the test isn't run.",
         Status::Skipped => "No screenshot: the test stopped at an earlier step.",
         Status::NotRun => "No screenshot yet: the tests haven't run.",
         Status::Failed => "No screenshot: the test failed before this step.",
@@ -349,6 +366,77 @@ fn missing_shot(status: Status) -> &'static str {
 mod tests {
     use super::*;
     use expectation_model::{Keyword, Span};
+
+    fn glossary_pages(reference: Option<&str>) -> (String, String) {
+        let reference = reference
+            .map(|r| format!("  Reference: {r}\n"))
+            .unwrap_or_default();
+        let src = format!("Suite: S\nTerm: Account\n  The customer's account.\n{reference}");
+        let loaded = expectation_language::load_sources("S", &[("s.expect", &src)]);
+        assert!(!loaded.has_errors(), "{}", loaded.render_diagnostics());
+        let suite = loaded.suite;
+        let analysis = expectation_graph::analyze(&suite);
+        let docs = Docs {
+            suite: &suite,
+            analysis: &analysis,
+            plans: &[],
+            report: None,
+            suite_dir: None,
+            siblings: &[],
+            outline: None,
+            inventory: &[],
+        };
+        let pages = docs.pages();
+        let get = |path: &str| {
+            pages
+                .iter()
+                .find(|p| p.path == path)
+                .unwrap_or_else(|| panic!("no {path}"))
+                .content
+                .clone()
+        };
+        (get("glossary.md"), get("site/glossary.html"))
+    }
+
+    #[test]
+    fn a_term_links_to_its_outside_reference_in_both_formats() {
+        let (md, html) = glossary_pages(Some(
+            "AccountResponse | https://api.example.com/docs/models/AccountResponse",
+        ));
+        assert!(md.contains("**Account**"));
+        assert!(md.contains(
+            "Reference: [AccountResponse](https://api.example.com/docs/models/AccountResponse)"
+        ));
+        assert!(html.contains(r#"<dt id="account">Account</dt>"#));
+        assert!(html.contains(
+            r#"<a href="https://api.example.com/docs/models/AccountResponse" rel="noopener noreferrer">AccountResponse</a>"#
+        ));
+    }
+
+    #[test]
+    fn a_reference_cannot_break_out_of_its_link() {
+        let (md, html) = glossary_pages(Some("A]<b>\"x\" & (y) | https://e.com/a?b=1&c=2(d)"));
+        assert!(
+            md.contains(r#"[A\]\<b\>"x" \& (y)](https://e.com/a?b=1&c=2%28d%29)"#),
+            "{md}"
+        );
+        assert!(
+            html.contains("A]&lt;b&gt;&quot;x&quot; &amp; (y)</a>"),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"href="https://e.com/a?b=1&amp;c=2(d)""#),
+            "{html}"
+        );
+        assert!(!html.contains("<b>"));
+    }
+
+    #[test]
+    fn a_term_without_a_reference_has_no_reference_line() {
+        let (md, html) = glossary_pages(None);
+        assert!(!md.contains("Reference:"));
+        assert!(!html.contains("Reference:"));
+    }
 
     #[test]
     fn narratives_read_as_one_sentence() {

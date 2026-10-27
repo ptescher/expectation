@@ -174,6 +174,9 @@ pub struct Expectation {
     pub steps: Vec<StepText>,
     /// `Docs: hidden`: tested, but left out of the reading pages (it's only in the test report).
     pub hidden: bool,
+    /// `Status: pending`: written ahead of the behaviour. It stays in the model (states,
+    /// reachability, conflicts), but a test that depends on it is reported as pending, not run.
+    pub pending: bool,
 }
 
 impl Expectation {
@@ -332,7 +335,54 @@ pub struct Term {
     pub name: String,
     pub slug: String,
     pub description: Vec<String>,
+    /// `Reference:` under the term: where an outside document explains the same thing.
+    pub reference: Option<Reference>,
     pub span: Span,
+}
+
+/// A link from a glossary term to documentation outside the suite (an API reference, say).
+/// Documentation metadata only: it takes no part in the vocabulary, the graph or the tests.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Reference {
+    /// An `http` or `https` URL with no spaces, quotes, angle brackets or control characters.
+    pub url: String,
+    /// What the link says; the URL stands in when none was written.
+    pub label: Option<String>,
+}
+
+impl Reference {
+    /// Reads `<url>` or `<label> | <url>`. The error says what is wrong with the URL.
+    pub fn parse(text: &str) -> Result<Reference, String> {
+        let (label, url) = match text.split_once('|') {
+            Some((l, u)) => (Some(l.trim()).filter(|l| !l.is_empty()), u.trim()),
+            None => (None, text.trim()),
+        };
+        let lower = url.to_ascii_lowercase();
+        let host = lower
+            .strip_prefix("https://")
+            .or_else(|| lower.strip_prefix("http://"));
+        match host {
+            Some(h) if !h.is_empty() && !h.starts_with('/') => {}
+            _ => return Err(format!("«{url}» isn't an http or https URL")),
+        }
+        if url.chars().any(|c| {
+            c.is_whitespace() || c.is_control() || matches!(c, '"' | '<' | '>' | '\\' | '`')
+        }) {
+            return Err(format!(
+                "«{url}» has a space, quote, angle bracket or other character a URL can't hold; \
+                 write it percent-encoded"
+            ));
+        }
+        Ok(Reference {
+            url: url.to_string(),
+            label: label.map(str::to_string),
+        })
+    }
+
+    /// The text of the link.
+    pub fn text(&self) -> &str {
+        self.label.as_deref().unwrap_or(&self.url)
+    }
 }
 
 impl Suite {

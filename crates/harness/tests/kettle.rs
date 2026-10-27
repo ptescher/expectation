@@ -298,3 +298,108 @@ fn saved_results_survive_an_unrelated_change_to_the_vocabulary_but_not_a_reworde
         "a story that is reworded keeps its print"
     );
 }
+
+#[test]
+fn the_report_lists_every_control_and_which_ones_the_tests_used() {
+    let a = suite();
+    let docs = Path::new(env!("CARGO_TARGET_TMPDIR")).join("kettle_controls");
+    let opts = RunOptions {
+        docs_dir: Some(docs.clone()),
+        ..Default::default()
+    };
+    let report = a.assert_passes(&mut world::driver(false), &opts);
+    let rows = expectation_story::control_coverage(&a.suite, &a.plans, &report, &[]);
+    let row = |id: &str| rows.iter().find(|r| r.control.id == id).unwrap();
+
+    // The driver listed six controls; nothing in the suite presses the export button.
+    assert_eq!(rows.len(), 6);
+    let unused: Vec<&str> = rows
+        .iter()
+        .filter(|r| !r.used())
+        .map(|r| r.control.id.as_str())
+        .collect();
+    assert_eq!(unused, ["export-log"]);
+    for id in ["start", "reset", "preset", "lock", "dial"] {
+        assert!(row(id).used(), "{id}");
+        assert!(row(id).verified(), "{id}");
+    }
+    // A generated test is counted apart from the stories: a control only generated tests use
+    // still has no authored story.
+    for r in &rows {
+        for &i in &r.stories {
+            assert!(matches!(
+                a.plans[i].origin,
+                expectation_story::Origin::Story { .. }
+            ));
+        }
+        for &i in &r.generated {
+            assert!(!matches!(
+                a.plans[i].origin,
+                expectation_story::Origin::Story { .. }
+            ));
+        }
+    }
+    // Reset is only used by a story; the dial is used by both kinds.
+    assert!(row("reset").generated.is_empty() && !row("reset").stories.is_empty());
+    assert!(!row("dial").stories.is_empty() && !row("dial").generated.is_empty());
+    assert!(rows.iter().any(|r| !r.stories.is_empty()));
+
+    // And the pages say so, for people and for CI.
+    let read = |page: &str| std::fs::read_to_string(docs.join(page)).unwrap();
+    let md = read("interactions.md");
+    assert!(
+        md.contains("**6 controls:** 5 used, 1 never used; 2 have a gap."),
+        "{md}"
+    );
+    assert!(md.contains("`Export log` (button)"), "{md}");
+    assert!(md.contains("⚠️ never used"));
+    assert!(read("tests.md").contains("1 never used"));
+    let json = read("interactions.json");
+    assert!(
+        json.contains("\"total\": 6") && json.contains("\"unused\": 1"),
+        "{json}"
+    );
+    assert!(json.contains("\"id\": \"export-log\""));
+    let html = read("site/interactions.html");
+    assert!(html.contains("never used") && html.contains("Export log"));
+}
+
+#[test]
+fn controls_and_use_survive_saving_and_loading_results() {
+    let a = suite();
+    let report = a.run(&mut world::driver(false), &RunOptions::default());
+    let loaded = expectation_story::Report::load(&report.save(&a.plans), &a.plans);
+    let before = expectation_story::control_coverage(&a.suite, &a.plans, &report, &[]);
+    let after = expectation_story::control_coverage(&a.suite, &a.plans, &loaded, &[]);
+    assert_eq!(before.len(), after.len());
+    for (x, y) in before.iter().zip(&after) {
+        assert_eq!(x.control, y.control);
+        assert_eq!((&x.stories, &x.generated), (&y.stories, &y.generated));
+        assert_eq!((x.passed, x.failed), (y.passed, y.failed));
+    }
+}
+
+#[test]
+fn a_failed_test_does_not_verify_the_controls_it_used() {
+    let a = suite();
+    let report = a.run(&mut world::driver(true), &RunOptions::default());
+    let rows = expectation_story::control_coverage(&a.suite, &a.plans, &report, &[]);
+    // The seeded defect lets the dial through the child lock, so a test using the lock fails.
+    let lock = rows.iter().find(|r| r.control.id == "lock").unwrap();
+    assert!(lock.used() && lock.failed > 0 && !lock.verified());
+}
+
+#[test]
+fn controls_are_not_collected_when_turned_off_or_when_nothing_ran() {
+    let a = suite();
+    let off = RunOptions {
+        controls: false,
+        ..Default::default()
+    };
+    let report = a.run(&mut world::driver(false), &off);
+    assert!(expectation_story::control_coverage(&a.suite, &a.plans, &report, &[]).is_empty());
+    // A driver that can't do the steps saw and used nothing.
+    let mut bare = Bindings::new(world::World::new(false));
+    let report = a.run(&mut bare, &RunOptions::default());
+    assert!(expectation_story::control_coverage(&a.suite, &a.plans, &report, &[]).is_empty());
+}

@@ -24,6 +24,7 @@ use expectation_graph::Analysis;
 use expectation_language::Loaded;
 use expectation_model::diagnostic::{has_errors, render_all};
 use expectation_model::{Diagnostic, Suite};
+pub use expectation_story::Control;
 use expectation_story::{Plan, Report};
 use std::path::Path;
 
@@ -39,6 +40,8 @@ pub struct Acceptance {
     /// Set by [`Acceptance::load_for`]: the platform this is the suite of. Its results are
     /// its own, and its docs are one tree of several (see [`Acceptance::tree`]).
     pub platform: Option<String>,
+    /// The controls an integration says the program has (see [`Acceptance::with_inventory`]).
+    pub inventory: Vec<Control>,
 }
 
 impl Acceptance {
@@ -104,6 +107,7 @@ impl Acceptance {
             diagnostics,
             dir: None,
             platform: None,
+            inventory: vec![],
         })
     }
 
@@ -115,6 +119,13 @@ impl Acceptance {
         // state map has a screenshot of every state it shows at first.
         let visits = expectation_story::visit_plans(&self.suite, &self.analysis, &self.plans);
         self.plans.extend(visits);
+        self
+    }
+
+    /// Controls the program is known to have, from an integration. The interaction coverage
+    /// lists them whether or not a run reached them, so what no test touched shows as a gap.
+    pub fn with_inventory(mut self, controls: impl IntoIterator<Item = Control>) -> Self {
+        self.inventory.extend(controls);
         self
     }
 
@@ -154,6 +165,7 @@ impl Acceptance {
             suite_dir: self.dir.as_deref(),
             siblings: &[],
             outline: None,
+            inventory: &self.inventory,
         }
     }
 

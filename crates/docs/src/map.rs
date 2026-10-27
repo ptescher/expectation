@@ -159,6 +159,7 @@ pub fn svg(d: &Docs, f: &Facts, exps: &[ExpId], link: &dyn Fn(ExpId) -> String) 
             Some(Verdict::Verified) => "v-ok",
             Some(Verdict::Failed) => "v-bad",
             Some(Verdict::Unsupported) => "v-warn",
+            Some(Verdict::Pending) => "v-pending",
             _ => "v-idle",
         };
         let mut class = format!("node {verdict}");
