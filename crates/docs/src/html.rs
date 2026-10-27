@@ -120,6 +120,12 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
         path: "site/assets/style.css".into(),
         content: STYLE.into(),
     });
+    if let Some(css) = d.look.stylesheet {
+        pages.push(Page {
+            path: crate::CUSTOM_CSS.into(),
+            content: css.into(),
+        });
+    }
     pages.push(Page {
         path: "site/theme.html".into(),
         content: site.theme_page(),
@@ -594,6 +600,11 @@ impl Site<'_> {
             pager.push_str("</nav>");
         }
         let footer = String::new();
+        let custom = if self.d.look.stylesheet.is_some() {
+            "<link rel=\"stylesheet\" href=\"assets/custom.css\">\n"
+        } else {
+            ""
+        };
         let platforms = self.platform_picker(&self.here_link(here).0);
         let suite = esc(&self.suite().name);
         let full = if title == self.suite().name {
@@ -610,7 +621,7 @@ impl Site<'_> {
 <title>{full}</title>
 <link rel="stylesheet" href="assets/theme.css">
 <link rel="stylesheet" href="assets/style.css">
-</head>
+{custom}</head>
 <body>
 <header class="top"><a class="brand" href="index.html">{suite}</a>{platforms}</header>
 <div class="layout">
@@ -1815,6 +1826,31 @@ impl Site<'_> {
     }
 
     /// The theme itself: both palettes, and the site's components in each.
+    /// How to restyle the site: the tokens, and how a stylesheet meets Day and Night.
+    fn custom_theme_help(&self) -> String {
+        let roles: Vec<String> = expectation_theme::NIGHT
+            .roles()
+            .iter()
+            .map(|(name, _)| format!("<code>--{name}</code>"))
+            .collect();
+        format!(
+            r#"<h2>Your own theme</h2>
+<p>Give <code>expectation docs</code> or <code>expectation-run</code> a CSS file with <code>--stylesheet</code>, or put one called <code>theme.css</code> in the suite's directory. It is copied to <code>site/assets/custom.css</code> and loaded by every page, in every platform's manual, after the built-in styles. Results, screenshots and links are not touched, so a site can be restyled from saved results without running the tests again.</p>
+<p>Colour tokens: {}. Shape and type tokens: <code>--font-mono</code>, <code>--font-sans</code>, <code>--radius-window</code>, <code>--radius-panel</code>, <code>--radius-screen</code>, <code>--radius-control</code>, <code>--gap</code>, <code>--bezel-pad</code>. Each colour is a role: what it is for is the same in Day and Night.</p>
+<p>The built-in dark rule is more specific than a plain <code>:root</code>, so to change a token in both modes set it for each:</p>
+<pre class="gherkin">:root, :root[data-theme="day"] {{ --canvas: #fffdf7; }}
+@media (prefers-color-scheme: dark) {{
+  :root:not([data-theme="day"]) {{ --canvas: #14110b; }}
+}}
+:root[data-theme="night"] {{ --canvas: #14110b; }}</pre>
+<p>Leave the dark rules out and a reader who prefers dark keeps the built-in Night value of that token. Beyond tokens, any component's CSS can be overridden by selector; the HTML is the same.</p>
+<p>The file is copied as it is, so a relative <code>url(...)</code> in it is looked up beside <code>site/assets/custom.css</code>, not beside the file you gave. Keep the site self-contained and usable offline: inline images and fonts as <code>data:</code> URLs, or ship the files into <code>site/assets/</code> yourself. An <code>@import</code> or font from another host needs the network.</p>
+<h3>Accessibility</h3>
+<p>Keep text at 4.5:1 or better against the surface it sits on (3:1 for large text and for borders and lamps that carry meaning), in each mode you define. The built-in theme meets it. Never rely on colour alone to tell results apart: each verdict is also named in words (<em>verified</em>, <em>failed</em>, <em>not supported yet</em>), and a custom theme should leave that text visible. Theming changes how pages look, not what they say or what passed.</p>"#,
+            roles.join(", ")
+        )
+    }
+
     fn theme_page(&self) -> String {
         use expectation_theme::{DAY, NIGHT, geometry};
         let mut o = String::from(
@@ -1823,12 +1859,22 @@ impl Site<'_> {
              for what passed, amber cautions and red failures. Day is the same panel in sunlight, and these docs use it in a \
              light browser. Colours are roles, so what each one is for is the same in both.</p>",
         );
+        let custom = self.d.look.stylesheet.is_some();
+        if custom {
+            o.push_str(
+                "<p class=\"notice\"><strong>A custom stylesheet is applied</strong> to this site \
+                 (<a href=\"assets/custom.css\">assets/custom.css</a>). The pages around this one show it; the previews and \
+                 palettes below are Expectation's built-in Day and Night, which are what your stylesheet starts from, \
+                 not your theme.</p>",
+            );
+        }
+        let built = if custom { "Built-in " } else { "" };
         o.push_str("<h2>Components</h2><div class=\"previews\">");
         for (class, name) in [("theme-night", "Night"), ("theme-day", "Day")] {
             let _ = write!(
                 o,
                 r#"<div class="preview {class}">
-<div class="panel"><div class="title">{name} · Buttons</div><div class="screen"><div class="row"><span class="btn">CHECK</span><span class="btn active">RUN</span><span class="btn caution">RETRY 2</span><span class="btn danger">DISCARD</span></div></div></div>
+<div class="panel"><div class="title">{built}{name} · Buttons</div><div class="screen"><div class="row"><span class="btn">CHECK</span><span class="btn active">RUN</span><span class="btn caution">RETRY 2</span><span class="btn danger">DISCARD</span></div></div></div>
 <div class="panel"><div class="title">Lamps</div><div class="screen"><div class="row"><span class="lamp ok">PASS</span><span class="lamp ok">DOCS</span><span class="lamp caution">SLOW</span><span class="lamp warn">FAIL</span><span class="lamp off">SKIP</span></div></div></div>
 <div class="panel"><div class="title">Messages</div><div class="screen"><div class="ink-muted">12:04:31 Suite loaded: 42 expectations</div><div class="ink-ok">All stories passed</div><div class="ink-caution">2 tests not supported yet</div><div class="ink-warning">1 test failed</div><div class="ink-info">Results saved to docs/results</div><div class="ink-highlight">Next: generated tests</div></div></div>
 <div class="panel"><div class="title">In the docs</div><div class="screen"><div class="row"><span class="badge ok">verified</span><span class="badge warn">not supported yet</span><span class="badge bad">failed</span><span class="badge idle">not run</span></div><pre class="gherkin"><span class="kw">Given</span> the tool is PEN
@@ -1841,7 +1887,7 @@ impl Site<'_> {
         for p in [NIGHT, DAY] {
             let _ = write!(
                 o,
-                "<h2>{} palette</h2><div class=\"swatches\">",
+                "<h2>{built}{} palette</h2><div class=\"swatches\">",
                 if p.name == "night" { "Night" } else { "Day" }
             );
             for (name, c) in p.roles() {
@@ -1871,6 +1917,7 @@ impl Site<'_> {
             geometry::GAP,
             geometry::BEZEL_PAD,
         );
+        o.push_str(&self.custom_theme_help());
         self.page(Here::Theme, "Theme", &o)
     }
 }
@@ -2023,6 +2070,7 @@ nav.toc ul { margin: 6px 0 0; padding-left: 18px; }
 
 section.exp { border-top: 1px solid var(--bezel-edge); margin-top: 30px; }
 section.exp:first-of-type { border-top: 0; }
+.notice { border: 1px solid var(--caution); border-radius: var(--radius-control); padding: 8px 12px; }
 /* A screenshot is a screen in a bezel: concentric corners. */
 figure { margin: 14px 0; max-width: 870px; padding: var(--bezel-pad); background: var(--bezel); border: 1px solid var(--bezel-edge); border-radius: var(--radius-panel); }
 figure img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--radius-screen); background: var(--screen); }

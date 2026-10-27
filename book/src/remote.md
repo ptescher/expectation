@@ -113,6 +113,8 @@ cargo install --git https://github.com/ptescher/expectation expectation_remote
 expectation-run expectations --platform SwiftUI --docs docs --runner app
 ```
 
+`--stylesheet CSS` and `--state-shot-ratio W:H` style the generated docs as they do for
+`expectation docs` (see [the manual](manual.md#your-own-theme)); bad values fail before the run.
 `--command-timeout SECONDS` sets that per-command deadline (`--wait` only covers connecting).
 It listens, waits for the app, runs the suite for that platform, prints the results, and
 with `--docs` saves them and writes the manual. `--screenshot-cmd 'xcrun simctl io booted

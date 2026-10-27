@@ -20,6 +20,7 @@ pub use driver::{Driver, Need, Progress, Screenshot};
 pub use run::{RunOptions, Worker, run, run_parallel};
 
 use expectation_docs::Docs;
+pub use expectation_docs::parse_ratio;
 use expectation_graph::Analysis;
 use expectation_language::Loaded;
 use expectation_model::diagnostic::{has_errors, render_all};
@@ -42,6 +43,10 @@ pub struct Acceptance {
     pub platform: Option<String>,
     /// The controls an integration says the program has (see [`Acceptance::with_inventory`]).
     pub inventory: Vec<Control>,
+    /// The custom stylesheet for the HTML site (see [`Acceptance::with_stylesheet`]).
+    pub stylesheet: Option<String>,
+    /// The shape of the state map's screenshots (see [`Acceptance::with_shot_ratio`]).
+    pub shot_ratio: Option<f32>,
 }
 
 impl Acceptance {
@@ -108,6 +113,8 @@ impl Acceptance {
             dir: None,
             platform: None,
             inventory: vec![],
+            stylesheet: None,
+            shot_ratio: None,
         })
     }
 
@@ -126,6 +133,21 @@ impl Acceptance {
     /// lists them whether or not a run reached them, so what no test touched shows as a gap.
     pub fn with_inventory(mut self, controls: impl IntoIterator<Item = Control>) -> Self {
         self.inventory.extend(controls);
+        self
+    }
+
+    /// Style the HTML site with the CSS file at `path`, loaded after the built-in styles. A
+    /// missing, empty or malformed file is an error here, before anything runs. Without this,
+    /// the suite's `theme.css` is used if it has one.
+    pub fn with_stylesheet(mut self, path: impl AsRef<Path>) -> Result<Self, String> {
+        self.stylesheet = Some(expectation_docs::read_stylesheet(path.as_ref())?);
+        Ok(self)
+    }
+
+    /// Draw the state map's screenshots at `ratio` (width over height; see
+    /// [`expectation_docs::parse_ratio`]).
+    pub fn with_shot_ratio(mut self, ratio: f32) -> Self {
+        self.shot_ratio = Some(ratio);
         self
     }
 
@@ -166,6 +188,10 @@ impl Acceptance {
             siblings: &[],
             outline: None,
             inventory: &self.inventory,
+            look: expectation_docs::Look {
+                stylesheet: self.stylesheet.as_deref(),
+                shot_ratio: self.shot_ratio,
+            },
         }
     }
 

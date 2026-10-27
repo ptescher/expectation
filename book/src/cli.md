@@ -79,6 +79,12 @@ expectation docs <dir> <out-dir>
 Writes the manual (Markdown and the HTML site) to `<out-dir>`, using the results that runs
 have saved in `<out-dir>/results/`. Without results, every test shows as "not run".
 
+- `--stylesheet <css>` restyles the HTML site with your CSS file (see
+  [Your own theme](manual.md#your-own-theme)). A missing, empty or malformed file stops the
+  command before anything is written.
+- `--state-shot-ratio <w:h>` sets the shape of the screenshots on the state map's cards, as
+  width over height: `9:19.5` for a phone, `16:9`, or a number like `0.46`. Between 1:5 and 5:1.
+
 ## In your own project
 
 The CLI is also a library: `expectation_cli::main()` runs the command with the process's
