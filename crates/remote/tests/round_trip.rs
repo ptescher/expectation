@@ -168,6 +168,87 @@ fn a_runner_for_one_platform_turns_others_away() {
     );
 }
 
+const SLOW: &str = "
+Vocabulary:
+  State: the turnstile is locked | unlocked
+  Event: a visitor inserts a coin
+Background:
+  Given the turnstile is locked
+Feature: Paying
+  Expectation: A coin unlocks it
+    Given the turnstile is locked
+    When a visitor inserts a coin
+    Then the turnstile is unlocked
+Story: One coin
+  Given the turnstile is locked
+  When a visitor inserts a coin
+  Then the turnstile is unlocked
+";
+
+fn slow_run(timeout: Duration, fail: bool) -> (expectation_story::Report, Acceptance) {
+    let loaded = expectation_language::load_sources("t", &[("t.expect", SLOW)]);
+    let acceptance = Acceptance::from_loaded(loaded).unwrap();
+    let mut driver = RemoteDriver::listen("127.0.0.1:0")
+        .unwrap()
+        .settle_for(Duration::ZERO)
+        .poll_every(Duration::from_millis(5))
+        .command_timeout(timeout)
+        .unwrap();
+    let h = Handlers::new()
+        .observe("the turnstile", |t: &Turnstile| {
+            if t.unlocked { "unlocked" } else { "locked" }
+        })
+        .arrange("the turnstile", |t, v| {
+            t.unlocked = v.as_str() == Some("unlocked")
+        })
+        .on("a visitor inserts a coin", move |t| {
+            std::thread::sleep(Duration::from_millis(400));
+            t.unlocked = !fail;
+        })
+        .on_reset(|t| *t = Turnstile::default());
+    let client = Client::connect(
+        driver.url().trim_start_matches("http://"),
+        h.hello("test", "Turnstile"),
+    );
+    std::thread::spawn(move || {
+        let mut world = Turnstile::default();
+        while let Some(r) = client.recv_timeout(Duration::from_secs(30)) {
+            h.handle(&mut world, r);
+        }
+    });
+    driver.wait_for_app(Duration::from_secs(5)).unwrap();
+    let report = acceptance.run(&mut driver, &RunOptions::default());
+    (report, acceptance)
+}
+
+#[test]
+fn a_slow_command_times_out_with_diagnostics() {
+    let (report, a) = slow_run(Duration::from_millis(100), false);
+    assert!(!report.passed());
+    let failures = report.failures(&a.suite, &a.plans);
+    assert!(
+        failures.contains("perform command within the 100ms command timeout"),
+        "{failures}"
+    );
+    assert!(!failures.contains("inserts a coin\""), "{failures}");
+}
+
+#[test]
+fn a_longer_command_timeout_lets_it_finish_and_real_errors_through() {
+    let (report, a) = slow_run(Duration::from_secs(5), false);
+    assert!(report.passed(), "{}", report.failures(&a.suite, &a.plans));
+    let (report, a) = slow_run(Duration::from_secs(5), true);
+    let failures = report.failures(&a.suite, &a.plans);
+    assert!(!report.passed());
+    assert!(failures.contains("observed locked"), "{failures}");
+}
+
+#[test]
+fn a_zero_command_timeout_is_refused() {
+    let driver = RemoteDriver::listen("127.0.0.1:0").unwrap();
+    assert!(driver.command_timeout(Duration::ZERO).is_err());
+}
+
 #[test]
 fn controls_and_which_were_used_cross_the_wire() {
     let (report, acceptance) = run(false);

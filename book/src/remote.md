@@ -99,6 +99,13 @@ let report = acceptance.run(&mut driver, &RunOptions::default());
 "not supported yet", not a failure. Time is real: it sleeps to settle after each action and
 between looks. If no app connects, every test is "not supported yet".
 
+Each command the runner sends gets 10 seconds to be answered. For apps whose actions take
+longer, `.command_timeout(Duration::from_secs(240))?` raises that deadline (it must be positive;
+there is no unlimited mode). It is separate from `wait_for_app`, which only covers the first
+hello, and from the settle and poll intervals. A timeout fails the command, naming it and the
+deadline, but it doesn't cancel the work in the app: let it finish, or stop it safely, before
+the next action or before ending the session.
+
 Or skip writing a runner and use `expectation-run`:
 
 ```bash
@@ -106,6 +113,7 @@ cargo install --git https://github.com/ptescher/expectation expectation_remote
 expectation-run expectations --platform SwiftUI --docs docs --runner app
 ```
 
+`--command-timeout SECONDS` sets that per-command deadline (`--wait` only covers connecting).
 It listens, waits for the app, runs the suite for that platform, prints the results, and
 with `--docs` saves them and writes the manual. `--screenshot-cmd 'xcrun simctl io booted
 screenshot "$1"'` takes screenshots from outside, for apps that don't take their own.

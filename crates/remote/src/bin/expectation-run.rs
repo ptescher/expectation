@@ -20,11 +20,22 @@ use std::process::exit;
 use std::time::Duration;
 
 const USAGE: &str = "usage: expectation-run <suite-dir> [--platform NAME] [--addr HOST:PORT] [--wait SECONDS] \
+                     [--command-timeout SECONDS] \
                      [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd COMMAND]";
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let (mut suite, mut platform, mut addr, mut wait, mut docs, mut runner, mut settle, mut shot) = (
+    let (
+        mut suite,
+        mut platform,
+        mut addr,
+        mut wait,
+        mut docs,
+        mut runner,
+        mut settle,
+        mut shot,
+        mut command_timeout,
+    ) = (
         None,
         None,
         DEFAULT_ADDR.to_string(),
@@ -32,6 +43,7 @@ fn main() {
         None,
         None,
         1000u64,
+        None,
         None,
     );
     while let Some(a) = args.next() {
@@ -46,6 +58,21 @@ fn main() {
                 wait = value()
                     .parse()
                     .unwrap_or_else(|_| fail("--wait is in seconds"))
+            }
+            "--command-timeout" => {
+                command_timeout = Some(
+                    value()
+                        .parse::<u64>()
+                        .ok()
+                        .filter(|&n| n > 0)
+                        .and_then(|n| {
+                            let d = Duration::from_secs(n);
+                            std::time::Instant::now().checked_add(d).map(|_| d)
+                        })
+                        .unwrap_or_else(|| {
+                            fail("--command-timeout is a positive whole number of seconds")
+                        }),
+                )
             }
             "--docs" => docs = Some(PathBuf::from(value())),
             "--runner" => runner = Some(value()),
@@ -77,6 +104,9 @@ fn main() {
     let mut driver = RemoteDriver::listen(&addr)
         .unwrap_or_else(|e| fail(&format!("couldn't listen on {addr}: {e}")))
         .settle_for(Duration::from_millis(settle));
+    if let Some(d) = command_timeout {
+        driver = driver.command_timeout(d).unwrap_or_else(|e| fail(&e));
+    }
     if let Some(p) = &platform {
         driver = driver.for_platform(p);
     }

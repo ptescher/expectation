@@ -196,6 +196,24 @@ impl RemoteDriver {
         self
     }
 
+    /// How long to wait for the app to reply to each command (10 s by default). This is
+    /// separate from [`RemoteDriver::wait_for_app`], which only covers the first hello, and from
+    /// the settle and poll intervals. It must be positive and finite.
+    ///
+    /// Timing out fails the command; it doesn't cancel what the app is doing. The app may still
+    /// be running the command, so let it finish or stop it safely before the next action or
+    /// before tearing the session down.
+    pub fn command_timeout(mut self, d: Duration) -> Result<Self, String> {
+        if d.is_zero() {
+            return Err("the command timeout must be greater than zero".into());
+        }
+        if Instant::now().checked_add(d).is_none() {
+            return Err(format!("the command timeout {d:?} is too large"));
+        }
+        self.answer = d;
+        Ok(self)
+    }
+
     /// Screenshots from outside the app (a simulator's or the window's), for apps that can't
     /// take their own.
     pub fn screenshot_with(
@@ -260,6 +278,11 @@ impl RemoteDriver {
     }
 
     fn call(&self, mut command: Vec<(&'static str, Json)>) -> Result<Json, String> {
+        let op = command
+            .iter()
+            .find(|(k, _)| *k == "op")
+            .and_then(|(_, v)| v.as_str().map(String::from))
+            .unwrap_or_default();
         let mut st = self.shared.lock();
         if st.app.is_none() {
             return Err("no app is connected".into());
@@ -282,7 +305,10 @@ impl RemoteDriver {
             }
             let left = deadline.saturating_duration_since(Instant::now());
             if left.is_zero() {
-                return Err(format!("the app didn't answer within {:?}", self.answer));
+                return Err(format!(
+                    "the app didn't answer the {op} command within the {:?} command timeout",
+                    self.answer
+                ));
             }
             st = self
                 .shared
