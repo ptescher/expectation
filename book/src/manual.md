@@ -14,6 +14,40 @@ or, from results that runs have saved in `docs/results/`:
 expectation docs expectations docs
 ```
 
+## Your own theme
+
+The site loads a CSS file of yours after its built-in styles, so a team can give the reports
+its documentation's look without forking or editing generated files:
+
+```bash
+expectation docs expectations docs --stylesheet brand.css
+```
+
+```rust
+let acceptance = Acceptance::load("expectations")?.with_stylesheet("brand.css")?;
+```
+
+`expectation-run` takes `--stylesheet` too. The file is copied to `site/assets/custom.css` and
+linked from every page of every platform's manual: tutorials, test results, interaction
+coverage, both maps and the theme page. Put a file called `theme.css` in the suite's
+directory and it is used without the flag, so regenerating, or restyling from saved results
+without running a test, keeps the theme. Results, screenshots, links and pass/fail never depend
+on it. A stylesheet that is missing, empty or has unbalanced braces is an error, not a
+fallback. Without one, the site is exactly the built-in Day and Night.
+
+Override the colour, type and shape tokens (`--canvas`, `--ok`, `--font-sans`,
+`--radius-panel`, …; the generated theme page lists them all) or any component's CSS by
+selector. The built-in dark rule is more specific than `:root`, so set a token for Day
+(`:root`), for dark readers (`@media (prefers-color-scheme: dark) { :root:not([data-theme="day"]) { … } }`)
+and for `:root[data-theme="night"]`. The file is copied as written: a relative `url()` in it
+resolves beside `site/assets/custom.css`, so use `data:` URLs to stay self-contained and
+usable offline. For accessibility keep text at 4.5:1 against its surface in each mode, and keep
+result states distinguishable without colour: the words *verified*, *failed* and *not
+supported yet* stay on the page.
+
+The state map's cards draw each screenshot at the shape you give with `--state-shot-ratio`
+(`with_shot_ratio` in Rust), for example `9:19.5` for phone screens.
+
 See [the kettle manual](../example/site/index.html) for a whole one.
 
 ## Pages

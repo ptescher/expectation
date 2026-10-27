@@ -201,7 +201,12 @@ pub fn html(
         })
         .collect();
     let lines = cond_facts.iter().map(|f| f.len().max(1)).max().unwrap_or(1) as f32;
-    let h = if with_shots { THUMB + 10.0 } else { 0.0 } + 14.0 + lines * LINE + 8.0;
+    // The picture is as wide as the card less its margins; its height follows the ratio.
+    let thumb = d
+        .look
+        .shot_ratio
+        .map_or(THUMB, |r| ((W - 16.0) / r).round());
+    let h = if with_shots { thumb + 10.0 } else { 0.0 } + 14.0 + lines * LINE + 8.0;
     let at = place(map);
 
     // Moves from each state, found once.
@@ -334,7 +339,7 @@ pub fn html(
 
     let _ = write!(
         o,
-        r#"<script type="application/json" id="states-data">{{"g":[{W},{h:.1},{GAP_X},{GAP_Y},{PAD},{THUMB},{},{CHARS}],"f":{},"a":{},"e":{},"t":{},"p":{},"s":[{}],"m":[{}]}}</script>"#,
+        r#"<script type="application/json" id="states-data">{{"g":[{W},{h:.1},{GAP_X},{GAP_Y},{PAD},{thumb},{},{CHARS}],"f":{},"a":{},"e":{},"t":{},"p":{},"s":[{}],"m":[{}]}}</script>"#,
         with_shots as u8,
         facts.json(),
         actions.json(),

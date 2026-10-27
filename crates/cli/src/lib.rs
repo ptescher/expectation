@@ -22,8 +22,10 @@ commands:
                             tell them apart, comma separated (default: every enumerated one)
   plan  <dir> [--coverage]  print the acceptance tests the stories compile to
                             (--coverage adds generated tests for untested expectations)
-  docs  <dir> <out-dir>     write the docs (Markdown and an HTML site), with the results runs
-                            have saved in <out-dir>/results
+  docs  <dir> <out-dir> [--stylesheet <css>] [--state-shot-ratio <w:h>]
+                            write the docs (Markdown and an HTML site), with the results runs
+                            have saved in <out-dir>/results; --stylesheet restyles the site
+                            with a CSS file, --state-shot-ratio shapes the state map's pictures
 ";
 
 struct Checked {
@@ -76,11 +78,18 @@ fn load_platform(dir: &str, platform: Option<&str>) -> Checked {
 pub fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     // `--by <states>` takes a value; the other options are flags.
-    let by = args.iter().position(|a| a == "--by").map(|i| {
-        let v = args.get(i + 1).cloned().unwrap_or_default();
-        args.drain(i..(i + 2).min(args.len()));
-        v
-    });
+    let mut take = |name: &str| {
+        args.iter().position(|a| a == name).map(|i| {
+            let v = args.get(i + 1).cloned().unwrap_or_else(|| {
+                eprintln!("error: {name} needs a value");
+                exit(2)
+            });
+            args.drain(i..i + 2);
+            v
+        })
+    };
+    let by = take("--by");
+    let look = (take("--stylesheet"), take("--state-shot-ratio"));
     let flag = |f: &str| args.iter().any(|a| a == f);
     let pos: Vec<&str> = args
         .iter()
@@ -141,7 +150,7 @@ pub fn main() {
                 print_plan(&c.suite, p);
             }
         }
-        ["docs", dir, out] => docs(dir, out),
+        ["docs", dir, out] => docs(dir, out, look),
         _ => {
             eprint!("{USAGE}");
             exit(2);
@@ -151,7 +160,18 @@ pub fn main() {
 
 /// The manual, once for each platform the suite declares (the first at `out`, the others
 /// under `out/platforms/`), each with the results its own runs saved under `out/results`.
-fn docs(dir: &str, out: &str) {
+fn docs(dir: &str, out: &str, (stylesheet, ratio): (Option<String>, Option<String>)) {
+    let fail = |e: String| -> ! {
+        eprintln!("error: {e}");
+        exit(2)
+    };
+    let css = stylesheet
+        .map(|p| expectation_docs::read_stylesheet(Path::new(&p)).unwrap_or_else(|e| fail(e)));
+    let ratio = ratio.map(|r| expectation_docs::parse_ratio(&r).unwrap_or_else(|e| fail(e)));
+    let look = expectation_docs::Look {
+        stylesheet: css.as_deref(),
+        shot_ratio: ratio,
+    };
     let first = load(dir);
     let platforms = first.suite.platforms.clone();
     let names: Vec<Option<String>> = if platforms.is_empty() {
@@ -194,6 +214,7 @@ fn docs(dir: &str, out: &str) {
             siblings,
             outline: None,
             inventory: &[],
+            look,
         };
         let tree = match &names[i] {
             Some(n) if i > 0 => Path::new(out)
@@ -215,6 +236,7 @@ fn docs(dir: &str, out: &str) {
                 siblings: &[],
                 outline: None,
                 inventory: &[],
+                look,
             }
             .sibling()
         })

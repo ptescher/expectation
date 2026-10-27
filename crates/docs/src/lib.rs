@@ -47,6 +47,99 @@ pub struct Docs<'a> {
     /// Controls an integration says exist, so one that no run reached still shows in the
     /// interaction coverage.
     pub inventory: &'a [expectation_story::Control],
+    /// How the HTML site looks beyond its built-in theme.
+    pub look: Look<'a>,
+}
+
+/// Choices about the HTML site's appearance. The default is the built-in look.
+#[derive(Clone, Copy, Default)]
+pub struct Look<'a> {
+    /// CSS (see [`read_stylesheet`]) written to `site/assets/custom.css` and loaded by every
+    /// page after the built-in styles. `None` uses `theme.css` in the suite's directory if
+    /// there is one, else nothing.
+    pub stylesheet: Option<&'a str>,
+    /// Width over height of the screenshots on the state map's cards (see [`parse_ratio`]);
+    /// `None` keeps the built-in shape.
+    pub shot_ratio: Option<f32>,
+}
+
+/// Where a custom stylesheet is written, relative to the docs directory.
+pub const CUSTOM_CSS: &str = "site/assets/custom.css";
+/// The file in the suite's directory that is the custom stylesheet unless one is given.
+pub const SUITE_STYLESHEET: &str = "theme.css";
+
+/// Reads a custom stylesheet, refusing what can't be one: a file that's missing, isn't UTF-8,
+/// is empty, or has unbalanced braces. The CSS is used as written; it isn't checked further.
+pub fn read_stylesheet(path: &Path) -> Result<String, String> {
+    let css = std::fs::read_to_string(path)
+        .map_err(|e| format!("couldn't read the stylesheet {}: {e}", path.display()))?;
+    if css.trim().is_empty() {
+        return Err(format!("the stylesheet {} is empty", path.display()));
+    }
+    balanced(&css)
+        .map_err(|e| format!("the stylesheet {} is not valid CSS: {e}", path.display()))?;
+    Ok(css)
+}
+
+/// Braces that open and close in order, outside comments and strings.
+fn balanced(css: &str) -> Result<(), String> {
+    let (mut depth, mut chars) = (0usize, css.chars().peekable());
+    while let Some(c) = chars.next() {
+        match c {
+            '/' if chars.peek() == Some(&'*') => {
+                chars.next();
+                let mut prev = ' ';
+                loop {
+                    match chars.next() {
+                        Some('/') if prev == '*' => break,
+                        Some(c) => prev = c,
+                        None => return Err("a comment is never closed".into()),
+                    }
+                }
+            }
+            q @ ('"' | '\'') => loop {
+                match chars.next() {
+                    Some('\\') => {
+                        chars.next();
+                    }
+                    Some(c) if c == q => break,
+                    Some('\n') | None => return Err("a string is never closed".into()),
+                    Some(_) => {}
+                }
+            },
+            '{' => depth += 1,
+            '}' => depth = depth.checked_sub(1).ok_or("a } has no matching {")?,
+            _ => {}
+        }
+    }
+    if depth == 0 {
+        Ok(())
+    } else {
+        Err("a { is never closed".into())
+    }
+}
+
+/// A screenshot shape as width over height: `9:19.5`, `9/19.5` or a plain number (`0.46`).
+/// Between 1:5 and 5:1.
+pub fn parse_ratio(text: &str) -> Result<f32, String> {
+    let bad =
+        || format!("«{text}» isn't a ratio: write it as WIDTH:HEIGHT, like 9:19.5, or as a number");
+    let num = |t: &str| {
+        t.trim()
+            .parse::<f32>()
+            .ok()
+            .filter(|n| n.is_finite() && *n > 0.0)
+    };
+    let r = match text.split_once([':', '/']) {
+        Some((w, h)) => num(w).zip(num(h)).map(|(w, h)| w / h),
+        None => num(text),
+    }
+    .ok_or_else(bad)?;
+    if (0.2..=5.0).contains(&r) {
+        Ok(r)
+    } else {
+        Err(format!("the ratio {text} is outside 1:5 to 5:1"))
+    }
 }
 
 /// The pages of the same manual for another platform.
@@ -130,8 +223,20 @@ impl Docs<'_> {
             }
             r
         });
+        // The given stylesheet, else the suite's own `theme.css`, so regenerating keeps the theme.
+        let found = match (self.look.stylesheet, self.suite_dir) {
+            (None, Some(d)) if d.join(SUITE_STYLESHEET).is_file() => Some(
+                read_stylesheet(&d.join(SUITE_STYLESHEET))
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?,
+            ),
+            _ => None,
+        };
         let docs = Docs {
             report: checked.as_ref(),
+            look: Look {
+                stylesheet: self.look.stylesheet.or(found.as_deref()),
+                ..self.look
+            },
             ..*self
         };
         std::fs::create_dir_all(dir)?;
@@ -146,6 +251,10 @@ impl Docs<'_> {
             written.push(path);
         }
         prune(dir, &written)?;
+        if docs.look.stylesheet.is_none() {
+            // An earlier run's custom stylesheet would otherwise sit there unused.
+            let _ = std::fs::remove_file(dir.join(CUSTOM_CSS));
+        }
         Ok(written)
     }
 
@@ -385,6 +494,7 @@ mod tests {
             siblings: &[],
             outline: None,
             inventory: &[],
+            look: Look::default(),
         };
         let pages = docs.pages();
         let get = |path: &str| {
@@ -469,5 +579,188 @@ mod tests {
             action_heading(&steps),
             "When the dial is 0 % and the user presses reset"
         );
+    }
+
+    const TURNSTILE: &str = "
+Vocabulary:
+  State: the turnstile is locked | unlocked
+  Event: a visitor inserts a coin
+Background:
+  Given the turnstile is locked
+Feature: Paying
+  Expectation: A coin unlocks it
+    Given the turnstile is locked
+    When a visitor inserts a coin
+    Then the turnstile is unlocked
+";
+
+    fn styled(look: Look, suite_dir: Option<&Path>, out: &Path) -> Vec<Page> {
+        let loaded = expectation_language::load_sources("S", &[("s.expect", TURNSTILE)]);
+        assert!(!loaded.has_errors(), "{}", loaded.render_diagnostics());
+        let suite = loaded.suite;
+        let analysis = expectation_graph::analyze(&suite);
+        let docs = Docs {
+            suite: &suite,
+            analysis: &analysis,
+            plans: &[],
+            report: None,
+            suite_dir,
+            siblings: &[],
+            outline: None,
+            inventory: &[],
+            look,
+        };
+        docs.write(out).unwrap();
+        docs.pages_with(None)
+    }
+
+    fn temp(name: &str) -> PathBuf {
+        let d =
+            std::env::temp_dir().join(format!("expectation-docs-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn without_a_stylesheet_the_site_is_as_before() {
+        let out = temp("plain");
+        let pages = styled(Look::default(), None, &out);
+        assert!(pages.iter().all(|p| p.path != CUSTOM_CSS));
+        assert!(pages.iter().all(|p| {
+            !p.content
+                .contains(r#"<link rel="stylesheet" href="assets/custom.css">"#)
+        }));
+        assert!(!out.join(CUSTOM_CSS).exists());
+    }
+
+    #[test]
+    fn a_stylesheet_is_loaded_after_the_built_in_styles_by_every_page() {
+        let out = temp("custom");
+        let css = ":root { --canvas: #fffdf7; }";
+        let look = Look {
+            stylesheet: Some(css),
+            ..Look::default()
+        };
+        let pages = styled(look, None, &out);
+        assert_eq!(std::fs::read_to_string(out.join(CUSTOM_CSS)).unwrap(), css);
+        let html: Vec<_> = pages
+            .iter()
+            .filter(|p| p.path.ends_with(".html") && p.content.contains("assets/style.css"))
+            .collect();
+        for name in ["index", "map", "states", "tests", "theme"] {
+            assert!(
+                html.iter().any(|p| p.path == format!("site/{name}.html")),
+                "{name}"
+            );
+        }
+        for p in html {
+            let (style, custom) = (
+                p.content.find("assets/style.css"),
+                p.content.find("assets/custom.css"),
+            );
+            assert!(style < custom && custom.is_some(), "{}", p.path);
+        }
+        let theme = &pages
+            .iter()
+            .find(|p| p.path == "site/theme.html")
+            .unwrap()
+            .content;
+        assert!(theme.contains("A custom stylesheet is applied"));
+        assert!(theme.contains("Built-in Night palette"));
+    }
+
+    #[test]
+    fn regenerating_keeps_the_suites_theme_and_drops_a_stale_one() {
+        let (suite, out) = (temp("suite"), temp("regen"));
+        std::fs::write(suite.join(SUITE_STYLESHEET), "body { color: red; }").unwrap();
+        let pages = styled(Look::default(), Some(&suite), &out);
+        assert!(
+            std::fs::read_to_string(out.join(CUSTOM_CSS))
+                .unwrap()
+                .contains("red")
+        );
+        let _ = pages;
+        std::fs::remove_file(suite.join(SUITE_STYLESHEET)).unwrap();
+        styled(Look::default(), Some(&suite), &out);
+        assert!(!out.join(CUSTOM_CSS).exists());
+        // A broken theme.css is an error, not a silent fallback.
+        std::fs::write(suite.join(SUITE_STYLESHEET), "body {").unwrap();
+        let loaded = expectation_language::load_sources("S", &[("s.expect", TURNSTILE)]);
+        let analysis = expectation_graph::analyze(&loaded.suite);
+        let docs = Docs {
+            suite: &loaded.suite,
+            analysis: &analysis,
+            plans: &[],
+            report: None,
+            suite_dir: Some(&suite),
+            siblings: &[],
+            outline: None,
+            inventory: &[],
+            look: Look::default(),
+        };
+        assert!(
+            docs.write(&out)
+                .unwrap_err()
+                .to_string()
+                .contains("never closed")
+        );
+    }
+
+    #[test]
+    fn a_bad_stylesheet_is_refused_with_a_reason() {
+        let dir = temp("bad");
+        let err = |name: &str, css: &str| {
+            let p = dir.join(name);
+            std::fs::write(&p, css).unwrap();
+            read_stylesheet(&p).unwrap_err()
+        };
+        assert!(
+            read_stylesheet(&dir.join("missing.css"))
+                .unwrap_err()
+                .contains("couldn't read")
+        );
+        assert!(err("empty.css", "  \n").contains("empty"));
+        assert!(err("open.css", "a { color: red;").contains("never closed"));
+        assert!(err("close.css", "a { } }").contains("no matching"));
+        assert!(err("comment.css", "/* a { }").contains("comment"));
+        std::fs::write(dir.join("ok.css"), "/* } */ a::after { content: \"}\"; }").unwrap();
+        assert!(read_stylesheet(&dir.join("ok.css")).is_ok());
+    }
+
+    #[test]
+    fn ratios_are_read_and_bounded() {
+        assert_eq!(parse_ratio("16:9"), Ok(16.0 / 9.0));
+        assert_eq!(parse_ratio("1/2"), Ok(0.5));
+        assert_eq!(parse_ratio("0.5"), Ok(0.5));
+        for bad in [
+            "", "abc", "0", "-1", "1:0", "9:", "nan", "inf", "1:6", "6:1", "1:2:3",
+        ] {
+            assert!(parse_ratio(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_state_maps_screenshots_follow_the_ratio() {
+        let thumb = |ratio: Option<f32>| {
+            let page = styled(
+                Look {
+                    shot_ratio: ratio,
+                    ..Look::default()
+                },
+                None,
+                &temp("ratio"),
+            )
+            .into_iter()
+            .find(|p| p.path == "site/states.html")
+            .unwrap()
+            .content;
+            let g = page.split(r#""g":["#).nth(1).unwrap();
+            g.split(']').next().unwrap().to_string()
+        };
+        // Cards are 204 wide inside their margins: 9:19.5 is 442 tall; the default stays 124.
+        assert!(thumb(None).contains(",124,"), "{}", thumb(None));
+        let tall = thumb(Some(9.0 / 19.5));
+        assert!(tall.contains(",442,"), "{tall}");
     }
 }

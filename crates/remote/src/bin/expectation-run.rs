@@ -21,7 +21,7 @@ use std::time::Duration;
 
 const USAGE: &str = "usage: expectation-run <suite-dir> [--platform NAME] [--addr HOST:PORT] [--wait SECONDS] \
                      [--command-timeout SECONDS] \
-                     [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd COMMAND]";
+                     [--stylesheet CSS] [--state-shot-ratio W:H] [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd COMMAND]";
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -46,6 +46,7 @@ fn main() {
         None,
         None,
     );
+    let (mut stylesheet, mut ratio) = (None, None);
     while let Some(a) = args.next() {
         let mut value = || {
             args.next()
@@ -74,6 +75,11 @@ fn main() {
                         }),
                 )
             }
+            "--stylesheet" => stylesheet = Some(value()),
+            "--state-shot-ratio" => {
+                ratio =
+                    Some(expectation_harness::parse_ratio(&value()).unwrap_or_else(|e| fail(&e)))
+            }
             "--docs" => docs = Some(PathBuf::from(value())),
             "--runner" => runner = Some(value()),
             "--settle" => {
@@ -100,6 +106,13 @@ fn main() {
         exit(1)
     })
     .with_coverage();
+    let mut acceptance = acceptance;
+    if let Some(p) = &stylesheet {
+        acceptance = acceptance.with_stylesheet(p).unwrap_or_else(|e| fail(&e));
+    }
+    if let Some(r) = ratio {
+        acceptance = acceptance.with_shot_ratio(r);
+    }
 
     let mut driver = RemoteDriver::listen(&addr)
         .unwrap_or_else(|e| fail(&format!("couldn't listen on {addr}: {e}")))
