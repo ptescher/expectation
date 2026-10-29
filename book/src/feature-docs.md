@@ -12,7 +12,8 @@ expectation docs examples/rate-watch docs
 The example is [`examples/rate-watch`](https://github.com/ptescher/expectation/tree/main/examples/rate-watch):
 a small app that shows an exchange rate from an outside provider and alerts you when it reaches
 a target. It has a feature that depends on an outside service, a state for when that service
-is unavailable, and a decision nobody has made yet. If you are an AI agent, there is a
+is unavailable, and a decision nobody has made yet. The manuals it generates are published: [with its drafts](../rate-watch/site/index.html) and
+[approved only](../rate-watch-approved/site/index.html). If you are an AI agent, there is a
 [skill](https://github.com/ptescher/expectation/tree/main/.claude/skills/write-feature-specs/SKILL.md)
 with this chapter's checklist.
 

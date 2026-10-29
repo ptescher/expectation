@@ -38,6 +38,9 @@ From a suite of expectations, Expectation:
                                           harness + driver ──┴─▶ report + screenshots ─docs─▶ HTML + Markdown
 ```
 
+Writing a suite that also reads as good documentation takes some care: see
+[Feature docs that explain](feature-docs.md), and its [generated feature page](../rate-watch/site/feature-price-alerts.html).
+
 ## Why
 
 Most acceptance tests are scripts: do this, check that. Nothing connects one script to the
