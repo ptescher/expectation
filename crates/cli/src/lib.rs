@@ -22,10 +22,12 @@ commands:
                             tell them apart, comma separated (default: every enumerated one)
   plan  <dir> [--coverage]  print the acceptance tests the stories compile to
                             (--coverage adds generated tests for untested expectations)
-  docs  <dir> <out-dir> [--stylesheet <css>] [--state-shot-ratio <w:h>]
+  docs  <dir> <out-dir> [--approved-only] [--results <dir>] [--stylesheet <css>] [--state-shot-ratio <w:h>]
                             write the docs (Markdown and an HTML site), with the results runs
                             have saved in <out-dir>/results; --stylesheet restyles the site
-                            with a CSS file, --state-shot-ratio shapes the state map's pictures
+                            with a CSS file, --state-shot-ratio shapes the state map's pictures;
+                            --approved-only writes just what is marked `Approval: approved`
+                            (--results <dir> reads results from there, not <out-dir>/results)
 ";
 
 struct Checked {
@@ -44,15 +46,24 @@ fn load_for(dir: &str, platform: &str) -> Checked {
 }
 
 fn load_platform(dir: &str, platform: Option<&str>) -> Checked {
+    load_platform_with(dir, platform, false)
+}
+
+/// As `load_platform`; `approved_only` keeps just what the suite marks `Approval: approved`.
+fn load_platform_with(dir: &str, platform: Option<&str>, approved_only: bool) -> Checked {
     let Loaded {
         suite,
         mut diagnostics,
-    } = expectation_language::load_dir_for(Path::new(dir), platform).unwrap_or_else(|e| {
-        eprintln!("error: couldn't read {dir}: {e}");
-        exit(2)
-    });
+    } = expectation_language::load_dir_with(Path::new(dir), platform, approved_only)
+        .unwrap_or_else(|e| {
+            eprintln!("error: couldn't read {dir}: {e}");
+            exit(2)
+        });
     if has_errors(&diagnostics) {
         eprint!("{}", render_all(&diagnostics, &suite.sources));
+        if approved_only {
+            eprintln!("note: --approved-only leaves out what isn't marked `Approval: approved`");
+        }
         exit(1);
     }
     let analysis = expectation_graph::analyze(&suite);
@@ -90,6 +101,8 @@ pub fn main() {
     };
     let by = take("--by");
     let look = (take("--stylesheet"), take("--state-shot-ratio"));
+    let results = take("--results");
+    let approved_only = args.iter().any(|a| a == "--approved-only");
     let flag = |f: &str| args.iter().any(|a| a == f);
     let pos: Vec<&str> = args
         .iter()
@@ -150,7 +163,7 @@ pub fn main() {
                 print_plan(&c.suite, p);
             }
         }
-        ["docs", dir, out] => docs(dir, out, look),
+        ["docs", dir, out] => docs(dir, out, look, approved_only, results),
         _ => {
             eprint!("{USAGE}");
             exit(2);
@@ -160,7 +173,13 @@ pub fn main() {
 
 /// The manual, once for each platform the suite declares (the first at `out`, the others
 /// under `out/platforms/`), each with the results its own runs saved under `out/results`.
-fn docs(dir: &str, out: &str, (stylesheet, ratio): (Option<String>, Option<String>)) {
+fn docs(
+    dir: &str,
+    out: &str,
+    (stylesheet, ratio): (Option<String>, Option<String>),
+    approved_only: bool,
+    results: Option<String>,
+) {
     let fail = |e: String| -> ! {
         eprintln!("error: {e}");
         exit(2)
@@ -182,12 +201,30 @@ fn docs(dir: &str, out: &str, (stylesheet, ratio): (Option<String>, Option<Strin
     // Every platform's tests and results, then the pages: each one's dropdown knows the others' pages.
     let mut manuals = vec![];
     for name in &names {
-        let mut c = match name {
-            Some(n) if Some(n) != first.suite.platforms.first() => load_for(dir, n),
-            _ => load(dir),
+        let platform = name
+            .as_deref()
+            .filter(|n| Some(*n) != first.suite.platforms.first().map(String::as_str));
+        // The whole suite must check clean either way; a manual of the approved part is a view of it.
+        let mut c = match platform {
+            Some(n) => load_for(dir, n),
+            None => load(dir),
         };
+        if approved_only {
+            c = load_platform_with(dir, platform, true);
+            if c.suite.features.is_empty() && c.suite.stories.is_empty() {
+                eprintln!(
+                    "warning: nothing is marked `Approval: approved`, so the manual is empty"
+                );
+            }
+        }
         if has_errors(&c.diagnostics) {
             eprint!("{}", render_all(&c.diagnostics, &c.suite.sources));
+            if approved_only {
+                eprintln!(
+                    "note: --approved-only leaves out what isn't marked `Approval: approved`; an approved \
+                     story or expectation can't rely on behaviour that isn't"
+                );
+            }
             exit(1);
         }
         // The same tests a run has (stories and generated ones), with whatever results
@@ -197,7 +234,10 @@ fn docs(dir: &str, out: &str, (stylesheet, ratio): (Option<String>, Option<Strin
         let visits = expectation_story::visit_plans(&c.suite, &c.analysis, &c.plans);
         c.plans.extend(visits);
         let report = expectation_story::load_results_for(
-            &Path::new(out).join("results"),
+            &results.as_deref().map_or_else(
+                || Path::new(out).join("results"),
+                |r| Path::new(r).to_path_buf(),
+            ),
             &c.plans,
             name.as_deref(),
         );

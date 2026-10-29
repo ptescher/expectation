@@ -13,6 +13,7 @@
 - [The language](language.md)
 - [Platforms](platforms.md)
 - [Writing specs that read well](writing-specs.md)
+- [Feature docs that explain](feature-docs.md)
 
 # How it works
 

@@ -14,6 +14,35 @@ or, from results that runs have saved in `docs/results/`:
 expectation docs expectations docs
 ```
 
+## Approved-only manuals
+
+Mark what is agreed with `Approval: approved` and what is not with `Approval: proposed` (see
+[the language](language.md#approval)), then write a manual of just the agreed part:
+
+```bash
+expectation docs expectations docs-approved --approved-only --results docs/results
+```
+
+The full suite is still checked first and must be clean. Then only what is approved is kept,
+before the suite is read, so the manual is one where the rest was never written:
+
+- A feature stays if any of its expectations is approved (its own, or its feature's). Its
+  description stays only if the feature itself is approved. A feature with nothing approved is
+  gone, with its page, navigation entry and every link to it; a `[[link]]` to something left
+  out reads as plain text.
+- A story is a tutorial only if it is approved itself. Its test page goes with it.
+- The vocabulary, terms and backgrounds stay. They aren't behaviour.
+- An approved story or expectation that depends on one that isn't (a story steps through a
+  proposed expectation, or an approved expectation overrides one) is an error that names the
+  problem, so the approved manual can't present proposed behaviour as agreed. Approve the other
+  one, or leave this out.
+- Nothing marked approved means an empty manual, with a warning.
+
+`--results` says where the saved results are, since the output directory is usually not the
+one the full manual and its `results/` live in. Test results are what runs saw and are shown as
+they are: an approved specification may still fail, or not be testable yet. Without the flag,
+nothing changes, and neither do checking, planning or running.
+
 ## Your own theme
 
 The site loads a CSS file of yours after its built-in styles, so a team can give the reports

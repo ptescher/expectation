@@ -90,8 +90,17 @@ pub struct RawStep {
     pub span: Span,
 }
 
+/// `Approval:` on a feature, expectation or story.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Approval {
+    Approved,
+    Proposed,
+}
+
 #[derive(Debug)]
 pub struct RawFeature {
+    /// `Approval:` under it; its expectations say the same unless they say otherwise.
+    pub approval: Option<Approval>,
     pub name: String,
     pub span: Span,
     pub on: Option<Vec<(String, Span)>>,
@@ -101,6 +110,8 @@ pub struct RawFeature {
 
 #[derive(Debug)]
 pub struct RawExpectation {
+    /// `Approval:` under it.
+    pub approval: Option<Approval>,
     pub name: String,
     pub span: Span,
     pub on: Option<Vec<(String, Span)>>,
@@ -117,6 +128,8 @@ pub struct RawExpectation {
 
 #[derive(Debug)]
 pub struct RawStory {
+    /// `Approval:` under it.
+    pub approval: Option<Approval>,
     pub name: String,
     pub span: Span,
     pub on: Option<Vec<(String, Span)>>,
@@ -249,6 +262,7 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                 "Background:" => Block::Background,
                 "Feature:" => {
                     out.features.push(RawFeature {
+                        approval: None,
                         name: title,
                         span,
                         on: None,
@@ -260,6 +274,7 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                 "Expectation:" => match out.features.last_mut() {
                     Some(f) if matches!(block, Block::Feature | Block::Expectation) => {
                         f.expectations.push(RawExpectation {
+                            approval: None,
                             name: title,
                             span,
                             on: None,
@@ -283,6 +298,7 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                 },
                 "Story:" => {
                     out.stories.push(RawStory {
+                        approval: None,
                         name: title,
                         span,
                         on: None,
@@ -538,6 +554,41 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
             }
             continue;
         }
+        if let Some(rest) = line.strip_prefix("Approval:") {
+            let value = match rest.trim() {
+                "approved" => Some(Approval::Approved),
+                "proposed" => Some(Approval::Proposed),
+                _ => None,
+            };
+            let slot = match block {
+                Block::Feature => out.features.last_mut().map(|f| &mut f.approval),
+                Block::Expectation => out
+                    .features
+                    .last_mut()
+                    .and_then(|f| f.expectations.last_mut())
+                    .map(|e| &mut e.approval),
+                Block::Story => out.stories.last_mut().map(|s| &mut s.approval),
+                _ => None,
+            };
+            match (slot, value) {
+                (Some(slot), Some(v)) if slot.is_none() => *slot = Some(v),
+                (Some(slot), Some(_)) if slot.is_some() => diags
+                    .push(Diagnostic::error("syntax", "`Approval:` is given once").at(&span, "")),
+                (Some(_), None) => diags.push(
+                    Diagnostic::error("syntax", "`Approval:` is `approved` or `proposed`")
+                        .at(&span, "")
+                        .help("leave it out while nobody has said either"),
+                ),
+                _ => diags.push(
+                    Diagnostic::error(
+                        "syntax",
+                        "`Approval:` belongs right under a Feature, Expectation or Story",
+                    )
+                    .at(&span, ""),
+                ),
+            }
+            continue;
+        }
         if let Some(rest) = line.strip_prefix("Status:") {
             match (
                 block,
@@ -724,6 +775,26 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                 }
             }
             _ => diags.push(unexpected(&span, line)),
+        }
+    }
+    for f in &out.features {
+        if f.approval != Some(Approval::Proposed) {
+            continue;
+        }
+        for e in f
+            .expectations
+            .iter()
+            .filter(|e| e.approval == Some(Approval::Approved))
+        {
+            diags.push(
+                Diagnostic::error(
+                    "approval-conflict",
+                    format!("«{}» is approved inside a feature that is proposed", e.name),
+                )
+                .at(&e.span, "")
+                .at(&f.span, "the feature")
+                .help("approve the feature too, or propose the expectation"),
+            );
         }
     }
     out

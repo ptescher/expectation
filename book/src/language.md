@@ -176,7 +176,25 @@ Expectation: <name>
   behaviour is built. Because an invariant applies wherever its Given holds, a pending invariant
   makes the tests in its section pending, so prefer pending transitions.
 
+- `Approval: approved` or `Approval: proposed` says whether the specification itself is
+  agreed (see [Approval](#approval)). It says nothing about whether the behaviour is built or
+  passes.
+
 Text before the first step is the expectation's description.
+
+## Approval
+
+`Approval: approved` or `Approval: proposed` goes right under a `Feature:`, `Expectation:` or
+`Story:` line (before its description or steps) and says whether the specification itself has
+been agreed. It is for teams that keep drafts and agreed behaviour in one suite, and it changes
+nothing about checking, planning or running.
+
+- An expectation without its own `Approval:` has its feature's. Nothing says it, and
+  unmarked counts as not approved when an approved-only manual is asked for (see
+  [the manual](manual.md#approved-only-manuals)).
+- An approved expectation inside a proposed feature is an error (`approval-conflict`).
+- It is separate from `Status: pending`. A pending expectation is agreed but not built; a
+  proposed one may be built and passing but is not agreed.
 
 ## Backgrounds that follow a setup
 

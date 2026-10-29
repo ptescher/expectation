@@ -79,6 +79,9 @@ expectation docs <dir> <out-dir>
 Writes the manual (Markdown and the HTML site) to `<out-dir>`, using the results that runs
 have saved in `<out-dir>/results/`. Without results, every test shows as "not run".
 
+- `--approved-only` writes just what the suite marks `Approval: approved` (see
+  [Approved-only manuals](manual.md#approved-only-manuals)); `--results <dir>` reads the saved
+  results from there instead of `<out-dir>/results`.
 - `--stylesheet <css>` restyles the HTML site with your CSS file (see
   [Your own theme](manual.md#your-own-theme)). A missing, empty or malformed file stops the
   command before anything is written.
