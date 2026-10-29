@@ -28,6 +28,23 @@ mdbook build book --dest-dir "$out/guide"
 cargo doc -q --workspace --no-deps
 cp -R target/doc "$out/api"
 
+# For agents: the llms.txt index, the whole guide as one file, and the skills.
+mkdir -p "$out/skills"
+cp -R site/skills/expectation "$out/skills/"
+cp site/skills/expectation/SKILL.md "$out/skill.md"
+cp -R .claude/skills/write-feature-specs "$out/skills/"
+cp site/llms.txt "$out/llms.txt"
+{
+  echo "# Expectation: the guide"
+  echo
+  echo "Source: https://expectation.sim001.net/guide/ . One file for LLMs; index at /llms.txt."
+  # In the order of the table of contents.
+  sed -n 's/.*(\([a-z-]*\.md\)).*/\1/p' book/src/SUMMARY.md | while read -r f; do
+    echo; echo "---"; echo
+    cat "book/src/$f"
+  done
+} > "$out/llms-full.txt"
+
 # The landing page, on the same theme as the manual.
 cp site/index.html site/style.css "$out/"
 cp "$out/example/site/assets/theme.css" "$out/theme.css"

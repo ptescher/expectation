@@ -1,0 +1,39 @@
+# Expectation
+
+> Acceptance testing where the behaviour is the source of truth. You write expectations (given/when/then) in a shared vocabulary of states and events; Expectation checks them for conflicts, compiles user stories into acceptance tests, runs them against the system, and writes the user manual with screenshots.
+
+For AI agents: install the skill at https://expectation.sim001.net/skills/expectation/SKILL.md (also /skill.md), or read the whole guide as one text file at https://expectation.sim001.net/llms-full.txt.
+
+## Start here
+
+- [For AI agents](https://expectation.sim001.net/guide/agents.html): commands, workflow and where everything is
+- [Skill: expectation](https://expectation.sim001.net/skills/expectation/SKILL.md): the overview skill
+- [Skill: write-feature-specs](https://expectation.sim001.net/skills/write-feature-specs/SKILL.md): writing feature specs that make useful docs
+- [Getting started](https://expectation.sim001.net/guide/getting-started.html): a complete suite and test in a few minutes
+- [The language](https://expectation.sim001.net/guide/language.html): every line of the `.expect` format
+
+## Writing suites
+
+- [Feature docs that explain](https://expectation.sim001.net/guide/feature-docs.html): the depth a feature page needs, with a worked example
+- [Writing specs that read well](https://expectation.sim001.net/guide/writing-specs.html)
+- [Platforms](https://expectation.sim001.net/guide/platforms.html)
+- [From stories to acceptance tests](https://expectation.sim001.net/guide/stories.html)
+
+## Running and publishing
+
+- [Drivers](https://expectation.sim001.net/guide/drivers.html)
+- [Embedded drivers](https://expectation.sim001.net/guide/remote.html): Swift, JavaScript and Rust apps driven by `expectation-run`
+- [The generated manual](https://expectation.sim001.net/guide/manual.html): includes custom themes and approved-only manuals
+- [The expectation command](https://expectation.sim001.net/guide/cli.html)
+- [Diagnostics](https://expectation.sim001.net/guide/diagnostics.html)
+
+## Examples
+
+- [Rate watch, a worked feature-docs suite](https://expectation.sim001.net/rate-watch/site/index.html) ([approved only](https://expectation.sim001.net/rate-watch-approved/site/index.html))
+- [The kettle manual](https://expectation.sim001.net/example/site/index.html)
+- [One suite, three apps](https://expectation.sim001.net/demo/site/index.html)
+
+## Optional
+
+- [API reference](https://expectation.sim001.net/api/expectation_harness/index.html)
+- [Source on GitHub](https://github.com/ptescher/expectation)
