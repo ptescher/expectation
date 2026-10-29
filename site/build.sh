@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the GitHub Pages site into target/pages (or $1): the landing page, the guide
 # (mdBook), the API reference (rustdoc), the kettle example's generated manual, and the
-# multi-platform demo's manual, and the rate-watch example's two manuals.
+# multi-platform demo's manual, and the smart-kettle example's two manuals.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 out="${1:-target/pages}"
@@ -18,8 +18,8 @@ cp -R demos/kettle/docs/. "$out/demo/"
 cargo run -q -p expectation_cli -- docs demos/kettle/expectations "$out/demo"
 
 # The feature-docs example's manuals: all of it, and just the approved part.
-cargo run -q -p expectation_cli -- docs examples/rate-watch "$out/rate-watch"
-cargo run -q -p expectation_cli -- docs examples/rate-watch "$out/rate-watch-approved" --approved-only
+cargo run -q -p expectation_cli -- docs examples/smart-kettle "$out/smart-kettle"
+cargo run -q -p expectation_cli -- docs examples/smart-kettle "$out/smart-kettle-approved" --approved-only
 
 # The guide.
 mdbook build book --dest-dir "$out/guide"

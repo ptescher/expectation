@@ -29,7 +29,7 @@ For AI agents: install the skill at https://expectation.sim001.net/skills/expect
 
 ## Examples
 
-- [Rate watch, a worked feature-docs suite](https://expectation.sim001.net/rate-watch/site/index.html) ([approved only](https://expectation.sim001.net/rate-watch-approved/site/index.html))
+- [Smart kettle, a worked feature-docs suite](https://expectation.sim001.net/smart-kettle/site/index.html) ([approved only](https://expectation.sim001.net/smart-kettle-approved/site/index.html))
 - [The kettle manual](https://expectation.sim001.net/example/site/index.html)
 - [One suite, three apps](https://expectation.sim001.net/demo/site/index.html)
 

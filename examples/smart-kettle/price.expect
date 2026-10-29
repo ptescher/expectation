@@ -1,0 +1,36 @@
+Feature: Seeing the electricity price
+  Approval: approved
+
+  The smart kettle is for people who want to spend less on hot drinks, such as someone who
+  makes tea every morning and would rather boil when power is cheap. They open the app and
+  read the price. They use it to decide whether to boil now or wait.
+
+  The price comes from an outside provider ([[Price provider]]). The kettle shows what the
+  provider sends and does not work out prices by itself. Next to the price, a dot says how much
+  to trust it. Green means the price is current. Amber means the provider is late, so the price
+  is old: the app says when it was last updated, and you should treat the price as a guide only.
+
+  If the provider does not answer, the app has no current price to show. It says so and does not
+  show an old price as if it were new. When the provider is back, tap Retry to get the price again.
+
+  Expectation: A late provider is shown as delayed
+    The amber dot means the price is old. The app shows when it was last updated, so you can judge it.
+    Given the price feed is live
+    When the feed falls behind
+    Then the price feed is delayed
+
+  Expectation: A silent provider means no price
+    The app says "Prices unavailable" and shows no number. A price that might be hours old is worse than none.
+    Given the price feed is live
+    When the feed stops answering
+    Then the price feed is unavailable
+
+  Expectation: A delayed feed can stop answering
+    Given the price feed is delayed
+    When the feed stops answering
+    Then the price feed is unavailable
+
+  Expectation: Retry brings the price back when the provider is back
+    Given the price feed is unavailable
+    When the feed answers again
+    Then the price feed is live

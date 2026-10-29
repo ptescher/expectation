@@ -5,7 +5,7 @@ description: Write or improve an Expectation (.expect) suite so it is both an ac
 
 # Writing feature specs that make useful docs
 
-Follow `book/src/feature-docs.md`; the worked example is `examples/rate-watch/`. Language
+Follow `book/src/feature-docs.md`; the worked example is `examples/smart-kettle/`. Language
 reference: `book/src/language.md`.
 
 ## Before writing
