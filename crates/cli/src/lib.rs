@@ -264,7 +264,10 @@ fn docs(
         };
         docs.write(&tree)
     };
-    let all: Vec<expectation_docs::Sibling> = (0..manuals.len())
+    // Only a suite with several platforms offers the same page on the others, so only then are
+    // all the pages worked out ahead of writing them.
+    let several = manuals.len() > 1;
+    let all: Vec<expectation_docs::Sibling> = (0..if several { manuals.len() } else { 0 })
         .map(|i| {
             let (c, report) = &manuals[i];
             expectation_docs::Docs {
