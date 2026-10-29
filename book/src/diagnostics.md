@@ -22,6 +22,8 @@ error[bad-value]: `boiling` isn't a value of the kettle
 | `bad-event` | error | An event with no name. |
 | `bad-phrase` | error | A phrase that mixes Givens and Whens, or has no steps. |
 | `bad-override` | error | `Overrides:` names an expectation that doesn't exist. |
+| `approval-conflict` | error | An expectation is `Approval: approved` inside a feature that is `proposed`. |
+| `approval-dependency` | error | With `--approved-only`: an approved expectation overrides one that isn't approved. |
 | `duplicate` | error | Two expectations, terms or other named things with the same name. |
 | `two-names` | error / warning | A section named twice (error), or the suite named twice (warning). |
 | `no-then` | error | An expectation with no Then. |

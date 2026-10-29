@@ -1,0 +1,38 @@
+Feature: Price alerts
+  Approval: approved
+
+  An alert tells you when the rate reaches a target you chose, so you do not have to keep
+  looking. You set one target for the pair you are watching. The alert waits until the rate
+  reaches it, then shows a banner.
+
+  An alert only reacts to a rate it can trust. While the feed is unavailable there is no rate,
+  so the alert keeps waiting and does not fire on an old one. The same goes for a rate that
+  arrives while the feed is live: it is checked against your target as soon as it comes.
+
+  Expectation: Setting an alert makes it wait
+    Given the alert is off
+    When the user sets an alert
+    Then the alert is waiting
+
+  Expectation: Reaching the target fires the alert
+    The banner appears the moment a live rate reaches your target.
+    Given the alert is waiting
+    And the rate feed is live
+    When the rate reaches the target
+    Then the alert is triggered
+
+  Expectation: Without a rate the alert keeps waiting
+    No rate means nothing to compare with your target, so the alert stays as it was.
+    Given the alert is waiting
+    And the rate feed is unavailable
+    Then the alert is waiting
+
+  Expectation: A delayed rate can fire the alert
+    Approval: proposed
+    Unresolved: should an old rate fire an alert? Firing tells you sooner, but the real
+    rate may already have moved back. Product has not decided. Until it does, this is
+    proposed and an approved manual leaves it out.
+    Given the alert is waiting
+    And the rate feed is delayed
+    When the rate reaches the target
+    Then the alert is triggered

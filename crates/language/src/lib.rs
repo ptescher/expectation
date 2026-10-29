@@ -30,6 +30,7 @@
 //! [`load_dir`] reads every `*.expect` file under a directory into one suite;
 //! [`load_sources`] does the same from strings.
 
+mod approval;
 mod lens;
 mod parse;
 mod resolve;
@@ -66,6 +67,18 @@ pub fn load_sources(name: &str, sources: &[(&str, &str)]) -> Loaded {
 /// As [`load_sources`], read for `platform` (see `lens`): its variants replace the plain lines
 /// and what is `On:` elsewhere is left out. `None` is the default platform.
 pub fn load_sources_for(name: &str, sources: &[(&str, &str)], platform: Option<&str>) -> Loaded {
+    load_sources_with(name, sources, platform, false)
+}
+
+/// As [`load_sources_for`], keeping only what is approved (`Approval: approved`) if
+/// `approved_only`: the suite behind a manual of agreed behaviour, not one to run or check.
+/// See the `approval` module for what stays.
+pub fn load_sources_with(
+    name: &str,
+    sources: &[(&str, &str)],
+    platform: Option<&str>,
+    approved_only: bool,
+) -> Loaded {
     let mut diags = vec![];
     let mut suite = Suite {
         name: name.to_string(),
@@ -82,6 +95,9 @@ pub fn load_sources_for(name: &str, sources: &[(&str, &str)], platform: Option<&
         suite.sources.insert((*file).into(), text.to_string());
     }
     (suite.platforms, suite.platform) = lens::apply(&mut files, platform, &mut diags);
+    if approved_only {
+        approval::only_approved(&mut files, &mut diags);
+    }
     resolve::resolve(&mut suite, &files, &mut diags);
     Loaded {
         suite,
@@ -97,6 +113,16 @@ pub fn load_dir(dir: &Path) -> std::io::Result<Loaded> {
 
 /// As [`load_dir`], read for `platform`.
 pub fn load_dir_for(dir: &Path, platform: Option<&str>) -> std::io::Result<Loaded> {
+    load_dir_with(dir, platform, false)
+}
+
+/// As [`load_dir_for`], keeping only what is approved if `approved_only` (see
+/// [`load_sources_with`]).
+pub fn load_dir_with(
+    dir: &Path,
+    platform: Option<&str>,
+    approved_only: bool,
+) -> std::io::Result<Loaded> {
     let mut paths = vec![];
     collect(dir, &mut paths)?;
     paths.sort();
@@ -113,7 +139,7 @@ pub fn load_dir_for(dir: &Path, platform: Option<&str>) -> std::io::Result<Loade
         .iter()
         .map(|(a, b)| (a.as_str(), b.as_str()))
         .collect();
-    let mut loaded = load_sources_for(&suite_name(dir), &refs, platform);
+    let mut loaded = load_sources_with(&suite_name(dir), &refs, platform, approved_only);
     if paths.is_empty() {
         loaded.diagnostics.push(Diagnostic::error(
             "empty-suite",
@@ -887,5 +913,122 @@ Feature: Drawing
         );
         let codes: Vec<_> = typo.diagnostics.iter().map(|d| d.code).collect();
         assert_eq!(codes, vec!["maybe-step", "no-then"]);
+    }
+
+    const LAMP: &str = "
+Vocabulary:
+  State: the lamp is off | on
+  Event: the user flips the switch
+  Event: the user hits the lamp
+Background:
+  Given the lamp is off
+Feature: Switching
+  Approval: approved
+  The switch turns the lamp on.
+  Expectation: Flip on
+    Given the lamp is off
+    When the user flips the switch
+    Then the lamp is on
+  Expectation: Flip off
+    Approval: proposed
+    Given the lamp is on
+    When the user flips the switch
+    Then the lamp is off
+Feature: Smashing
+  Hitting it.
+  Expectation: Smash
+    Approval: approved
+    Given the lamp is on
+    When the user hits the lamp
+    Then the lamp is off
+Feature: Dusting
+  Approval: proposed
+  Expectation: Dust
+    Given the lamp is on
+    When the user hits the lamp
+    Then the lamp is on
+Story: Light it
+  Approval: approved
+  Scenario: x
+    When the user flips the switch
+    Then the lamp is on
+Story: Draft
+  Scenario: x
+    When the user flips the switch
+    Then the lamp is on
+";
+
+    #[test]
+    fn approval_marks_nothing_by_itself() {
+        let l = load_sources_with("S", &[("s.expect", LAMP)], None, false);
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        assert_eq!(l.suite.expectations.len(), 4);
+        assert_eq!(l.suite.stories.len(), 2);
+    }
+
+    #[test]
+    fn only_approved_keeps_what_is_approved_and_what_it_inherits() {
+        let l = load_sources_with("S", &[("s.expect", LAMP)], None, true);
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        let names = |v: Vec<&str>| v.join(", ");
+        // The feature's approval is inherited, an expectation's own wins, and an unmarked
+        // feature stays for the expectation that is approved but loses its description.
+        assert_eq!(
+            names(
+                l.suite
+                    .expectations
+                    .iter()
+                    .map(|e| e.name.as_str())
+                    .collect()
+            ),
+            "Flip on, Smash"
+        );
+        let feature = |n: &str| l.suite.features.iter().find(|f| f.name == n);
+        assert!(!feature("Switching").unwrap().description.is_empty());
+        assert!(feature("Smashing").unwrap().description.is_empty());
+        assert!(feature("Dusting").is_none());
+        assert_eq!(l.suite.stories.len(), 1);
+        assert_eq!(l.suite.stories[0].name, "Light it");
+    }
+
+    #[test]
+    fn a_suite_without_approvals_has_an_empty_approved_part() {
+        let src = LAMP
+            .replace("Approval: approved", "")
+            .replace("Approval: proposed", "");
+        let l = load_sources_with("S", &[("s.expect", &src)], None, true);
+        assert!(l.suite.features.is_empty() && l.suite.stories.is_empty());
+    }
+
+    #[test]
+    fn approval_must_make_sense() {
+        let err = |src: &str| {
+            let l = load_sources_with("S", &[("s.expect", src)], None, false);
+            l.render_diagnostics()
+        };
+        let head =
+            "Vocabulary:\n  State: the lamp is off | on\n  Event: the user flips the switch\n";
+        let bad = |extra: &str| err(&format!("{head}{extra}"));
+        assert!(bad("Feature: F\n  Approval: maybe\n").contains("`approved` or `proposed`"));
+        assert!(
+            bad("Feature: F\n  Approval: approved\n  Approval: proposed\n").contains("given once")
+        );
+        assert!(bad("Approval: approved\n").contains("belongs right under"));
+        assert!(
+            bad("Feature: F\n  Approval: proposed\n  Expectation: E\n    Approval: approved\n    Given the lamp is off\n    When the user flips the switch\n    Then the lamp is on\n")
+                .contains("approval-conflict")
+        );
+    }
+
+    #[test]
+    fn an_approved_expectation_cannot_override_one_that_is_not() {
+        let src = LAMP.replace(
+            "  Expectation: Smash\n",
+            "  Expectation: Smash\n    Overrides: Dust\n",
+        );
+        let l = load_sources_with("S", &[("s.expect", &src)], None, true);
+        assert!(l.render_diagnostics().contains("approval-dependency"));
+        // The full suite is fine with it.
+        assert!(!load_sources_with("S", &[("s.expect", &src)], None, false).has_errors());
     }
 }
