@@ -47,6 +47,9 @@ enum Here {
     Theme,
 }
 
+/// More subsections than this under a section are folded in the navigation of a page that isn't in them.
+const NAV_SIBLINGS: usize = 30;
+
 struct Site<'a> {
     d: &'a Docs<'a>,
     f: &'a Facts,
@@ -149,6 +152,10 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
     pages.push(Page {
         path: "site/assets/theme.css".into(),
         content: expectation_theme::css::stylesheet(),
+    });
+    pages.push(Page {
+        path: "site/assets/nav.js".into(),
+        content: site.nav_script(),
     });
     pages.push(Page {
         path: "site/assets/style.css".into(),
@@ -379,6 +386,9 @@ impl Site<'_> {
         o
     }
 
+    /// A section in the navigation. Only the sections on the way to this page are written out;
+    /// the others are a link with nothing under it, which `assets/nav.js` fills in when it is
+    /// opened. A page's size then depends on its own surroundings, not on the size of the manual.
     fn nav_section(&self, o: &mut String, id: SectionId, open: &[SectionId], here: Here) {
         let s = self.suite().section(id);
         let cur = |h: Here| if h == here { r#" class="current""# } else { "" };
@@ -388,6 +398,32 @@ impl Site<'_> {
             cur(Here::Section(id)),
             esc(&s.name)
         );
+        if s.parent.is_none() {
+            let inner = if self.d.outline.is_some() {
+                self.nav_parts(open, here)
+            } else {
+                self.nav_inner(id, open, here)
+            };
+            let _ = write!(o, r#"<li class="root">{title}<ul>{inner}</ul></li>"#);
+        } else if open.contains(&id) {
+            let inner = self.nav_inner(id, open, here);
+            let _ = write!(
+                o,
+                r#"<li class="section"><details open><summary>{title}</summary><ul>{inner}</ul></details></li>"#
+            );
+        } else {
+            let _ = write!(
+                o,
+                r#"<li class="section"><details data-nav="{}"><summary>{title}</summary><ul></ul></details></li>"#,
+                esc(&self.section_url(id))
+            );
+        }
+    }
+
+    /// What is under a section: its tutorials, its topics and its subsections.
+    fn nav_inner(&self, id: SectionId, open: &[SectionId], here: Here) -> String {
+        let s = self.suite().section(id);
+        let cur = |h: Here| if h == here { r#" class="current""# } else { "" };
         let mut inner = String::new();
         let stories = self.stories_in(id);
         if !stories.is_empty() {
@@ -414,23 +450,78 @@ impl Site<'_> {
                 esc(&self.suite().feature(f).name)
             );
         }
-        for &c in &s.children {
-            if !self.d.outline.is_some_and(|o| o.listed(c)) {
+        let kids = self.nav_children(id);
+        // Beside a section with very many subsections, the page lists only those on the way to
+        // it; the rest come with the script, so a page doesn't carry a list as long as the manual.
+        if kids.len() > NAV_SIBLINGS {
+            let (now, later): (Vec<_>, Vec<_>) = kids.iter().partition(|c| open.contains(c));
+            for &c in now {
+                self.nav_section(&mut inner, c, open, here);
+            }
+            if !later.is_empty() {
+                let _ = write!(
+                    inner,
+                    r#"<li class="section"><details data-nav="{}"><summary>{} more sections</summary><ul></ul></details></li>"#,
+                    esc(&self.nav_more(id)),
+                    later.len()
+                );
+            }
+        } else {
+            for c in kids {
                 self.nav_section(&mut inner, c, open, here);
             }
         }
-        if s.parent.is_none() {
-            if self.d.outline.is_some() {
-                inner = self.nav_parts(open, here);
+        inner
+    }
+
+    /// A section's subsections that the navigation lists under it.
+    fn nav_children(&self, id: SectionId) -> Vec<SectionId> {
+        self.suite()
+            .section(id)
+            .children
+            .iter()
+            .copied()
+            .filter(|&c| !self.d.outline.is_some_and(|o| o.listed(c)))
+            .collect()
+    }
+
+    /// The key in `assets/nav.js` of the subsections a page leaves out.
+    fn nav_more(&self, id: SectionId) -> String {
+        format!("{}#sections", self.section_url(id))
+    }
+
+    /// `assets/nav.js`: what is under each section, written once for the whole site, and the
+    /// few lines that put it in when a section is opened.
+    fn nav_script(&self) -> String {
+        let mut o = String::from("window.EXPECTATION_NAV = {");
+        let mut first = true;
+        let mut entry = |o: &mut String, key: String, html: String| {
+            if !first {
+                o.push(',');
             }
-            let _ = write!(o, r#"<li class="root">{title}<ul>{inner}</ul></li>"#);
-        } else {
-            let is_open = if open.contains(&id) { " open" } else { "" };
-            let _ = write!(
-                o,
-                r#"<li class="section"><details{is_open}><summary>{title}</summary><ul>{inner}</ul></details></li>"#
-            );
+            first = false;
+            let _ = write!(o, "\n{}: {}", js_string(&key), js_string(&html));
+        };
+        for s in &self.suite().sections {
+            if s.parent.is_some() {
+                let html = self.nav_inner(s.id, &[], Here::Tests);
+                entry(&mut o, self.section_url(s.id), html);
+            }
+            let kids = self.nav_children(s.id);
+            if kids.len() > NAV_SIBLINGS && !(s.parent.is_none() && self.d.outline.is_some()) {
+                let mut html = String::new();
+                for c in kids {
+                    self.nav_section(&mut html, c, &[], Here::Tests);
+                }
+                entry(&mut o, self.nav_more(s.id), html);
+            }
         }
+        o.push_str(
+            "\n};\ndocument.addEventListener('toggle', function (e) {\n  var d = e.target;\n  \
+             if (!d.open || !d.dataset || !d.dataset.nav) return;\n  var ul = d.querySelector(':scope > ul');\n  \
+             var html = window.EXPECTATION_NAV[d.dataset.nav];\n  if (ul && !ul.firstChild && html) ul.innerHTML = html;\n}, true);\n",
+        );
+        o
     }
 
     fn glossary_link(&self, here: Here) -> String {
@@ -637,7 +728,8 @@ impl Site<'_> {
 <title>{full}</title>
 <link rel="stylesheet" href="assets/theme.css">
 <link rel="stylesheet" href="assets/style.css">
-{custom}</head>
+{custom}<script src="assets/nav.js" defer></script>
+</head>
 <body>
 <header class="top"><a class="brand" href="index.html">{suite}</a>{platforms}</header>
 <div class="layout">
@@ -1936,6 +2028,22 @@ impl Site<'_> {
         o.push_str(&self.custom_theme_help());
         self.page(Here::Theme, "Theme", &o)
     }
+}
+
+/// `text` as a JavaScript string literal.
+fn js_string(text: &str) -> String {
+    let mut o = String::from("\"");
+    for c in text.chars() {
+        match c {
+            '"' => o.push_str("\\\""),
+            '\\' => o.push_str("\\\\"),
+            '\n' => o.push_str("\\n"),
+            '<' => o.push_str("\\u003c"),
+            c => o.push(c),
+        }
+    }
+    o.push('"');
+    o
 }
 
 /// A 16:9 stand-in for a screenshot that doesn't exist: a dark screen in a bezel, in the
