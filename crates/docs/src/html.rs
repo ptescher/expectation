@@ -14,6 +14,7 @@ use expectation_graph::Node;
 use expectation_model::text::paragraphs;
 use expectation_model::{ExpId, FeatureId, Keyword, PhraseBody, SectionId, StepText, Suite};
 use expectation_story::{Because, Check, CheckResult, Origin, Status, StepResult, Verdict};
+use std::collections::HashMap;
 use std::fmt::Write;
 
 pub fn esc(s: &str) -> String {
@@ -23,7 +24,7 @@ pub fn esc(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Here {
     Section(SectionId),
     Feature(FeatureId),
@@ -49,10 +50,43 @@ enum Here {
 struct Site<'a> {
     d: &'a Docs<'a>,
     f: &'a Facts,
+    /// The pages in reading order, and where each is, for previous/next links.
+    order: Vec<Here>,
+    position: HashMap<Here, usize>,
+    /// Each section's tutorials (plans that are stories), by section.
+    stories: Vec<Vec<usize>>,
+}
+
+impl<'a> Site<'a> {
+    fn new(d: &'a Docs<'a>, f: &'a Facts) -> Self {
+        let order: Vec<Here> = manual::reading_order(d)
+            .into_iter()
+            .map(|r| match r {
+                manual::Reading::Section(id) => Here::Section(id),
+                manual::Reading::Tutorial(i) => Here::Tutorial(i),
+                manual::Reading::Feature(f) => Here::Feature(f),
+                manual::Reading::Page(i) => Here::Page(i),
+            })
+            .collect();
+        let position = order.iter().enumerate().map(|(i, h)| (*h, i)).collect();
+        let mut stories = vec![vec![]; d.suite.sections.len()];
+        for (i, plan) in d.plans.iter().enumerate() {
+            if matches!(plan.origin, Origin::Story { .. }) {
+                stories[plan.section.0 as usize].push(i);
+            }
+        }
+        Site {
+            d,
+            f,
+            order,
+            position,
+            stories,
+        }
+    }
 }
 
 pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
-    let site = Site { d, f };
+    let site = Site::new(d, f);
     let s = d.suite;
     let mut pages = vec![];
     for section in &s.sections {
@@ -255,19 +289,6 @@ impl Site<'_> {
         format!(r#"<span class="badge {class}">{}</span>"#, status_label(s))
     }
 
-    /// The pages in reading order, for previous/next links.
-    fn reading_order(&self) -> Vec<Here> {
-        manual::reading_order(self.d)
-            .into_iter()
-            .map(|r| match r {
-                manual::Reading::Section(id) => Here::Section(id),
-                manual::Reading::Tutorial(i) => Here::Tutorial(i),
-                manual::Reading::Feature(f) => Here::Feature(f),
-                manual::Reading::Page(i) => Here::Page(i),
-            })
-            .collect()
-    }
-
     /// Prose with its `code` and `[[links]]`.
     fn prose(&self, text: &str) -> String {
         let mut o = String::new();
@@ -305,13 +326,8 @@ impl Site<'_> {
     }
 
     /// The written stories' tests in a section (not the generated ones).
-    fn stories_in(&self, id: SectionId) -> Vec<usize> {
-        (0..self.d.plans.len())
-            .filter(|&i| {
-                self.d.plans[i].section == id
-                    && matches!(self.d.plans[i].origin, Origin::Story { .. })
-            })
-            .collect()
+    fn stories_in(&self, id: SectionId) -> &[usize] {
+        &self.stories[id.0 as usize]
     }
 
     fn short_title(&self, i: usize) -> String {
@@ -376,7 +392,7 @@ impl Site<'_> {
         let stories = self.stories_in(id);
         if !stories.is_empty() {
             inner.push_str(r#"<li class="label">Tutorials</li>"#);
-            for &i in &stories {
+            for &i in stories {
                 let _ = write!(
                     inner,
                     r#"<li><a href="{}"{}>{}</a></li>"#,
@@ -574,8 +590,8 @@ impl Site<'_> {
     }
 
     fn page(&self, here: Here, title: &str, body: &str) -> String {
-        let order = self.reading_order();
-        let pos = order.iter().position(|h| *h == here);
+        let order = &self.order;
+        let pos = self.position.get(&here).copied();
         let mut pager = String::new();
         if let Some(p) = pos {
             pager.push_str(r#"<nav class="pager">"#);
