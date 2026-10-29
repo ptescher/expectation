@@ -1,0 +1,35 @@
+Suite: Smart kettle
+  The smart kettle boils your water for you. It can wait until electricity is cheap and boil
+  then, so a morning cup costs less.
+
+Vocabulary:
+  # The price comes from an outside provider. The kettle can't control it, so its health is a state.
+  State: the price feed is live | delayed | unavailable
+    Set: switch the test provider to {value}
+    Shows: live: the price has a green dot
+    Shows: delayed: the price has an amber dot and says when it was last updated
+    Shows: unavailable: the price is replaced by the message "Prices unavailable" and a Retry button
+  State: the cheap boil is off | waiting | boiling
+    Shows: off: the Cheap boil button reads "Boil when cheap"
+    Shows: waiting: the Cheap boil button reads "Waiting for a cheap price"
+    Shows: boiling: the display reads HEATING and a banner says the price is cheap
+  Event: the user asks for a cheap boil
+    Say: fill the kettle, set the price you call cheap and tap Boil when cheap
+  Event: the feed falls behind
+    Say: make the test provider send prices late
+  Event: the feed stops answering
+    Say: switch the test provider off
+  Event: the feed answers again
+    Say: switch the test provider back on and tap Retry
+  Event: the price drops to the cheap rate
+    Say: have the test provider send a price at or below your cheap rate
+
+  Term: Cheap rate
+    The price per unit at or below which you want the kettle to boil. A cheap boil has one cheap rate.
+  Term: Price provider
+    The outside service that sends the electricity price. The kettle only uses the price the provider sends.
+    Reference: Provider API | https://example.com/docs/prices
+
+Background:
+  Given the price feed is live
+  And the cheap boil is off

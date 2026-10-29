@@ -1,0 +1,54 @@
+Story: Boil when the power is cheap
+  Approval: approved
+  As a tea drinker
+  I want the kettle to boil when electricity is cheap
+  So that my morning cup costs less without me watching the price
+
+  You make tea every morning and your power is cheaper at some hours. Instead of checking
+  the price, you ask for a cheap boil. This tutorial also shows what happens when the price
+  provider goes quiet, because that is when you most need to know what the kettle is doing.
+
+  Scenario: Ask for a cheap boil, lose the provider, get the boil
+    When the user asks for a cheap boil
+    Then the cheap boil is waiting
+    When the feed stops answering
+    Then the price feed is unavailable
+    And the cheap boil is waiting
+    When the feed answers again
+    Then the price feed is live
+    When the price drops to the cheap rate
+    Then the cheap boil is boiling
+
+Story: Knowing how far to trust the price
+  Approval: approved
+  As a tea drinker
+  I want to see when the price is old
+  So that I do not wait for, or rely on, a price that has already changed
+
+  The dot next to the price tells you how current it is. This tutorial follows a price from
+  live to late to missing, and shows what each state means for you.
+
+  Scenario: A price goes late, then missing, then returns
+    When the feed falls behind
+    Then the price feed is delayed
+    When the feed stops answering
+    Then the price feed is unavailable
+    When the feed answers again
+    Then the price feed is live
+
+Story: A cheap boil on a late price
+  Approval: proposed
+  As a tea drinker
+  I want the kettle to boil even when the price is late
+  So that I do not miss a cheap hour
+
+  Whether a late price may start a boil is not decided yet (see the boiling when it is cheap
+  topic), so this tutorial is proposed and is left out of the approved manual.
+
+  Scenario: A late price reaches the cheap rate
+    When the user asks for a cheap boil
+    Then the cheap boil is waiting
+    When the feed falls behind
+    Then the price feed is delayed
+    When the price drops to the cheap rate
+    Then the cheap boil is boiling

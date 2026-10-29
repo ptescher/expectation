@@ -39,7 +39,7 @@ From a suite of expectations, Expectation:
 ```
 
 Writing a suite that also reads as good documentation takes some care: see
-[Feature docs that explain](feature-docs.md), and its [generated feature page](../rate-watch/site/feature-price-alerts.html).
+[Feature docs that explain](feature-docs.md), and its [generated feature page](../smart-kettle/site/feature-boiling-when-it-is-cheap.html).
 
 ## Why
 

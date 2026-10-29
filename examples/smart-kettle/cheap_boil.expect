@@ -1,0 +1,39 @@
+Feature: Boiling when it is cheap
+  Approval: approved
+
+  A cheap boil tells the kettle to wait until the price is low, so you do not have to watch it.
+  You fill the kettle, choose the price you call cheap and ask for a cheap boil. The kettle
+  waits until the price reaches your cheap rate, then boils.
+
+  A cheap boil only reacts to a price it can trust. While the feed is unavailable there is no
+  price, so the kettle keeps waiting and does not boil on an old one. The same goes for a price
+  that arrives while the feed is live: it is checked against your cheap rate as soon as it comes.
+
+  Expectation: Asking for a cheap boil makes the kettle wait
+    Given the cheap boil is off
+    When the user asks for a cheap boil
+    Then the cheap boil is waiting
+
+  Expectation: A cheap price starts the boil
+    The kettle starts the moment a live price reaches your cheap rate.
+    Given the cheap boil is waiting
+    And the price feed is live
+    When the price drops to the cheap rate
+    Then the cheap boil is boiling
+
+  Expectation: Without a price the kettle keeps waiting
+    No price means nothing to compare with your cheap rate, so the kettle stays as it was.
+    Given the cheap boil is waiting
+    And the price feed is unavailable
+    Then the cheap boil is waiting
+
+  Expectation: A delayed price can start the boil
+    Approval: proposed
+    Unresolved: should an old price start a boil? Boiling sooner may save money, but the real
+    price may already have gone back up, and nobody has decided whether the kettle may start
+    while the price is in doubt. Until it does, this is proposed and an approved manual leaves
+    it out.
+    Given the cheap boil is waiting
+    And the price feed is delayed
+    When the price drops to the cheap rate
+    Then the cheap boil is boiling

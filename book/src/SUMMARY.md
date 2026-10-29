@@ -4,6 +4,7 @@
 
 # Learning
 
+- [For AI agents](agents.md)
 - [Getting started](getting-started.md)
 - [A worked example: the kettle](kettle.md)
 - [One suite, three apps](demo.md)
