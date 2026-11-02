@@ -205,8 +205,7 @@ The tutorial turns the story into steps, with the setup first:
 >
 > ## Before you begin
 >
-> - The price feed is live.
-> - The cheap boil is off.
+> - Open the kettle app; the home screen shows the price with a green dot.
 >
 > ## Steps
 >
@@ -305,7 +304,9 @@ supports it:
 
 Then check the evidence still matches the spec: results saved before the expectation, the
 `Shows:` or the UI changed are stale, and a screenshot from a failed or skipped step does not
-show the promised state. A screenshot proves what is in it, at that step, with that data; it
+show the promised state. Expectation drops saved results itself when a test's title or steps
+change: the test shows as "not run" until it runs again. It cannot tell that the UI or the
+wording around the steps changed, so that check is yours. A screenshot proves what is in it, at that step, with that data; it
 does not prove every claim on the page around it.
 
 ### Safety preflight

@@ -3,6 +3,15 @@ Story: First cup
   I want to start the kettle by turning the dial
   So that it works like the one I already have
 
+  The kettle starts the way an old stovetop knob does: drag the DIAL slider past 55 % and the
+  kettle starts a moment later. The light turns red and the [[display]] reads HEATING.
+
+  The dial is only a switch. How hot the water gets is the preset on the display, WARM (70 °C)
+  unless you change it (see [[Choosing a preset]]). The WATER line shows the temperature as it
+  rises, and the kettle holds the water there until you turn it off. To turn it off, bring the
+  dial back down first, then press RESET; with the dial still up, RESET would only start it
+  again.
+
   Scenario: Turn it up, then turn it off
     When the dial is 80 %
     Then the kettle is heating
@@ -14,6 +23,13 @@ Story: Keeping little hands off
   As a parent
   I want the child lock to keep the kettle off
   So that a curious toddler turning the dial doesn't start it
+
+  LOCK turns the child lock on and off, and the LOCK badge lights up while it is on. While it is
+  on, the dial, START and PRESET do nothing, so a turned dial cannot start the kettle.
+
+  The lock stops the dial from reaching the kettle; it does not move the dial. If the dial is
+  still above 55 % when you unlock, the kettle starts as soon as the lock comes off. So bring
+  the dial down before you press LOCK again, as this tutorial does.
 
   Scenario: Turn the dial with the lock on, then unlock and boil
     When the user presses lock
@@ -27,9 +43,17 @@ Story: Keeping little hands off
     Then the kettle is heating
 
 Story: Choosing a preset
-  As someone who drinks green tea
+  As someone who drinks oolong
   I want to pick how hot the water gets before I start
-  So that I don't scald the leaves
+  So that the water suits the leaves
+
+  The preset is the temperature the kettle heats to and then holds: WARM is 70 °C, HOT is
+  85 °C and BOIL is 100 °C. Green tea is usually made around 70 °C, oolong around 85 °C and
+  black tea with boiling water. The kettle is on WARM when you open the app.
+
+  PRESET steps through WARM, HOT and BOIL and back to WARM, and the PRESET line on the
+  [[display]] shows the one you have. START starts the kettle without touching the dial.
+  PRESET, like the other buttons, does nothing while the child lock is on.
 
   Scenario: Step to HOT and start
     When the user presses preset

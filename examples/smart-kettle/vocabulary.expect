@@ -25,12 +25,17 @@ Vocabulary:
   Event: the price drops to the cheap rate
     Say: wait for the price to reach your cheap rate
 
+  Phrase: the app is open with a live price
+    Say: open the kettle app; the home screen shows the price with a green dot
+    Given the price feed is live
+    And the cheap boil is off
+
   Term: Cheap rate
-    The price per unit at or below which you want the kettle to boil. A cheap boil has one cheap rate.
+    The price per kWh at or below which you want the kettle to boil, in the same units as the
+    price on the home screen. A cheap boil has one cheap rate.
   Term: Price provider
     The outside service that sends the electricity price. The kettle only uses the price the provider sends.
     Reference: Provider API | https://example.com/docs/prices
 
 Background:
-  Given the price feed is live
-  And the cheap boil is off
+  Given the app is open with a live price

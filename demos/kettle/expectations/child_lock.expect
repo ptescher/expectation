@@ -1,6 +1,7 @@
 Feature: Child lock
   LOCK turns the child lock on and off. While it is on, the dial and the other
-  buttons do nothing, so turning the dial doesn't start the kettle.
+  buttons do nothing, so turning the dial doesn't start the kettle. The lock does not move the
+  dial, so a dial left above 55 % starts the kettle the moment you unlock it.
 
   Expectation: Lock turns the child lock on
     Given the child lock is off
@@ -25,3 +26,11 @@ Feature: Child lock
     And the child lock is on
     When the user presses start
     Then the kettle is off
+
+  Expectation: Unlocking with the dial up starts the kettle
+    The lock only keeps the dial from reaching the kettle. Turn the dial down before you unlock.
+    Given the kettle is off
+    And the child lock is on
+    And the dial is above 55 %
+    When the user presses lock
+    Then the kettle is heating

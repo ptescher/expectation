@@ -1,6 +1,11 @@
 Feature: Heating
-  The kettle starts off. Turn the dial past 55 % to start it, the way you would an old
-  stovetop knob, or press start.
+  The kettle starts off. Turn the [[dial]] past 55 % to start it, the way you would an old
+  stovetop knob, or press START. It heats the water to the preset's temperature and holds it
+  there; the [[display]] shows the water's temperature as it goes. RESET turns it off, but only
+  with the dial down: a dial left up starts it again.
+
+  If the water runs out while it is heating, the kettle stops and reads DRY until you refill it
+  and reset it.
 
   Expectation: Turning the dial up starts the kettle
     Holding the dial above 55 % for a moment starts it.

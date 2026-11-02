@@ -5,6 +5,10 @@ Feature: Seeing the electricity price
   makes tea every morning and would rather boil when power is cheap. They open the app and
   read the price. They use it to decide whether to boil now or wait.
 
+  The app opens on the home screen, with the price at the top and the Cheap boil button below
+  it. The price is per kilowatt-hour (kWh), in your currency, the same unit as on your
+  electricity bill. It is the cost of power right now, not the cost of a cup.
+
   The price comes from an outside provider ([[Price provider]]). The kettle shows what the
   provider sends and does not work out prices by itself. Next to the price, a dot says how much
   to trust it. Green means the price is current. Amber means the provider is late, so the price

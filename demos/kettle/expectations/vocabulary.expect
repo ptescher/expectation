@@ -34,7 +34,9 @@ Vocabulary:
     Say: click LOCK
     Say[SwiftUI]: tap LOCK
     Say[React Native]: tap LOCK
+  # A sensor, not something the user does: the tests make it happen.
   Event: the water runs out
+    Say: the kettle boils dry
 
   Phrase: the kettle is plugged in and full
     Say: open the app
