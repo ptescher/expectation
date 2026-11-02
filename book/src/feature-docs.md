@@ -39,8 +39,40 @@ Leave filler out, not context. A paragraph per point is normal. A description th
 could not follow without having sat in the planning meeting is too thin, however short.
 
 Each expectation can have a description too. Use it for the *why* of one rule ("A number that
-might be hours old is worse than none"). Stories get an introduction that says the goal and
-the situation; the narrative (`As a … I want … So that …`) is the reader's reason.
+might be hours old is worse than none").
+
+## What a story needs
+
+A story becomes a tutorial: the page a reader follows to get something done. It has to teach
+the feature, not replay a test. A test needs steps that reach each state; a reader needs to
+know why they are there, what they are looking at and what it means. For each story, cover:
+
+1. **A real goal, and where the reader starts.** The narrative (`As a … I want … So that …`)
+   is the reader's reason. The introduction says the situation, what they want to do or find
+   out, and where in the product they begin: "You hold USDC and want to know who else holds
+   it", not "Toggle the currency".
+2. **The path someone with that goal would take.** Steps in the order a user would do them,
+   ending when the goal is met. Reaching every state and transition is the expectations' job,
+   and `plan --coverage` generates tests for the ones no story reaches. A story that flips a
+   toggle back and forth to exercise it is a test sequence, not a tutorial.
+3. **How it works.** The mechanism the reader relies on: where the data comes from, what the
+   product does for them and what it does not, why a result can be late or missing. Say it in
+   the introduction and link the feature and terms (`[[Price provider]]`) that say more.
+4. **How to read what they see.** Units (SOL or dollars, per token or total), what a row,
+   number, dot or badge means, and what to do next. The `Shows:` of each state is what a step
+   says the reader sees; make it something they can check, and explain in the introduction or
+   the linked feature what it tells them.
+5. **What goes wrong along the way.** The empty, late or failed case a user is likely to meet on
+   this journey, and what to do about it, as the kettle's main story does when the provider
+   goes quiet.
+6. **Where they end up.** The last step reaches the goal, worded as the reader sees it. A
+   story's Thens are what the reader should notice, not everything that is true; the
+   expectations check the rest.
+
+Together, a feature's page and its stories explain the whole feature: each main goal it serves
+has a story. The test for a story: could someone who has never seen the product follow the
+tutorial on its own, and afterwards explain the feature to someone else? If they could only
+repeat the taps, it is too thin.
 
 ## The product story, not the test rig
 

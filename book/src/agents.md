@@ -32,6 +32,9 @@ language](language.md) is the reference.
   `Unresolved: <question>` in the description, mark it `Approval: proposed`, and ask.
 - Write the explanation and the expectations together, then check, plan, generate and read
   the pages. See [Feature docs that explain](feature-docs.md).
+- Stories become tutorials, so they teach the feature: a real goal, the path a user would
+  take, how it works and how to read the result. Not a sequence of test steps. See
+  [What a story needs](feature-docs.md#what-a-story-needs).
 - Map the product's user goals to pages, tutorials, expectations and evidence, and list the
   gaps. `plan --coverage` covers the model, not the product.
 - Don't run a journey that trades, pays, posts or creates accounts until you know what it

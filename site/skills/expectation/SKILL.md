@@ -77,7 +77,9 @@ Story: Your first cup
 3. Write the explanation and the expectations together, then `expectation check`, then
    `expectation plan --coverage`, then `expectation docs`. Write the product workflow; keep mock
    providers and fixtures out of the main prose, but keep caveats that change what a reader can
-   conclude.
+   conclude. Each story becomes a tutorial: it follows a real user goal from where the reader
+   starts, explains how the feature works and how to read the result (units, what a number or
+   badge means), and covers what goes wrong on the way. It is not a sequence of test steps.
 4. Before running anything that trades, pays, posts or creates accounts, check what it changes,
    where it goes, and what isolates it. If you can't show it's isolated, don't run it.
 5. Audit: have a reviewer without your context read a rendered tutorial on its own; mark each

@@ -31,6 +31,26 @@ Enough detail that a reader needs no prior conversation; cut filler, not context
 `Set:`, `Shows:` on the vocabulary, and `Term:` for jargon. Model an outside service's health
 as a state so the unavailable case can be specified and tested.
 
+## For each story (it becomes a tutorial)
+
+A story teaches the feature; it is not a replay of test steps. Its introduction and steps say:
+
+1. The real goal and the situation, and where in the product the reader starts.
+2. The path a user with that goal would take, ending when the goal is met. Not a sequence that
+   exercises states (toggling a control back and forth); expectations and `plan --coverage`
+   do that.
+3. How the feature works: where the data comes from, what the product does and doesn't do.
+   Link the feature and `[[terms]]`.
+4. How to read what they see: units, what a row, number, dot or badge means, what to do next.
+5. The empty, late or failed case they're likely to meet on the way.
+6. Where they end up: the goal reached, as the reader sees it.
+
+A feature's page and stories together cover the whole feature, one story per main goal. Test:
+could a newcomer follow the tutorial alone and then explain the feature? If they could only
+repeat the taps, it's too thin.
+
+## The product, not the test rig
+
 Write the product workflow, not the test rig: social sign-in, not the mock OIDC server. Mock
 providers, fixtures, test accounts and driver limits go in the driver, vocabulary comments,
 test evidence or contributor docs. A `Say:` for something the user doesn't cause describes what

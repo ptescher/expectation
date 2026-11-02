@@ -31,8 +31,12 @@ expectation graph expectations > flow.mmd
 ## 3. Write stories as tutorials
 
 One goal per story, in the order a new user meets things. The narrative says who and why.
-The introduction is the tutorial's first paragraph. A story's Thens are what the reader
-should notice, not everything that's true; the expectations already check the rest.
+The introduction is the tutorial's first paragraph: the situation, how the feature works and
+how to read what the reader will see. A story follows the path a user with that goal would
+take, not a sequence that exercises states; that is what expectations and generated tests are
+for. A story's Thens are what the reader should notice, not everything that's true; the
+expectations already check the rest. [What a story needs](feature-docs.md#what-a-story-needs)
+has the full checklist.
 
 ```bash
 expectation plan expectations
