@@ -32,7 +32,13 @@ language](language.md) is the reference.
   `Unresolved: <question>` in the description, mark it `Approval: proposed`, and ask.
 - Write the explanation and the expectations together, then check, plan, generate and read
   the pages. See [Feature docs that explain](feature-docs.md).
-- Report assumptions, claims with no evidence, steps the driver can't do yet and open
-  decisions. "Not supported yet" is not "passing", and `Approval:` is separate from both
-  `Status: pending` and the test results.
+- Map the product's user goals to pages, tutorials, expectations and evidence, and list the
+  gaps. `plan --coverage` covers the model, not the product.
+- Don't run a journey that trades, pays, posts or creates accounts until you know what it
+  changes, where it goes and what isolates it. See [Safety preflight](feature-docs.md#safety-preflight).
+- Audit with a reader who lacks your context, and say for each claim whether it was observed,
+  simulated, only read in the source, or not shown at all.
+- Report three verdicts separately: the specification, the tests, and approval. "Not supported
+  yet" is not "passing", a passing test does not approve the prose, and `Approval:` is separate
+  from both `Status: pending` and the test results. See [Reporting](feature-docs.md#reporting).
 - A manual of just the agreed behaviour: `expectation docs <dir> <out> --approved-only`.

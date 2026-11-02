@@ -4,8 +4,9 @@ Suite: Smart kettle
 
 Vocabulary:
   # The price comes from an outside provider. The kettle can't control it, so its health is a state.
+  # The tests drive the feed through a test provider. That is the driver's business, not the
+  # reader's: the manual words these steps as what happens to the user, not how a test fakes it.
   State: the price feed is live | delayed | unavailable
-    Set: switch the test provider to {value}
     Shows: live: the price has a green dot
     Shows: delayed: the price has an amber dot and says when it was last updated
     Shows: unavailable: the price is replaced by the message "Prices unavailable" and a Retry button
@@ -16,13 +17,13 @@ Vocabulary:
   Event: the user asks for a cheap boil
     Say: fill the kettle, set the price you call cheap and tap Boil when cheap
   Event: the feed falls behind
-    Say: make the test provider send prices late
+    Say: the price provider starts sending prices late
   Event: the feed stops answering
-    Say: switch the test provider off
+    Say: the price provider stops answering
   Event: the feed answers again
-    Say: switch the test provider back on and tap Retry
+    Say: when the price provider is back, tap Retry
   Event: the price drops to the cheap rate
-    Say: have the test provider send a price at or below your cheap rate
+    Say: wait for the price to reach your cheap rate
 
   Term: Cheap rate
     The price per unit at or below which you want the kettle to boil. A cheap boil has one cheap rate.

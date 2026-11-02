@@ -13,6 +13,10 @@ reference: `book/src/language.md`.
 Inspect the product: code, UI, existing docs, tickets. Note what you can see and what you are
 assuming. Do not invent behaviour. If something is undecided, ask the user, or record it.
 
+Inventory the product's main user goals *from the product*, not from the suite, and keep a
+coverage map: goal → feature page → tutorial → expectations → evidence → gap. List goals with
+no page or only partial coverage.
+
 ## For each user-facing feature, the description says
 
 1. What it does, who uses it, and the task or decision it supports.
@@ -27,14 +31,39 @@ Enough detail that a reader needs no prior conversation; cut filler, not context
 `Set:`, `Shows:` on the vocabulary, and `Term:` for jargon. Model an outside service's health
 as a state so the unavailable case can be specified and tested.
 
+Write the product workflow, not the test rig: social sign-in, not the mock OIDC server. Mock
+providers, fixtures, test accounts and driver limits go in the driver, vocabulary comments,
+test evidence or contributor docs. A `Say:` for something the user doesn't cause describes what
+happens ("the provider stops answering"), not how the test fakes it. Keep material caveats on
+the page: "the sign-in tests use a stand-in provider; they don't show Google sign-in works".
+
 ## Workflow
 
 1. Write the explanation and the expectations and stories together.
 2. `expectation check <dir>` (fix errors, read warnings).
-3. `expectation plan <dir> --coverage` (a story or generated test for each `untested`).
-4. `expectation docs <dir> <out>`; read the feature pages and tutorials as a newcomer.
-5. Report: your assumptions, claims with no evidence, steps the driver can't do yet ("not
-   supported yet" is not "passing"), and open decisions. Don't present any as verified.
+3. `expectation plan <dir> --coverage` (a story or generated test for each `untested`). This is
+   coverage of the model, not of the product.
+4. Safety preflight before running or demoing anything that trades, pays, posts, follows,
+   notifies or creates an account: what can change, which environment/account/network receives
+   it, and what actually isolates it (check the code path). Not provably isolated → don't run
+   it; use a safe fixture or leave the step unbound ("not supported yet").
+5. `expectation docs <dir> <out>`.
+6. Zero-context read: a fresh reviewer without your context (e.g. a subagent given only the
+   rendered page and its screenshots) reads one tutorial on its own and answers: where do I
+   start; what do the numbers, units and symbols mean; what changed after each step; what can I
+   safely conclude, and what not; what do I do if it's empty or fails. Does it teach the goal,
+   or just walk a test? Fix the specs, not a note.
+7. Evidence pass: for each claim, is it observed (real run), simulated (fixture, mock, test
+   account, fake data: say which), source-inspected, unsupported, or none? Is saved evidence
+   stale (spec or UI changed since), or from a failed step? A screenshot proves what's in it,
+   not the whole page.
+8. Report three verdicts separately:
+   - specification: complete and readable? (coverage gaps, zero-context findings; `check` and
+     `plan --coverage` support this but don't decide it);
+   - tests: what ran, passed, failed, is unsupported, and observed vs simulated;
+   - approval/product status: approved, proposed, `Status: pending`, open decisions.
+   Also list assumptions and claims with no evidence. Don't present any as verified. A passing
+   test doesn't approve the prose; an approved spec doesn't prove the product works.
 
 ## Approval
 
