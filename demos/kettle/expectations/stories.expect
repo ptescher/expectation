@@ -27,9 +27,9 @@ Story: Keeping little hands off
   LOCK turns the child lock on and off, and the LOCK badge lights up while it is on. While it is
   on, the dial, START and PRESET do nothing, so a turned dial cannot start the kettle.
 
-  The lock stops the dial from reaching the kettle; it does not move the dial. If the dial is
-  still above 55 % when you unlock, the kettle starts as soon as the lock comes off. So bring
-  the dial down before you press LOCK again, as this tutorial does.
+  The lock stops the dial from reaching the kettle; it does not move the dial, which stays
+  where it was turned. So bring the dial down before you press LOCK again, as this tutorial
+  does, and the kettle stays off until you turn it up yourself.
 
   Scenario: Turn the dial with the lock on, then unlock and boil
     When the user presses lock
