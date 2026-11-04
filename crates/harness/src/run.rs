@@ -15,6 +15,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 pub struct RunOptions {
     /// Screenshots go to `<docs_dir>/screenshots/<plan>/<step>.<ext>`; `None` takes none.
     pub docs_dir: Option<PathBuf>,
+    /// Keep screenshots by content instead: each is named by its SHA-256 (`<store>/<hash>.png`)
+    /// and written only if no screenshot with the same content is there yet, so identical frames
+    /// are stored once and an unchanged test writes nothing new. The results name it
+    /// `screenshots/<hash>.png`; give the docs the store as their screenshots (`expectation docs
+    /// --screenshots <store>`), or make it the docs' own `screenshots/` directory. Screenshots
+    /// are taken when this or `docs_dir` is set.
+    pub screenshot_store: Option<PathBuf>,
     /// How many times to [`Driver::advance`] while waiting for a step's checks to hold.
     pub patience: u32,
     /// Ask the driver for its controls and which ones each test used (see
@@ -31,6 +38,7 @@ impl Default for RunOptions {
     fn default() -> Self {
         RunOptions {
             docs_dir: None,
+            screenshot_store: None,
             patience: 100,
             controls: true,
             attachments_dir: None,
@@ -293,12 +301,21 @@ fn run_steps(
         return r;
     }
 
-    let shots = opts.docs_dir.as_ref().map(|d| {
-        let dir = d.join("screenshots").join(&plan.slug);
-        let _ = std::fs::remove_dir_all(&dir);
-        dir
-    });
+    // Per test and step under the docs, replaced each run; or by content in a store.
+    let shots = match (&opts.screenshot_store, &opts.docs_dir) {
+        (Some(_), _) => None,
+        (None, Some(d)) => {
+            let dir = d.join("screenshots").join(&plan.slug);
+            let _ = std::fs::remove_dir_all(&dir);
+            Some(dir)
+        }
+        (None, None) => None,
+    };
     let shoot = |driver: &mut dyn Driver, n: usize| -> Option<String> {
+        if let Some(store) = &opts.screenshot_store {
+            let shot = driver.screenshot().ok()??;
+            return store_shot(store, &shot.bytes, shot.extension);
+        }
         let dir = shots.as_ref()?;
         let shot = driver.screenshot().ok()??;
         let name = format!("{n:02}.{}", shot.extension);
@@ -407,6 +424,24 @@ fn run_steps(
         run: None,
         attachments,
     }
+}
+
+/// Keep a screenshot in a content-addressed store: `<store>/<sha256>.<ext>`, written only when
+/// it isn't there already (through a temporary file, so a reader never sees half of one). Says
+/// how the results name it.
+fn store_shot(store: &std::path::Path, bytes: &[u8], ext: &str) -> Option<String> {
+    let name = format!("{}.{ext}", expectation_story::sha256::sha256_hex(bytes));
+    let path = store.join(&name);
+    if !path.is_file() {
+        std::fs::create_dir_all(store).ok()?;
+        // Unique to this write: parallel workers can take the same frame at once.
+        static WRITES: AtomicUsize = AtomicUsize::new(0);
+        let n = WRITES.fetch_add(1, Ordering::Relaxed);
+        let tmp = store.join(format!(".{name}.{}.{n}.tmp", std::process::id()));
+        std::fs::write(&tmp, bytes).ok()?;
+        std::fs::rename(&tmp, &path).ok()?;
+    }
+    Some(format!("screenshots/{name}"))
 }
 
 /// Save what the driver captured after step `n` of `plan`, under `dir/<run>/<plan>/<nn>/`, and

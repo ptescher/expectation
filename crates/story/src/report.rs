@@ -595,6 +595,22 @@ pub fn fingerprint(plan: &Plan) -> String {
     format!("{h:016x}")
 }
 
+/// The screenshots a results file names, by file name (`<hash>.png` for
+/// `screenshots/<hash>.png`), whatever test or step they are from.
+pub fn screenshots_named(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|l| {
+            let f: Vec<&str> = l.split('\t').collect();
+            match f.as_slice() {
+                ["step", _, _, _, shot, _] if *shot != "-" => {
+                    shot.rsplit('/').next().map(String::from)
+                }
+                _ => None,
+            }
+        })
+        .collect()
+}
+
 /// Every `*.tsv` results file in `dir` (one per driver that has run), merged and lined up
 /// with `plans`. Nothing there: nothing has run.
 pub fn load_results(dir: &std::path::Path, plans: &[Plan]) -> Report {

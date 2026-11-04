@@ -115,6 +115,62 @@ to, its verdict and the tests that cover it) are collapsed under "How this is te
 Generated coverage tests appear only in the test report. A step without a screenshot shows a
 "Not supported yet" or "No screenshot" placeholder.
 
+## Screenshots in large projects
+
+By default a run writes each step's screenshot to `screenshots/<test>/<step>.png` in the docs
+directory, replacing the last run's. That is simple, but every run rewrites every image. At
+2,000 tests of five steps that is around a gigabyte per platform, and none of it diffs.
+
+**Keep them by content instead.** Give the run a store:
+
+- `RunOptions { screenshot_store: Some(dir), .. }`;
+- `expectation-run --screenshot-store DIR`.
+
+Each screenshot is then named by its SHA-256 (`DIR/<hash>.png`) and written only if no
+screenshot with the same content is there yet. Identical frames across steps and runs are
+stored once, and an unchanged test writes no new file. The results name it
+`screenshots/<hash>.png`, the same kind of path as before, so older readers still work. Re-run
+unchanged tests and the results file is the same, apart from its `run` and `window` lines, which
+say which run it was and when each step ran (see [Evidence and contract coverage](evidence.md)).
+
+**Tell the docs where the store is** with `expectation docs --screenshots <dir|url>` (or
+`Acceptance::with_screenshots`; `expectation-run --screenshot-store` does both):
+
+- **A directory.** The screenshots the pages show are copied into the docs' `screenshots/`.
+- **A URL prefix**, for a store you sync to a bucket or keep as a CI artifact. The pages link to
+  `<prefix>/<hash>.png` and nothing is copied: `https://cdn.example.com/shots` makes
+  `screenshots/abc….png` into `https://cdn.example.com/shots/abc….png`. Images load lazily.
+
+A store can also be the docs' own `screenshots/` directory; then there is nothing to copy.
+
+**Thumbnails.** The state map's cards and the story cards show thumbnails when a tool can make
+them: ImageMagick (`magick`, or `mogrify` from version 6), or `sips` on macOS. Each is made once,
+as `screenshots/thumbs/<name>`, and again only when its screenshot changes. Without a tool, or
+with `EXPECTATION_THUMBNAILS=off`, the cards show the screenshots themselves. SVG screenshots
+need none, since the browser draws them at any size. With a URL prefix there are no thumbnails.
+
+**Prune** what no run names any more:
+
+```bash
+expectation screenshots prune DIR docs/results [more/results ...] [--dry-run]
+```
+
+It reads every results file in the directories given, every platform's, and removes the files
+in the store (and its `thumbs/`) that none of them names. It only touches files named by a hash,
+and with no results files at all it removes nothing.
+
+**What to commit.** Commit the specs and `results/*.tsv`. Don't commit the generated docs, the
+store, or thumbnails (`screenshots/thumbs/` is in this repository's `.gitignore`). Keep the store
+in a bucket or as a CI artifact, and build the docs from it with `--screenshots`.
+
+**Keep hashes stable.** A screenshot only matches the last run's if every pixel does:
+
+- hide or freeze clocks and anything else that shows the time;
+- turn off animations and the blinking caret;
+- use the same fonts, data, device and scale each run.
+
+A screenshot that changes on every run is stored again on every run.
+
 ## Markdown
 
 The Markdown has the same pages:

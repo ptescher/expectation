@@ -23,6 +23,7 @@ mod map;
 mod markdown;
 pub mod outline;
 mod states;
+mod thumbs;
 mod voice;
 
 use expectation_graph::Analysis;
@@ -64,6 +65,51 @@ pub struct Look<'a> {
     /// Width over height of the screenshots on the state map's cards (see [`parse_ratio`]);
     /// `None` keeps the built-in shape.
     pub shot_ratio: Option<f32>,
+    /// Where the screenshots the results name (`screenshots/…`) are.
+    pub screenshots: Screenshots<'a>,
+}
+
+/// Where the screenshots are that the results name as `screenshots/<rest>`.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum Screenshots<'a> {
+    /// In the docs directory's own `screenshots/`, as a run writes them by default.
+    #[default]
+    InDocs,
+    /// In a directory of their own (a content-addressed store, say): `screenshots/<rest>` is
+    /// `<dir>/<rest>`. The ones the pages show are copied into the docs' `screenshots/`.
+    Dir(&'a Path),
+    /// Behind a URL prefix (a bucket, a CI artifact): `screenshots/<rest>` is `<prefix>/<rest>`,
+    /// and the pages link there. Nothing is copied or checked, and there are no thumbnails.
+    Url(&'a str),
+}
+
+impl<'a> Screenshots<'a> {
+    /// A `--screenshots` value: a URL if it starts with `http://` or `https://`, else a directory.
+    pub fn parse(s: &'a str) -> Self {
+        if s.starts_with("http://") || s.starts_with("https://") {
+            Screenshots::Url(s)
+        } else {
+            Screenshots::Dir(Path::new(s))
+        }
+    }
+
+    /// Where a page one directory down links to the screenshot the results name `p`.
+    pub(crate) fn src(&self, p: &str) -> String {
+        match (self, p.strip_prefix("screenshots/")) {
+            (Screenshots::Url(prefix), Some(rest)) => {
+                format!("{}/{rest}", prefix.trim_end_matches('/'))
+            }
+            _ => format!("../{p}"),
+        }
+    }
+
+    /// The same for a small picture: its thumbnail if one was made, else the screenshot.
+    pub(crate) fn thumb(&self, thumbs: &std::collections::HashSet<String>, p: &str) -> String {
+        match p.strip_prefix("screenshots/") {
+            Some(rest) if thumbs.contains(rest) => format!("../{}{rest}", thumbs::DIR),
+            _ => self.src(p),
+        }
+    }
 }
 
 /// Where a custom stylesheet is written, relative to the docs directory.
@@ -252,16 +298,14 @@ impl Docs<'_> {
     /// that no longer exist are removed (only the generated kinds, in the folders this writes
     /// to); other files in the directory are left alone.
     pub fn write(&self, dir: &Path) -> std::io::Result<Vec<PathBuf>> {
-        // A screenshot the results name but the directory doesn't have (an interrupted run
-        // cleared it) is a placeholder, not a broken image.
+        // A screenshot the results name but nobody has (an interrupted run cleared it) is a
+        // placeholder, not a broken image. From a store, the ones the pages show are copied in.
         let checked = self.report.map(|r| {
             let mut r = r.clone();
             for result in &mut r.results {
                 for step in std::iter::once(&mut result.start).chain(&mut result.steps) {
-                    if step
-                        .screenshot
-                        .as_ref()
-                        .is_some_and(|p| !dir.join(p).exists())
+                    if let Some(p) = &step.screenshot
+                        && !self.have_shot(dir, p)
                     {
                         step.screenshot = None;
                     }
@@ -269,6 +313,17 @@ impl Docs<'_> {
             }
             r
         });
+        // Small copies for the state map's cards and the story cards, when a tool can make them.
+        let shown: Vec<&str> = checked
+            .iter()
+            .flat_map(|r| &r.results)
+            .flat_map(|r| std::iter::once(&r.start).chain(&r.steps))
+            .filter_map(|s| s.screenshot.as_deref())
+            .collect();
+        let thumbs = match self.look.screenshots {
+            Screenshots::Url(_) => Default::default(),
+            _ => thumbs::make(dir, &shown),
+        };
         // The given stylesheet, else the suite's own `theme.css`, so regenerating keeps the theme.
         let found = match (self.look.stylesheet, self.suite_dir) {
             (None, Some(d)) if d.join(SUITE_STYLESHEET).is_file() => Some(
@@ -288,7 +343,7 @@ impl Docs<'_> {
         std::fs::create_dir_all(dir)?;
         let source = self.suite_dir.and_then(|s| relative(dir, s));
         let mut written = vec![];
-        for page in docs.pages_with(source) {
+        for page in docs.pages_with(source, &thumbs) {
             let path = dir.join(&page.path);
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
@@ -306,7 +361,37 @@ impl Docs<'_> {
     }
 
     pub fn pages(&self) -> Vec<Page> {
-        self.pages_with(None)
+        self.pages_with(None, &Default::default())
+    }
+
+    /// Is the screenshot the results name `p` there to show? Taken from the store into `dir`
+    /// if it is in one.
+    fn have_shot(&self, dir: &Path, p: &str) -> bool {
+        let here = dir.join(p);
+        match self.look.screenshots {
+            Screenshots::InDocs => here.exists(),
+            Screenshots::Url(_) => true,
+            Screenshots::Dir(store) => {
+                let Some(rest) = p.strip_prefix("screenshots/") else {
+                    return here.exists();
+                };
+                let from = store.join(rest);
+                if !from.is_file() {
+                    return here.exists();
+                }
+                // Already copied, and the same size: content-addressed names don't change.
+                let same = std::fs::metadata(&here)
+                    .ok()
+                    .zip(std::fs::metadata(&from).ok())
+                    .is_some_and(|(a, b)| {
+                        a.len() == b.len() && a.modified().ok() >= b.modified().ok()
+                    });
+                same || here
+                    .parent()
+                    .is_some_and(|d| std::fs::create_dir_all(d).is_ok())
+                    && std::fs::copy(&from, &here).is_ok()
+            }
+        }
     }
 
     /// This manual's HTML pages, for the other platforms' dropdowns.
@@ -322,8 +407,13 @@ impl Docs<'_> {
         }
     }
 
-    /// The pages, with `source` the suite's directory relative to the docs directory.
-    fn pages_with(&self, source: Option<String>) -> Vec<Page> {
+    /// The pages, with `source` the suite's directory relative to the docs directory, and
+    /// `thumbs` the screenshots (`<rest>` of `screenshots/<rest>`) that have a thumbnail.
+    fn pages_with(
+        &self,
+        source: Option<String>,
+        thumbs: &std::collections::HashSet<String>,
+    ) -> Vec<Page> {
         let outline = outline::of(self);
         let docs = Docs {
             outline: outline.as_ref(),
@@ -331,6 +421,7 @@ impl Docs<'_> {
         };
         let mut facts = Facts::new(&docs);
         facts.source = source;
+        facts.thumbs = thumbs.clone();
         let mut pages = markdown::pages(&docs, &facts);
         pages.extend(html::pages(&docs, &facts));
         pages
@@ -347,6 +438,8 @@ struct Facts {
     status: Vec<Status>,
     /// The suite's directory relative to the docs directory, for "Edit this page" links.
     source: Option<String>,
+    /// The screenshots (`<rest>` of `screenshots/<rest>`) that have a thumbnail.
+    thumbs: std::collections::HashSet<String>,
 }
 
 impl Facts {
@@ -363,6 +456,7 @@ impl Facts {
             coverage: coverage(d.suite, d.plans),
             status,
             source: None,
+            thumbs: Default::default(),
         }
     }
 
@@ -660,7 +754,7 @@ Feature: Paying
             look,
         };
         docs.write(out).unwrap();
-        docs.pages_with(None)
+        docs.pages_with(None, &Default::default())
     }
 
     fn temp(name: &str) -> PathBuf {
@@ -918,7 +1012,12 @@ Feature: Paying
         {
             for part in p.content.split("href=\"").skip(1) {
                 let target = part.split(['"', '#', '?']).next().unwrap_or("");
-                if target.is_empty() || target.contains(':') || target.starts_with("../") {
+                // Outside the site, or a template the page's script fills in.
+                if target.is_empty()
+                    || target.contains(':')
+                    || target.starts_with("../")
+                    || target.contains("${")
+                {
                     continue;
                 }
                 assert!(

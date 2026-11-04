@@ -23,11 +23,17 @@ commands:
   plan  <dir> [--coverage]  print the acceptance tests the stories compile to
                             (--coverage adds generated tests for untested expectations)
   docs  <dir> <out-dir> [--approved-only] [--results <dir>] [--stylesheet <css>] [--state-shot-ratio <w:h>]
+        [--screenshots <dir|url>]
                             write the docs (Markdown and an HTML site), with the results runs
                             have saved in <out-dir>/results; --stylesheet restyles the site
                             with a CSS file, --state-shot-ratio shapes the state map's pictures;
                             --approved-only writes just what is marked `Approval: approved`
-                            (--results <dir> reads results from there, not <out-dir>/results)
+                            (--results <dir> reads results from there, not <out-dir>/results);
+                            --screenshots says where the screenshots are: a store directory
+                            (the ones shown are copied in) or a URL prefix the pages link to
+  screenshots prune <store> <results-dir>... [--dry-run]
+                            remove the screenshots in a content-addressed store that no
+                            results file in the given directories names, and their thumbnails
 ";
 
 struct Checked {
@@ -100,7 +106,11 @@ pub fn main() {
         })
     };
     let by = take("--by");
-    let look = (take("--stylesheet"), take("--state-shot-ratio"));
+    let look = (
+        take("--stylesheet"),
+        take("--state-shot-ratio"),
+        take("--screenshots"),
+    );
     let results = take("--results");
     let approved_only = args.iter().any(|a| a == "--approved-only");
     let flag = |f: &str| args.iter().any(|a| a == f);
@@ -164,6 +174,9 @@ pub fn main() {
             }
         }
         ["docs", dir, out] => docs(dir, out, look, approved_only, results),
+        ["screenshots", "prune", store, dirs @ ..] if !dirs.is_empty() => {
+            prune_screenshots(store, dirs, flag("--dry-run"))
+        }
         _ => {
             eprint!("{USAGE}");
             exit(2);
@@ -176,7 +189,7 @@ pub fn main() {
 fn docs(
     dir: &str,
     out: &str,
-    (stylesheet, ratio): (Option<String>, Option<String>),
+    (stylesheet, ratio, shots): (Option<String>, Option<String>, Option<String>),
     approved_only: bool,
     results: Option<String>,
 ) {
@@ -190,7 +203,16 @@ fn docs(
     let look = expectation_docs::Look {
         stylesheet: css.as_deref(),
         shot_ratio: ratio,
+        screenshots: shots
+            .as_deref()
+            .map_or_else(Default::default, expectation_docs::Screenshots::parse),
     };
+    if let Some(expectation_docs::Screenshots::Dir(d)) =
+        shots.as_deref().map(expectation_docs::Screenshots::parse)
+        && !d.is_dir()
+    {
+        fail(format!("--screenshots {}: no such directory", d.display()));
+    }
     let first = load(dir);
     let platforms = first.suite.platforms.clone();
     let names: Vec<Option<String>> = if platforms.is_empty() {
@@ -407,4 +429,73 @@ fn print_plan(s: &Suite, p: &Plan) {
         }
     }
     println!();
+}
+
+/// `expectation screenshots prune`: delete what a content-addressed store holds that no results
+/// file names. Only files named by a hash (`<64 hex>.<ext>`) are touched, in the store and its
+/// `thumbs/`; with no results files at all, nothing is.
+fn prune_screenshots(store: &str, dirs: &[&str], dry_run: bool) {
+    let mut named = std::collections::HashSet::new();
+    let mut files = 0;
+    for d in dirs {
+        for entry in std::fs::read_dir(d).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|e| e != "tsv")
+                || expectation_story::is_coverage_file(&path)
+            {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            if !text.starts_with("expectation-results ") {
+                continue;
+            }
+            files += 1;
+            named.extend(expectation_story::screenshots_named(&text));
+        }
+    }
+    if files == 0 {
+        eprintln!(
+            "error: no results files in {}, so nothing is pruned",
+            dirs.join(", ")
+        );
+        exit(2);
+    }
+    let hashed = |name: &str| {
+        name.split_once('.').is_some_and(|(stem, ext)| {
+            stem.len() == 64
+                && stem
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+                && !ext.is_empty()
+                && ext.bytes().all(|b| b.is_ascii_alphanumeric())
+        })
+    };
+    let (mut gone, mut kept, mut bytes) = (0, 0, 0u64);
+    let store = Path::new(store);
+    for dir in [store.to_path_buf(), store.join("thumbs")] {
+        for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !entry.path().is_file() || !hashed(&name) {
+                continue;
+            }
+            if named.contains(&name) {
+                kept += 1;
+                continue;
+            }
+            bytes += entry.metadata().map_or(0, |m| m.len());
+            gone += 1;
+            if dry_run {
+                println!("would remove {}", entry.path().display());
+            } else if let Err(e) = std::fs::remove_file(entry.path()) {
+                eprintln!("error: couldn't remove {}: {e}", entry.path().display());
+            }
+        }
+    }
+    println!(
+        "{} {gone} screenshots ({:.1} MB) that none of {files} results files names; kept {kept}",
+        if dry_run { "would remove" } else { "removed" },
+        bytes as f64 / 1_048_576.0
+    );
 }

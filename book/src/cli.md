@@ -90,6 +90,20 @@ error.
   command before anything is written.
 - `--state-shot-ratio <w:h>` sets the shape of the screenshots on the state map's cards, as
   width over height: `9:19.5` for a phone, `16:9`, or a number like `0.46`. Between 1:5 and 5:1.
+- `--screenshots <dir|url>` says where the screenshots are, for a run that kept them in a store
+  (see [Screenshots in large projects](manual.md#screenshots-in-large-projects)). Give a
+  directory and the ones the pages show are copied in. Give a URL prefix and the pages link
+  there.
+
+## screenshots prune
+
+```bash
+expectation screenshots prune <store> <results-dir>... [--dry-run]
+```
+
+Removes the screenshots in a content-addressed store, and their thumbnails, that no results file
+in the given directories names. Only files named by a hash are touched. With no results files it
+removes nothing and exits 2.
 
 ## In your own project
 

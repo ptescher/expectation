@@ -47,6 +47,8 @@ pub struct Acceptance {
     pub stylesheet: Option<String>,
     /// The shape of the state map's screenshots (see [`Acceptance::with_shot_ratio`]).
     pub shot_ratio: Option<f32>,
+    /// Where the docs find the screenshots (see [`Acceptance::with_screenshots`]).
+    pub screenshots: Option<String>,
 }
 
 impl Acceptance {
@@ -115,6 +117,7 @@ impl Acceptance {
             inventory: vec![],
             stylesheet: None,
             shot_ratio: None,
+            screenshots: None,
         })
     }
 
@@ -148,6 +151,14 @@ impl Acceptance {
     /// [`expectation_docs::parse_ratio`]).
     pub fn with_shot_ratio(mut self, ratio: f32) -> Self {
         self.shot_ratio = Some(ratio);
+        self
+    }
+
+    /// Where the docs find the screenshots the results name: a store directory (the
+    /// `RunOptions::screenshot_store` the tests ran with) or a URL prefix where it is served.
+    /// By default they are in the docs directory's own `screenshots/`.
+    pub fn with_screenshots(mut self, at: impl Into<String>) -> Self {
+        self.screenshots = Some(at.into());
         self
     }
 
@@ -192,6 +203,10 @@ impl Acceptance {
             look: expectation_docs::Look {
                 stylesheet: self.stylesheet.as_deref(),
                 shot_ratio: self.shot_ratio,
+                screenshots: self
+                    .screenshots
+                    .as_deref()
+                    .map_or_else(Default::default, expectation_docs::Screenshots::parse),
             },
         }
     }

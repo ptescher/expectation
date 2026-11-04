@@ -3,7 +3,7 @@
 //! ```text
 //! expectation-run <suite-dir> [--platform NAME] [--addr 127.0.0.1:4477] [--wait SECONDS]
 //!                 [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd "COMMAND"]
-//!                 [--attachments DIR]
+//!                 [--attachments DIR] [--screenshot-store DIR]
 //! ```
 //!
 //! It listens, waits for the app to say hello, runs every story and a generated test for each
@@ -13,6 +13,8 @@
 //! gets a path in `$1` and writes a PNG there (`xcrun simctl io booted screenshot "$1"`).
 //! `--attachments` keeps what the app captures during each step (a network log) in `DIR`, as
 //! `DIR/<run>/<plan>/<step>/<name>`; keep it outside `--docs`, which is for publishing.
+//! `--screenshot-store` keeps screenshots by content in `DIR` (`<sha256>.png`), so identical
+//! frames are stored once and unchanged tests write nothing new; the docs take them from there.
 //! Exits 1 if anything failed.
 
 use expectation_harness::{Acceptance, RunOptions, Screenshot};
@@ -24,7 +26,7 @@ use std::time::Duration;
 
 const USAGE: &str = "usage: expectation-run <suite-dir> [--platform NAME] [--addr HOST:PORT] [--wait SECONDS] \
                      [--command-timeout SECONDS] \
-                     [--stylesheet CSS] [--state-shot-ratio W:H] [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd COMMAND] [--attachments DIR]";
+                     [--stylesheet CSS] [--state-shot-ratio W:H] [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd COMMAND] [--attachments DIR] [--screenshot-store DIR]";
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -49,7 +51,7 @@ fn main() {
         None,
         None,
     );
-    let (mut stylesheet, mut ratio, mut attachments) = (None, None, None);
+    let (mut stylesheet, mut ratio, mut attachments, mut store) = (None, None, None, None);
     while let Some(a) = args.next() {
         let mut value = || {
             args.next()
@@ -92,6 +94,7 @@ fn main() {
             }
             "--screenshot-cmd" => shot = Some(value()),
             "--attachments" => attachments = Some(PathBuf::from(value())),
+            "--screenshot-store" => store = Some(value()),
             "-h" | "--help" => {
                 println!("{USAGE}");
                 return;
@@ -116,6 +119,9 @@ fn main() {
     }
     if let Some(r) = ratio {
         acceptance = acceptance.with_shot_ratio(r);
+    }
+    if let Some(s) = &store {
+        acceptance = acceptance.with_screenshots(s.clone());
     }
 
     let mut driver = RemoteDriver::listen(&addr)
@@ -158,6 +164,7 @@ fn main() {
         &RunOptions {
             docs_dir: tree,
             attachments_dir: attachments,
+            screenshot_store: store.map(PathBuf::from),
             ..Default::default()
         },
     );

@@ -246,7 +246,11 @@ pub fn html(
         );
         let (shot, plan) = match shots[i].first() {
             Some(sh) => (
-                paths.id(js(&sh.path)) as i64,
+                paths.id(format!(
+                    "[{},{}]",
+                    js(&d.look.screenshots.src(&sh.path)),
+                    js(&d.look.screenshots.thumb(&f.thumbs, &sh.path))
+                )) as i64,
                 tests.id(js(&test_link(sh.plan))) as i64,
             ),
             None => (-1, -1),
@@ -392,7 +396,7 @@ const SCRIPT: &str = r##"<script>
     let ty = 8;
     if (SHOTS) {
       inner += st[5] >= 0
-        ? `<image href="../${esc(D.p[st[5]])}" x="8" y="${ty}" width="${W - 16}" height="${THUMB}" preserveAspectRatio="xMidYMid slice"/>`
+        ? `<image href="${esc(D.p[st[5]][1])}" x="8" y="${ty}" width="${W - 16}" height="${THUMB}" preserveAspectRatio="xMidYMid slice"/>`
         : `<rect class="noshot" x="8" y="${ty}" width="${W - 16}" height="${THUMB}" rx="6"/><text class="hint" x="${W / 2}" y="${ty + THUMB / 2 + 4}">no screenshot</text>`;
       ty += THUMB + 10;
     }
@@ -524,8 +528,8 @@ const SCRIPT: &str = r##"<script>
     let html = `<h3>${esc(label(i))}</h3><p>${st[1] ? '<span class="badge ok">start</span>' : `<span class="badge idle">${lv} from the start</span>`}</p>`;
     if (st[4].length) html += `<ul class="facts">${st[4].map((f) => `<li>${esc(D.f[f][0])}</li>`).join("")}</ul>`;
     if (st[5] >= 0) {
-      const p = esc(D.p[st[5]]);
-      html += `<figure><a href="../${p}"><img src="../${p}" alt="${esc(label(i))}" loading="lazy"></a><figcaption>From ${D.t[st[6]]}</figcaption></figure>`;
+      const p = esc(D.p[st[5]][0]);
+      html += `<figure><a href="${p}"><img src="${p}" alt="${esc(label(i))}" loading="lazy"></a><figcaption>From ${D.t[st[6]]}</figcaption></figure>`;
     }
     const act = (k) => `<span class="act">${esc(D.a[D.m[k][2]])}</span>`;
     html += section("From here", outs[i].filter((k) => D.m[k][1] !== i).map((k) => `<li>${act(k)} → ${link(D.m[k][1])} ${rules(k)}</li>`));
