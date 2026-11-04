@@ -723,6 +723,27 @@ mod tests {
     use std::sync::Arc;
     use std::sync::Mutex;
 
+    /// Held by the tests that bind ports. Tests run in parallel, and Linux often hands the next
+    /// `bind(0)` the port another test has just let go of, so a test that frees a port to open it
+    /// later could find another test holding it.
+    static PORTS: Mutex<()> = Mutex::new(());
+
+    fn ports() -> std::sync::MutexGuard<'static, ()> {
+        PORTS.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// A port nothing listens on, below the ranges systems pick from for `bind(0)` and for the
+    /// local end of a connection (Linux 32768–60999, macOS and Windows 49152–65535): a port from
+    /// there could be handed to another socket meanwhile, or a connection to it could connect to
+    /// itself, and the test would see an answer from nothing.
+    fn quiet_port() -> u16 {
+        let offset = (std::process::id() % 5000) as u16;
+        (0..10_000u16)
+            .map(|i| 20_000 + (offset + i) % 10_000)
+            .find(|&p| TcpListener::bind(("127.0.0.1", p)).is_ok())
+            .expect("a free port between 20000 and 30000")
+    }
+
     /// A service that counts how it is used.
     #[derive(Clone, Default)]
     struct Fake {
@@ -916,11 +937,9 @@ mod tests {
     /// A command is a service when it can be run here; its readiness is a port answering.
     #[test]
     fn a_command_is_ready_when_its_port_answers() {
+        let _ports = ports();
         // The program opens its port a moment after it starts (here, a thread does).
-        let port = {
-            let l = TcpListener::bind("127.0.0.1:0").unwrap();
-            l.local_addr().unwrap().port()
-        };
+        let port = quiet_port();
         let opener = std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(400));
             let listener = TcpListener::bind(("127.0.0.1", port)).unwrap();
@@ -942,10 +961,7 @@ mod tests {
         opener.join().unwrap();
 
         // Nothing answers on a port that is closed: the wait ends, and says so.
-        let closed = {
-            let l = TcpListener::bind("127.0.0.1:0").unwrap();
-            l.local_addr().unwrap().port()
-        };
+        let closed = quiet_port();
         let slow = Command::new("slow", "sleep")
             .arg("30")
             .ready(Ready::Tcp(closed))
@@ -961,6 +977,7 @@ mod tests {
     /// is a leftover of an earlier run, and a test that talked to it would be testing that.
     #[test]
     fn a_port_somebody_else_holds_is_not_ours_to_wait_for() {
+        let _ports = ports();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let c = Command::new("server", "sleep")
