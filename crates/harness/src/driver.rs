@@ -41,6 +41,17 @@ impl Screenshot {
     }
 }
 
+/// A file the driver captured while a test ran: a network capture, a log, a trace. The runner
+/// saves it as it is, under the step it was taken after, and records where; it never reads it.
+/// What it holds is up to the driver, and so is keeping secrets out of it.
+pub struct Capture {
+    /// A file name: `network.har`. Anything but letters, digits, `.`, `_` and `-` is replaced.
+    pub name: String,
+    /// `application/json`, `application/har+json`, `text/plain`.
+    pub media_type: String,
+    pub bytes: Vec<u8>,
+}
+
 /// Something a plan needs the driver to do.
 #[derive(Clone, Copy, Debug)]
 pub enum Need<'a> {
@@ -139,6 +150,14 @@ pub trait Driver {
     /// since this was last called. The runner empties it after arranging the start, so setting
     /// a test up doesn't count as using the control, and reads it after every step.
     fn take_used(&mut self) -> Vec<String> {
+        vec![]
+    }
+
+    /// What the driver captured since this was last called (see [`Capture`]). The runner asks
+    /// after a test's start and after every step, so a capture belongs to the step before it,
+    /// and to the test's start for anything since the last test. It asks even when it has nowhere
+    /// to keep them, so a driver's buffer never grows past one step.
+    fn take_attachments(&mut self) -> Vec<Capture> {
         vec![]
     }
 

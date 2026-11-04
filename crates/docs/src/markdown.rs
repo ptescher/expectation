@@ -9,6 +9,7 @@ use crate::{
 use expectation_graph::Node;
 use expectation_model::text::paragraphs;
 use expectation_model::{ExpId, PhraseBody, SectionId, StepText, Suite};
+use expectation_story::{Attribution, Credit, State};
 use expectation_story::{
     Because, Check, CheckResult, ControlRow, Origin, Plan, Status, StepResult, Verdict,
 };
@@ -44,6 +45,16 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
         pages.push(Page {
             path: "interactions.json".into(),
             content: expectation_story::controls_json(d.suite, &controls, d.plans),
+        });
+    }
+    for (i, slug) in d.contract_slugs().into_iter().enumerate() {
+        pages.push(Page {
+            path: format!("contracts/{slug}.md"),
+            content: contract_page(d, i, &slug),
+        });
+        pages.push(Page {
+            path: format!("contracts/{slug}.json"),
+            content: d.contracts[i].json(d.plans),
         });
     }
     for i in 0..d.plans.len() {
@@ -645,6 +656,17 @@ fn report(d: &Docs, f: &Facts) -> String {
             controls.len()
         );
     }
+    for (c, slug) in d.contracts.iter().zip(d.contract_slugs()) {
+        let _ = writeln!(
+            o,
+            "**{}:** {} observed, {} not observed, {} unknown. See [{}](contracts/{slug}.md).\n",
+            cell(&c.contract.kind_or_default()),
+            c.count(State::Observed),
+            c.count(State::NotObserved),
+            c.count(State::Unknown),
+            cell(&c.contract.name)
+        );
+    }
     for section in &s.sections {
         let tests: Vec<usize> = (0..d.plans.len())
             .filter(|&i| d.plans[i].section == section.id)
@@ -972,7 +994,11 @@ fn test_page(d: &Docs, f: &Facts, i: usize) -> String {
         let _ = writeln!(o, "> {e}\n");
     }
 
-    let _ = writeln!(o, "## Start\n\n```gherkin\n{}```\n", start_lines(s, plan));
+    let _ = writeln!(
+        o,
+        "<a id=\"step-0\"></a>\n\n## Start\n\n```gherkin\n{}```\n",
+        start_lines(s, plan)
+    );
     step_body(
         d,
         &mut o,
@@ -980,10 +1006,12 @@ fn test_page(d: &Docs, f: &Facts, i: usize) -> String {
         result.map(|r| &r.start),
         f.status[i],
     );
+    step_evidence(d, &mut o, i, 0);
     for (n, step) in plan.steps.iter().enumerate() {
         let _ = writeln!(
             o,
-            "## {}. {}\n\n```gherkin\n{}```\n",
+            "<a id=\"step-{}\"></a>\n\n## {}. {}\n\n```gherkin\n{}```\n",
+            n + 1,
             n + 1,
             action_heading(&step.text),
             gherkin(&step.text)
@@ -999,8 +1027,250 @@ fn test_page(d: &Docs, f: &Facts, i: usize) -> String {
             result.and_then(|r| r.steps.get(n)),
             f.status[i],
         );
+        step_evidence(d, &mut o, i, n + 1);
     }
     o
+}
+
+/// The contract evidence that counts for a step, if any: what the step did, as the extension
+/// labelled it, and the contract it was held against.
+fn step_evidence(d: &Docs, o: &mut String, plan: usize, step: usize) {
+    let found = d.evidence_at(plan, step);
+    if found.is_empty() {
+        return;
+    }
+    let slugs = d.contract_slugs();
+    let _ = writeln!(o, "Evidence:\n");
+    for (c, e) in found {
+        let cov = &d.contracts[c];
+        let ev = &cov.contract.evidence[e];
+        let _ = writeln!(
+            o,
+            "- {} ({}, {}), in [{}](../contracts/{}.md)",
+            cell(&ev.label),
+            ev.source.name(),
+            ev.attribution.describe(),
+            cell(&cov.contract.name),
+            slugs[c]
+        );
+    }
+    o.push('\n');
+}
+
+/// Text from outside (an extension's labels) as Markdown that can't become markup: no tags,
+/// no links, no table breaks.
+fn cell(s: &str) -> String {
+    let mut o = String::new();
+    for c in s.chars() {
+        match c {
+            '<' => o.push_str("&lt;"),
+            '>' => o.push_str("&gt;"),
+            '&' => o.push_str("&amp;"),
+            '|' | '\\' | '`' | '*' | '_' | '[' | ']' | '#' => {
+                o.push('\\');
+                o.push(c);
+            }
+            c if c.is_control() => o.push(' '),
+            c => o.push(c),
+        }
+    }
+    o
+}
+
+/// "the test › start", or "› step 2", linked to the step in its test's page.
+fn step_link(d: &Docs, plan: usize, step: usize) -> String {
+    let p = &d.plans[plan];
+    let at = if step == 0 {
+        "start".to_string()
+    } else {
+        format!("step {step}")
+    };
+    format!(
+        "[{} › {at}](../tests/{}.md#step-{step})",
+        cell(&p.title),
+        p.slug
+    )
+}
+
+/// One contract, held against the evidence: what was seen, what wasn't, and what nobody can say.
+fn contract_page(d: &Docs, i: usize, slug: &str) -> String {
+    let cov = &d.contracts[i];
+    let c = &cov.contract;
+    let mut o = String::new();
+    let _ = writeln!(
+        o,
+        "{GENERATED}\n\n[{}](../README.md) › [Test report](../tests.md)\n\n# {}\n",
+        d.suite.name,
+        cell(&c.name)
+    );
+    let mut about = vec![cell(&c.kind_or_default())];
+    if !c.revision.is_empty() {
+        about.push(format!("revision {}", cell(&c.revision)));
+    }
+    about.push(format!("from {}", cell(&c.file)));
+    let _ = writeln!(o, "{}\n", about.join(" · "));
+    let _ = writeln!(
+        o,
+        "What the contract describes, held against the evidence the tests left. **Observed**: a test that ran saw it. \
+         **Not observed**: every run's capture was complete and no test saw it, so it may deserve a story; it is a \
+         candidate for review, not a failure. **Unknown**: nobody can tell, and the note says why. Evidence only counts \
+         for the run its results are from, and none of this changes any test's result. Machine-readable: \
+         [{slug}.json]({slug}.json).\n"
+    );
+    let _ = writeln!(
+        o,
+        "**{} outcomes:** {} observed, {} not observed, {} unknown.\n",
+        cov.count(State::Observed) + cov.count(State::NotObserved) + cov.count(State::Unknown),
+        cov.count(State::Observed),
+        cov.count(State::NotObserved),
+        cov.count(State::Unknown)
+    );
+    if !cov.runs.is_empty() {
+        let runs: Vec<String> = cov
+            .runs
+            .iter()
+            .map(|(id, how)| format!("`{}` ({})", id.replace('`', ""), completeness(*how)))
+            .collect();
+        let _ = writeln!(o, "**Runs:** {}.\n", runs.join(", "));
+    }
+    for group in cov.groups() {
+        if c.excluded.iter().any(|(g, _)| g == group) {
+            continue;
+        }
+        let _ = writeln!(
+            o,
+            "## {}\n\n| Outcome | State | Evidence | Note |\n| --- | --- | --- | --- |",
+            cell(group)
+        );
+        for (n, (item, j)) in c.items.iter().zip(&cov.judged).enumerate() {
+            if item.group != group || cov.excluded(n) {
+                continue;
+            }
+            let outcome = if item.location.is_empty() {
+                cell(&item.label)
+            } else {
+                format!("{}<br>{}", cell(&item.label), cell(&item.location))
+            };
+            let evidence: Vec<String> =
+                j.by.iter()
+                    .take(5)
+                    .map(|&e| evidence_link(d, cov, e))
+                    .chain((j.by.len() > 5).then(|| format!("{} more", j.by.len() - 5)))
+                    .collect();
+            let _ = writeln!(
+                o,
+                "| {outcome} | {} | {} | {} |",
+                state_label(j.state),
+                if evidence.is_empty() {
+                    "—".into()
+                } else {
+                    evidence.join("<br>")
+                },
+                cell(&j.why)
+            );
+        }
+        o.push('\n');
+    }
+    let notes = |o: &mut String, title: &str, intro: &str, notes: &[expectation_story::Note]| {
+        if notes.is_empty() {
+            return;
+        }
+        let _ = writeln!(o, "## {title}\n\n{intro}\n");
+        for n in notes {
+            let mut line = cell(&n.label);
+            if !n.group.is_empty() {
+                line = format!("{} — {line}", cell(&n.group));
+            }
+            if !n.reason.is_empty() {
+                line = format!("{line}: {}", cell(&n.reason));
+            }
+            let seen = match cov.evidence(&n.evidence) {
+                Some((_, credit)) => match credit.why_not() {
+                    None => {
+                        let idx = c.evidence.iter().position(|e| e.id == n.evidence).unwrap();
+                        evidence_link(d, cov, idx)
+                    }
+                    Some(why) => format!("evidence {why}"),
+                },
+                None => "no evidence listed".into(),
+            };
+            let _ = writeln!(o, "- {line} ({seen})");
+        }
+        o.push('\n');
+    };
+    notes(
+        &mut o,
+        "Seen, but not in the contract",
+        "Outcomes the tests saw that the contract doesn't describe.",
+        &c.undocumented,
+    );
+    notes(
+        &mut o,
+        "Matched nothing in the contract",
+        "What the evidence holds that the extension couldn't place in the contract.",
+        &c.unmatched,
+    );
+    let mut uncounted: Vec<(&'static str, usize)> = vec![];
+    for credit in &cov.credit {
+        if let Some(why) = credit.why_not() {
+            match uncounted.iter_mut().find(|(w, _)| *w == why) {
+                Some((_, n)) => *n += 1,
+                None => uncounted.push((why, 1)),
+            }
+        }
+    }
+    if !uncounted.is_empty() {
+        let _ = writeln!(o, "## Evidence that doesn't count\n");
+        for (why, n) in uncounted {
+            let _ = writeln!(o, "- {n} {why}");
+        }
+        o.push('\n');
+    }
+    if !c.excluded.is_empty() {
+        let _ = writeln!(o, "## Left out of the count\n");
+        for (g, why) in &c.excluded {
+            let _ = writeln!(o, "- {}: {}", cell(g), cell(why));
+        }
+        o.push('\n');
+    }
+    if !c.problems.is_empty() {
+        let _ = writeln!(o, "## Lines of the coverage file left out\n");
+        for p in &c.problems {
+            let _ = writeln!(o, "- {}", cell(p));
+        }
+        o.push('\n');
+    }
+    o
+}
+
+fn evidence_link(d: &Docs, cov: &expectation_story::Coverage, e: usize) -> String {
+    let ev = &cov.contract.evidence[e];
+    let place = match cov.credit[e] {
+        Credit::Counts { plan, step } => step_link(d, plan, step),
+        _ => "no test".into(),
+    };
+    let mut how = vec![ev.source.name()];
+    if !matches!(ev.attribution, Attribution::Declared | Attribution::Timed) {
+        how.push(ev.attribution.describe());
+    }
+    format!("{place} ({})", how.join(", "))
+}
+
+fn state_label(s: State) -> &'static str {
+    match s {
+        State::Observed => "✅ observed",
+        State::NotObserved => "🔎 not observed",
+        State::Unknown => "❔ unknown",
+    }
+}
+
+fn completeness(how: Option<expectation_story::Completeness>) -> &'static str {
+    match how {
+        Some(expectation_story::Completeness::Yes) => "complete capture",
+        Some(expectation_story::Completeness::Partial) => "partial capture",
+        Some(expectation_story::Completeness::No) => "no capture",
+        None => "nothing says how complete",
+    }
 }
 
 /// The state a test starts from, one line per state: what it arranges on top of its section's

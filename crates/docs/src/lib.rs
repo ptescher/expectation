@@ -47,6 +47,9 @@ pub struct Docs<'a> {
     /// Controls an integration says exist, so one that no run reached still shows in the
     /// interaction coverage.
     pub inventory: &'a [expectation_story::Control],
+    /// Contracts that extensions held the evidence of these results against (see
+    /// [`expectation_story::coverage`](mod@expectation_story::coverage)), each judged against `report`. One page each.
+    pub contracts: &'a [expectation_story::Coverage],
     /// How the HTML site looks beyond its built-in theme.
     pub look: Look<'a>,
 }
@@ -162,14 +165,16 @@ pub const NO_SCREENSHOT: &str = "site/assets/no-screenshot.svg";
 /// Removes the pages an earlier run wrote that this one did not: a renamed feature or story
 /// would otherwise leave its old page in the manual's folders.
 fn prune(dir: &Path, written: &[PathBuf]) -> std::io::Result<()> {
-    let kinds: [(&str, &str, &[&str]); 4] = [
+    let kinds: [(&str, &str, &[&str]); 6] = [
         ("features", "md", &[""]),
         ("tutorials", "md", &[""]),
         ("tests", "md", &[""]),
+        ("contracts", "md", &[""]),
+        ("contracts", "json", &[""]),
         (
             "site",
             "html",
-            &["feature-", "section-", "test-", "tutorial-"],
+            &["feature-", "section-", "test-", "tutorial-", "contract-"],
         ),
     ];
     for (sub, ext, prefixes) in kinds {
@@ -200,6 +205,39 @@ impl Docs<'_> {
             }
             None => vec![],
         }
+    }
+
+    /// Each contract's slug, for its pages: from its name, with a number when two share one.
+    pub fn contract_slugs(&self) -> Vec<String> {
+        let mut out: Vec<String> = vec![];
+        for c in self.contracts {
+            let base = match expectation_model::text::slug(&c.contract.name) {
+                s if s.is_empty() => "contract".to_string(),
+                s => s,
+            };
+            let mut slug = base.clone();
+            let mut n = 1;
+            while out.contains(&slug) {
+                n += 1;
+                slug = format!("{base}-{n}");
+            }
+            out.push(slug);
+        }
+        out
+    }
+
+    /// The evidence that counts for step `step` of plan `plan` (0 is its start), as
+    /// (contract, evidence) indices.
+    pub fn evidence_at(&self, plan: usize, step: usize) -> Vec<(usize, usize)> {
+        let mut out = vec![];
+        for (c, cov) in self.contracts.iter().enumerate() {
+            for (e, credit) in cov.credit.iter().enumerate() {
+                if *credit == (expectation_story::Credit::Counts { plan, step }) {
+                    out.push((c, e));
+                }
+            }
+        }
+        out
     }
 
     /// Write the Markdown pages and the HTML site under `dir`. Pages of stories or features
@@ -494,6 +532,7 @@ mod tests {
             siblings: &[],
             outline: None,
             inventory: &[],
+            contracts: &[],
             look: Look::default(),
         };
         let pages = docs.pages();
@@ -608,6 +647,7 @@ Feature: Paying
             siblings: &[],
             outline: None,
             inventory: &[],
+            contracts: &[],
             look,
         };
         docs.write(out).unwrap();
@@ -697,6 +737,7 @@ Feature: Paying
             siblings: &[],
             outline: None,
             inventory: &[],
+            contracts: &[],
             look: Look::default(),
         };
         assert!(
@@ -793,6 +834,7 @@ Feature: Paying
             siblings: &[],
             outline: None,
             inventory: &[],
+            contracts: &[],
             look: Look::default(),
         }
         .pages()

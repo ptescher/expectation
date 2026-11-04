@@ -107,6 +107,14 @@ counted separately, and a control used only by tests that failed is not shown as
 list is what the driver reported, not proof that nothing else is on screen. Turn it off with
 `RunOptions { controls: false, .. }` if listing is slow.
 
+## Attachments
+
+A driver can hand over files it captured during each step, such as a network log, with
+`Bindings::on_attachments` or `Driver::take_attachments`. With
+`RunOptions { attachments_dir: Some(dir), .. }` the runner keeps them per run, test and step.
+Extensions use them to report which outcomes of a contract the tests saw. See
+[Evidence and contract coverage](evidence.md).
+
 ## The Driver trait
 
 For full control, implement `Driver` yourself. Only `set`, `perform` and `observe` are
@@ -159,7 +167,9 @@ suite, and the manual shows both. `expectation docs` rebuilds the docs from save
 without running anything.
 
 Results are keyed by each test's name and a fingerprint of its plan, so results saved for an
-older version of a test are ignored, not misapplied.
+older version of a test are ignored, not misapplied. Each result also records the id of the run
+it came from and when each step ran, so evidence gathered outside the run can be matched to it
+(see [Evidence and contract coverage](evidence.md)).
 
 ## Running in parallel
 

@@ -1,18 +1,24 @@
 //! User stories as acceptance tests: [`plan`] compiles stories (and generated coverage
-//! routes) into test plans, and [`report`] holds what happened when they ran.
+//! routes) into test plans, [`report`] holds what happened when they ran, and [`coverage`](mod@coverage)
+//! reads what extensions made of the evidence those runs left, held to the results.
 
 pub mod controls;
+pub mod coverage;
 pub mod plan;
 pub mod report;
 
 pub use controls::{Control, ControlRow, Gap, control_coverage, controls_json};
+pub use coverage::{
+    Attribution, Completeness, Contract, Coverage, Credit, Evidence, Item, Judged, Note, Source,
+    State, coverage_file, is_coverage_file, load_contracts_for,
+};
 pub use plan::{
     Because, Check, Origin, Plan, PlanStep, Planned, coverage, coverage_plans, plan_stories,
     reaching_plans, untested, visit_plans,
 };
 pub use report::{
-    CheckResult, PlanResult, Report, Status, StepResult, Verdict, fingerprint, load_results,
-    load_results_for, results_file,
+    Attachment, CheckResult, PlanResult, Report, Run, Status, StepResult, Verdict, Window,
+    fingerprint, load_results, load_results_for, now_ms, results_file,
 };
 
 #[cfg(test)]

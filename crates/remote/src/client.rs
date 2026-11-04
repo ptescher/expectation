@@ -48,6 +48,8 @@ pub enum Command {
     Controls,
     /// Which controls `Set` and `Perform` acted on since this was last asked.
     Used,
+    /// What the app captured since this was last asked.
+    Attachments,
 }
 
 /// What the app answers.
@@ -60,6 +62,16 @@ pub enum Reply {
     Controls(Vec<Control>),
     /// `(view, id)` of each control used.
     Used(Vec<(String, String)>),
+    Attachments(Vec<Attached>),
+}
+
+/// A file the app captured: a network log, a trace. Sent as text when it is UTF-8, else as
+/// base64. Keep secrets out of it: the runner saves it as it is.
+#[derive(Clone, Debug)]
+pub struct Attached {
+    pub name: String,
+    pub media_type: String,
+    pub bytes: Vec<u8>,
 }
 
 /// A command waiting for its answer. Answer every one, or the runner times out.
@@ -192,6 +204,24 @@ fn run(addr: &str, hello: &App, requests: &Sender<Request>) {
                             .collect(),
                     ),
                 )),
+                Ok(Reply::Attachments(list)) => body.push((
+                    "attachments",
+                    Json::Arr(
+                        list.into_iter()
+                            .map(|a| {
+                                let content = match String::from_utf8(a.bytes) {
+                                    Ok(text) => ("text", Json::Str(text)),
+                                    Err(e) => ("base64", Json::Str(base64_encode(e.as_bytes()))),
+                                };
+                                Json::obj([
+                                    ("name", Json::Str(a.name)),
+                                    ("type", Json::Str(a.media_type)),
+                                    content,
+                                ])
+                            })
+                            .collect(),
+                    ),
+                )),
                 Err(e) => body.push(("error", Json::Str(e))),
             }
             let posted = http::request(
@@ -239,6 +269,7 @@ fn parse(c: &Json) -> Result<Command, String> {
         Some("screenshot") => Command::Screenshot,
         Some("controls") => Command::Controls,
         Some("used") => Command::Used,
+        Some("attachments") => Command::Attachments,
         other => return Err(format!("unknown command {other:?}")),
     })
 }
@@ -249,6 +280,7 @@ type Action<W> = Box<dyn Fn(&mut W) + Send>;
 type Lister<W> = Box<dyn Fn(&W) -> Vec<Control> + Send>;
 type Taker<W> = Box<dyn Fn(&mut W) -> Vec<(String, String)> + Send>;
 type Shooter<W> = Box<dyn Fn(&W) -> Result<Reply, String> + Send>;
+type Capturer<W> = Box<dyn Fn(&mut W) -> Vec<Attached> + Send>;
 
 /// The vocabulary bound to an app of type `W`, one closure per term, like
 /// `expectation_harness::Bindings` but on the app's side of the wire.
@@ -261,6 +293,7 @@ pub struct Handlers<W> {
     screenshot: Option<Shooter<W>>,
     controls: Option<Lister<W>>,
     used: Option<Taker<W>>,
+    attachments: Option<Capturer<W>>,
 }
 
 impl<W> Default for Handlers<W> {
@@ -274,6 +307,7 @@ impl<W> Default for Handlers<W> {
             screenshot: None,
             controls: None,
             used: None,
+            attachments: None,
         }
     }
 }
@@ -334,6 +368,13 @@ impl<W> Handlers<W> {
         self
     }
 
+    /// What the app captured since the last call, which it empties: the runner asks after a
+    /// test's start and after every step.
+    pub fn on_attachments(mut self, f: impl Fn(&mut W) -> Vec<Attached> + Send + 'static) -> Self {
+        self.attachments = Some(Box::new(f));
+        self
+    }
+
     /// The hello that tells the runner what these handlers can do.
     pub fn hello(&self, platform: &str, app: &str) -> App {
         let names = |v: Vec<&String>| v.into_iter().cloned().collect();
@@ -347,6 +388,7 @@ impl<W> Handlers<W> {
             screenshot: self.screenshot.is_some(),
             reset: self.reset.is_some(),
             controls: self.controls.is_some(),
+            attachments: self.attachments.is_some(),
         }
     }
 
@@ -388,6 +430,12 @@ impl<W> Handlers<W> {
                 return match &self.used {
                     Some(f) => Ok(Reply::Used(f(world))),
                     None => Err("this app doesn't track which controls it used".into()),
+                };
+            }
+            Command::Attachments => {
+                return match &self.attachments {
+                    Some(f) => Ok(Reply::Attachments(f(world))),
+                    None => Err("this app captures nothing".into()),
                 };
             }
             Command::Screenshot => {

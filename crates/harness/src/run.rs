@@ -4,7 +4,8 @@ use crate::driver::{Driver, Need, Progress};
 use crate::service::Services;
 use expectation_model::{Suite, Trigger};
 use expectation_story::{
-    Check, CheckResult, Control, Plan, PlanResult, Report, Status, StepResult,
+    Attachment, Check, CheckResult, Control, Plan, PlanResult, Report, Run, Status, StepResult,
+    Window, now_ms,
 };
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -20,6 +21,10 @@ pub struct RunOptions {
     /// [`Driver::controls`]). Cheap for a driver that has none; a driver that walks a UI tree can
     /// turn it off.
     pub controls: bool,
+    /// Where to keep what the driver captures ([`Driver::take_attachments`]), as
+    /// `<dir>/<run>/<plan>/<step>/<name>`; `None` keeps nothing. Keep it out of the docs
+    /// directory: a capture can hold what a manual must not publish.
+    pub attachments_dir: Option<PathBuf>,
 }
 
 impl Default for RunOptions {
@@ -28,16 +33,18 @@ impl Default for RunOptions {
             docs_dir: None,
             patience: 100,
             controls: true,
+            attachments_dir: None,
         }
     }
 }
 
 pub fn run(suite: &Suite, plans: &[Plan], driver: &mut dyn Driver, opts: &RunOptions) -> Report {
     let mut launched = None;
+    let run = Run::start();
     Report {
         results: plans
             .iter()
-            .map(|p| run_plan(suite, p, driver, opts, &mut launched))
+            .map(|p| run_plan(suite, p, driver, opts, &mut launched, &run))
             .collect(),
     }
 }
@@ -53,10 +60,11 @@ pub fn run_with(
     services: &mut Services,
 ) -> Report {
     let mut launched = None;
+    let run = Run::start();
     Report {
         results: plans
             .iter()
-            .map(|plan| run_served(suite, plan, driver, opts, services, &mut launched))
+            .map(|plan| run_served(suite, plan, driver, opts, services, &mut launched, &run))
             .collect(),
     }
 }
@@ -98,6 +106,9 @@ where
     F: Fn(usize) -> Worker + Sync,
 {
     let next = AtomicUsize::new(0);
+    // One run, however many workers it has.
+    let run = Run::start();
+    let run = &run;
     let done: Mutex<Vec<(usize, PlanResult)>> = Mutex::new(Vec::with_capacity(plans.len()));
     std::thread::scope(|scope| {
         for n in 0..workers.clamp(1, plans.len().max(1)) {
@@ -117,6 +128,7 @@ where
                         opts,
                         &mut w.services,
                         &mut launched,
+                        run,
                     );
                     done.lock().unwrap().push((i, result));
                 }
@@ -137,9 +149,10 @@ fn run_served(
     opts: &RunOptions,
     services: &mut Services,
     launched: &mut Option<String>,
+    run: &Run,
 ) -> PlanResult {
     if let Some(r) = pending(suite, plan) {
-        return r;
+        return ran_in(r, run);
     }
     let needs = driver.needs();
     let names: Vec<&str> = needs.iter().map(String::as_str).collect();
@@ -153,11 +166,11 @@ fn run_served(
         },
         |_| Ok(()),
     ) {
-        Ok(()) => run_plan(suite, plan, driver, opts, launched),
+        Ok(()) => run_plan(suite, plan, driver, opts, launched, run),
         Err(why) => {
             let mut r = PlanResult::with(Status::Unsupported, plan);
             r.start.error = Some(format!("It needs {why}."));
-            r
+            ran_in(r, run)
         }
     }
 }
@@ -248,20 +261,29 @@ fn run_plan(
     driver: &mut dyn Driver,
     opts: &RunOptions,
     launched: &mut Option<String>,
+    run: &Run,
+) -> PlanResult {
+    ran_in(run_steps(suite, plan, driver, opts, launched, run), run)
+}
+
+/// A result, marked with the run it came from.
+fn ran_in(mut r: PlanResult, run: &Run) -> PlanResult {
+    r.run = Some(run.clone());
+    r
+}
+
+fn run_steps(
+    suite: &Suite,
+    plan: &Plan,
+    driver: &mut dyn Driver,
+    opts: &RunOptions,
+    launched: &mut Option<String>,
+    run: &Run,
 ) -> PlanResult {
     let failed = |error: String| StepResult {
         status: Status::Failed,
-        checks: vec![],
-        screenshot: None,
         error: Some(error),
-        polls: 0,
-    };
-    let skip_all = |start: StepResult| PlanResult {
-        status: Status::Failed,
-        start,
-        steps: plan.steps.iter().map(|_| StepResult::skipped()).collect(),
-        controls: vec![],
-        used: vec![],
+        ..StepResult::with(Status::Failed)
     };
 
     if let Some(r) = pending(suite, plan) {
@@ -284,17 +306,45 @@ fn run_plan(
         std::fs::write(dir.join(&name), &shot.bytes).ok()?;
         Some(format!("screenshots/{}/{name}", plan.slug))
     };
+    let mut attachments = vec![];
+    let mut keep = |driver: &mut dyn Driver, n: usize| {
+        let taken = driver.take_attachments();
+        if let Some(dir) = &opts.attachments_dir {
+            attachments.extend(save_captures(dir, run, &plan.slug, n, taken));
+        }
+    };
+    let skip_all = |start: StepResult, attachments: Vec<Attachment>| PlanResult {
+        status: Status::Failed,
+        start,
+        steps: plan.steps.iter().map(|_| StepResult::skipped()).collect(),
+        controls: vec![],
+        used: vec![],
+        run: None,
+        attachments,
+    };
 
     if let Some(how) = suite.launch_of(plan.section)
         && launched.as_deref() != Some(how)
     {
         if let Err(e) = driver.launch(how) {
-            return skip_all(failed(format!("couldn't launch: {e}")));
+            return skip_all(failed(format!("couldn't launch: {e}")), vec![]);
         }
         *launched = Some(how.to_string());
     }
+    let began = now_ms();
+    let setup_failed =
+        |error: String, driver: &mut dyn Driver, keep: &mut dyn FnMut(&mut dyn Driver, usize)| {
+            let mut start = failed(error);
+            start.window = Some(Window {
+                start_ms: began,
+                end_ms: now_ms(),
+            });
+            keep(driver, 0);
+            start
+        };
     if let Err(e) = driver.reset() {
-        return skip_all(failed(format!("couldn't reset: {e}")));
+        let start = setup_failed(format!("couldn't reset: {e}"), driver, &mut keep);
+        return skip_all(start, attachments);
     }
     for (x, c) in plan.start.iter() {
         let var = suite.vocabulary.var(x);
@@ -302,7 +352,9 @@ fn run_plan(
             .witness(c)
             .expect("plans only arrange satisfiable states");
         if let Err(e) = driver.arrange(var, &value) {
-            return skip_all(failed(format!("couldn't arrange {}: {e}", var.describe(c))));
+            let error = format!("couldn't arrange {}: {e}", var.describe(c));
+            let start = setup_failed(error, driver, &mut keep);
+            return skip_all(start, attachments);
         }
     }
     driver.settle();
@@ -313,6 +365,11 @@ fn run_plan(
     seen.look(driver);
     let mut start = observe(suite, driver, &plan.start_checks, opts.patience);
     start.screenshot = shoot(driver, 0);
+    start.window = Some(Window {
+        start_ms: began,
+        end_ms: now_ms(),
+    });
+    keep(driver, 0);
 
     let mut ok = start.status == Status::Passed;
     let mut steps = vec![];
@@ -321,6 +378,7 @@ fn run_plan(
             steps.push(StepResult::skipped());
             continue;
         }
+        let began = now_ms();
         let acted = act(suite, driver, &step.action);
         seen.take(driver);
         let mut r = match acted {
@@ -332,6 +390,11 @@ fn run_plan(
             Err(e) => failed(e),
         };
         r.screenshot = shoot(driver, n + 1);
+        r.window = Some(Window {
+            start_ms: began,
+            end_ms: now_ms(),
+        });
+        keep(driver, n + 1);
         ok = r.status == Status::Passed;
         steps.push(r);
     }
@@ -341,6 +404,71 @@ fn run_plan(
         steps,
         controls: seen.controls,
         used: seen.used,
+        run: None,
+        attachments,
+    }
+}
+
+/// Save what the driver captured after step `n` of `plan`, under `dir/<run>/<plan>/<nn>/`, and
+/// say where. A capture that can't be written is left out rather than failing the test: it is
+/// evidence about the run, not part of it.
+fn save_captures(
+    dir: &std::path::Path,
+    run: &Run,
+    plan: &str,
+    n: usize,
+    captures: Vec<crate::driver::Capture>,
+) -> Vec<Attachment> {
+    let rel = format!("{}/{plan}/{n:02}", safe_name(&run.id));
+    let mut names: Vec<String> = vec![];
+    let mut out = vec![];
+    for c in captures {
+        let mut name = safe_name(&c.name);
+        let stem = name.clone();
+        let mut i = 1;
+        while names.contains(&name) {
+            i += 1;
+            name = format!("{i}-{stem}");
+        }
+        let folder = dir.join(&rel);
+        if std::fs::create_dir_all(&folder).is_err()
+            || std::fs::write(folder.join(&name), &c.bytes).is_err()
+        {
+            continue;
+        }
+        out.push(Attachment {
+            step: n,
+            media_type: c.media_type.replace(['\t', '\n', '\r'], " "),
+            path: format!("{rel}/{name}"),
+        });
+        names.push(name);
+    }
+    out
+}
+
+/// A file name that stays where it is put: the last part of a path, in letters, digits, `.`,
+/// `_` and `-`, with no `..`, not starting with a dot, at most 100 characters.
+fn safe_name(name: &str) -> String {
+    let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
+    let mut clean: String = base
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .take(100)
+        .collect();
+    while clean.contains("..") {
+        clean = clean.replace("..", ".");
+    }
+    let clean = clean.trim_start_matches('.').to_string();
+    if clean.is_empty() {
+        "attachment".into()
+    } else {
+        clean
     }
 }
 
@@ -435,9 +563,8 @@ fn observe(suite: &Suite, driver: &mut dyn Driver, checks: &[Check], patience: u
             return StepResult {
                 status,
                 checks: results,
-                screenshot: None,
-                error: None,
                 polls,
+                ..StepResult::with(status)
             };
         }
     }

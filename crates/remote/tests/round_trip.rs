@@ -38,6 +38,8 @@ struct Turnstile {
     unlocked: bool,
     coins: u32,
     used: Vec<(String, String)>,
+    /// What it sent its server since it was last asked, as a network log would say.
+    log: Vec<String>,
 }
 
 fn handlers(broken: bool) -> Handlers<Turnstile> {
@@ -52,11 +54,13 @@ fn handlers(broken: bool) -> Handlers<Turnstile> {
         .arrange("the coin box", |t, v| t.coins = v.as_f64().unwrap() as u32)
         .on("a visitor inserts a coin", move |t| {
             t.used.push(("Gate".into(), "coin-slot".into()));
+            t.log.push("POST /coins 200".into());
             t.coins += 1;
             t.unlocked = !broken;
         })
         .on("a visitor pushes the arm", |t| {
             t.used.push(("Gate".into(), "arm".into()));
+            t.log.push("POST /passages 200".into());
             t.unlocked = false
         })
         .on_controls(|_| {
@@ -271,4 +275,67 @@ fn controls_and_which_were_used_cross_the_wire() {
     assert!(!donate.used());
     assert_eq!(donate.gaps[0], expectation_story::Gap::NoEventMapping);
     assert!(!by("coin-slot").stories.is_empty());
+}
+
+#[test]
+fn what_the_app_captures_crosses_the_wire_and_is_kept_per_step() {
+    use expectation_remote::client::Attached;
+    let loaded = expectation_language::load_sources("t", &[("t.expect", SUITE)]);
+    let acceptance = Acceptance::from_loaded(loaded).unwrap().with_coverage();
+    let mut driver = RemoteDriver::listen("127.0.0.1:0")
+        .unwrap()
+        .settle_for(Duration::ZERO)
+        .poll_every(Duration::from_millis(5));
+    let h = handlers(false).on_attachments(|t| {
+        vec![
+            Attached {
+                name: "network.log".into(),
+                media_type: "text/plain".into(),
+                bytes: std::mem::take(&mut t.log).join("\n").into_bytes(),
+            },
+            Attached {
+                name: "trace.bin".into(),
+                media_type: "application/octet-stream".into(),
+                bytes: vec![0xff, 0x00, 0xfe],
+            },
+        ]
+    });
+    let client = Client::connect(
+        driver.url().trim_start_matches("http://"),
+        h.hello("test", "Turnstile"),
+    );
+    std::thread::spawn(move || {
+        let mut world = Turnstile::default();
+        while let Some(r) = client.recv_timeout(Duration::from_secs(30)) {
+            h.handle(&mut world, r);
+        }
+    });
+    let app = driver.wait_for_app(Duration::from_secs(5)).unwrap();
+    assert!(app.attachments);
+    let kept = std::env::temp_dir().join(format!("expectation-attached-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&kept);
+    let report = acceptance.run(
+        &mut driver,
+        &RunOptions {
+            patience: 10,
+            attachments_dir: Some(kept.clone()),
+            ..Default::default()
+        },
+    );
+    assert!(report.passed());
+    let story = &report.results[0];
+    let read = |step: usize, name: &str| {
+        let a = story
+            .attachments
+            .iter()
+            .find(|a| a.step == step && a.path.ends_with(name))
+            .unwrap_or_else(|| panic!("no {name} for step {step}"));
+        std::fs::read(kept.join(&a.path)).unwrap()
+    };
+    // Each step's capture holds what that step did, and binary content survives.
+    assert_eq!(read(0, "network.log"), b"");
+    assert_eq!(read(1, "network.log"), b"POST /coins 200");
+    assert_eq!(read(2, "network.log"), b"POST /passages 200");
+    assert_eq!(read(1, "trace.bin"), [0xff, 0x00, 0xfe]);
+    let _ = std::fs::remove_dir_all(&kept);
 }
