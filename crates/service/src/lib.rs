@@ -723,38 +723,12 @@ mod tests {
     use std::sync::Arc;
     use std::sync::Mutex;
 
-    /// Held by the tests that bind ports. Tests run in parallel, and Linux often hands the next
-    /// `bind(0)` the port another test has just let go of, so a test that frees a port to open it
-    /// later could find another test holding it.
+    /// Held by every test that picks a free port. A test that frees a port and binds it again
+    /// later would otherwise race another test whose `bind(0)` gets the same port back.
     static PORTS: Mutex<()> = Mutex::new(());
 
     fn ports() -> std::sync::MutexGuard<'static, ()> {
         PORTS.lock().unwrap_or_else(|e| e.into_inner())
-    }
-
-    /// A port nothing listens on. It comes from below the ranges systems pick from for `bind(0)`
-    /// and for the local end of a connection (Linux 32768–60999, macOS and Windows 49152–65535),
-    /// so no other socket is handed it meanwhile. And it is only taken once nothing answers on it
-    /// after it is let go: a process another test starts at the moment it is bound gets a copy of
-    /// the listener, and keeps it open until that process runs its program.
-    fn quiet_port() -> u16 {
-        let offset = (std::process::id() % 5000) as u16;
-        (0..10_000u16)
-            .map(|i| 20_000 + (offset + i) % 10_000)
-            .find(|&p| {
-                if TcpListener::bind(("127.0.0.1", p)).is_err() {
-                    return false;
-                }
-                (0..50).any(|_| {
-                    if port_answers(p) {
-                        std::thread::sleep(std::time::Duration::from_millis(10));
-                        false
-                    } else {
-                        true
-                    }
-                })
-            })
-            .expect("a free port between 20000 and 30000")
     }
 
     /// A service that counts how it is used.
@@ -951,30 +925,54 @@ mod tests {
     #[test]
     fn a_command_is_ready_when_its_port_answers() {
         let _ports = ports();
-        // The program opens its port a moment after it starts (here, a thread does).
-        let port = quiet_port();
-        let opener = std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(400));
-            let listener = TcpListener::bind(("127.0.0.1", port)).unwrap();
-            std::thread::sleep(std::time::Duration::from_secs(3));
-            drop(listener);
-        });
-        let sleeper = Command::new("sleeper", "sleep")
-            .arg("30")
-            .ready(Ready::Tcp(port))
-            .patience(std::time::Duration::from_secs(5));
-        let began = std::time::Instant::now();
-        let mut running = sleeper.start().expect("starts and is ready");
+        // The program opens its port a moment after it starts (here, a thread does). The port
+        // is free when picked, but anything on the machine may take it before the thread
+        // binds it; then the run would be about that, so try again on another port.
+        let mut tries = 0;
+        let (mut running, port, waited) = loop {
+            tries += 1;
+            assert!(tries <= 5, "no free port stayed free");
+            let port = {
+                let l = TcpListener::bind("127.0.0.1:0").unwrap();
+                l.local_addr().unwrap().port()
+            };
+            let opener = std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(400));
+                let listener = TcpListener::bind(("127.0.0.1", port))?;
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                drop(listener);
+                Ok::<_, std::io::Error>(())
+            });
+            let sleeper = Command::new("sleeper", "sleep")
+                .arg("30")
+                .ready(Ready::Tcp(port))
+                .patience(std::time::Duration::from_secs(5));
+            let began = std::time::Instant::now();
+            let started = sleeper.start();
+            let waited = began.elapsed();
+            match started {
+                // Taken before we looked: not ours to wait for.
+                Err(e) if e.contains("already in use") => continue,
+                Err(e) => panic!("it didn't start: {e}"),
+                // Taken after we looked: something else answered, not the program.
+                Ok(running) => match opener.join().unwrap() {
+                    Ok(()) => break (running, port, waited),
+                    Err(_) => continue,
+                },
+            }
+        };
         assert!(
-            began.elapsed() >= std::time::Duration::from_millis(300),
+            waited >= std::time::Duration::from_millis(300),
             "it did not wait for the port"
         );
         assert!(running.alive());
         assert_eq!(running.endpoint("port"), Some(port.to_string()));
-        opener.join().unwrap();
 
         // Nothing answers on a port that is closed: the wait ends, and says so.
-        let closed = quiet_port();
+        let closed = {
+            let l = TcpListener::bind("127.0.0.1:0").unwrap();
+            l.local_addr().unwrap().port()
+        };
         let slow = Command::new("slow", "sleep")
             .arg("30")
             .ready(Ready::Tcp(closed))
