@@ -106,6 +106,7 @@ struct Input<'a> {
 
 /// A plan for every scenario of every story.
 pub fn plan_stories(suite: &Suite, analysis: &Analysis) -> Planned {
+    let scopes = Scopes::new(suite);
     let mut plans = vec![];
     let mut diagnostics = vec![];
     for story in &suite.stories {
@@ -152,6 +153,7 @@ pub fn plan_stories(suite: &Suite, analysis: &Analysis) -> Planned {
             plans.push(build(
                 suite,
                 &analysis.precedence,
+                &scopes,
                 head,
                 inputs,
                 &mut diagnostics,
@@ -180,9 +182,58 @@ struct Head {
     given: Vec<StepText>,
 }
 
+/// The transitions each top-level section's tests may set off: those of its subtree, in suite
+/// order, worked out once for all the plans built together rather than for every step.
+struct Scopes<'s> {
+    suite: &'s Suite,
+    by_top: std::cell::RefCell<
+        std::collections::HashMap<SectionId, std::rc::Rc<Vec<&'s expectation_model::Expectation>>>,
+    >,
+}
+
+impl<'s> Scopes<'s> {
+    fn new(suite: &'s Suite) -> Self {
+        Scopes {
+            suite,
+            by_top: Default::default(),
+        }
+    }
+
+    /// The transitions in scope for `section`, as `flow::in_scope` says.
+    fn transitions(
+        &self,
+        section: SectionId,
+    ) -> std::rc::Rc<Vec<&'s expectation_model::Expectation>> {
+        let suite = self.suite;
+        let chain = suite.chain(section);
+        let top = chain.get(1).unwrap_or(&chain[0]).id;
+        self.by_top
+            .borrow_mut()
+            .entry(top)
+            .or_insert_with(|| {
+                let mut ids: Vec<ExpId> = suite
+                    .subtree(top)
+                    .into_iter()
+                    .flat_map(|s| suite.section(s).features.iter())
+                    .flat_map(|&f| suite.feature(f).expectations.iter().copied())
+                    .collect();
+                ids.sort_unstable();
+                ids.dedup();
+                std::rc::Rc::new(
+                    ids.into_iter()
+                        .map(|e| suite.exp(e))
+                        .filter(|e| !e.is_invariant())
+                        .collect(),
+                )
+            })
+            .clone()
+    }
+}
+
 fn build<'a>(
     suite: &Suite,
     prec: &Precedence,
+    scopes: &Scopes,
     head: Head,
     inputs: impl Iterator<Item = Input<'a>>,
     diags: &mut Vec<Diagnostic>,
@@ -211,12 +262,17 @@ fn build<'a>(
     }
 
     // A top-level section is a system of its own: only its expectations apply to its stories.
-    let scope = expectation_graph::flow::in_scope(suite, section);
+    let candidates = scopes.transitions(section);
     let mut steps = vec![];
     for input in inputs {
         let errors = diags.iter().filter(|d| d.is_error()).count();
-        let candidates = suite.transitions().filter(|e| scope[e.id.0 as usize]);
-        let out = perform_among(suite, prec, &state, &input.action, candidates);
+        let out = perform_among(
+            suite,
+            prec,
+            &state,
+            &input.action,
+            candidates.iter().copied(),
+        );
         if let Some(&(a, b, var)) = out.clashes.first() {
             let (a, b) = (suite.exp(a), suite.exp(b));
             diags.push(
@@ -471,6 +527,7 @@ fn when_text(x: &expectation_model::Expectation) -> Vec<StepText> {
 /// take the route, and check everything the section's setup says. Its own tests arrange the
 /// section's setup directly, so this is what shows the way in gets there too.
 pub fn reaching_plans(suite: &Suite, analysis: &Analysis) -> Vec<Plan> {
+    let scopes = Scopes::new(suite);
     let mut out = vec![];
     for s in suite.sections.iter().filter(|s| s.follows.is_some()) {
         let Some(route) = analysis.section_routes[s.id.0 as usize]
@@ -512,7 +569,14 @@ pub fn reaching_plans(suite: &Suite, analysis: &Analysis) -> Vec<Plan> {
             given,
         };
         let mut diags = vec![];
-        let mut plan = build(suite, &analysis.precedence, head, inputs, &mut diags);
+        let mut plan = build(
+            suite,
+            &analysis.precedence,
+            &scopes,
+            head,
+            inputs,
+            &mut diags,
+        );
         if diags.iter().any(|d| d.is_error()) || plan.steps.len() < route.steps.len() {
             continue;
         }
@@ -537,6 +601,7 @@ pub fn reaching_plans(suite: &Suite, analysis: &Analysis) -> Vec<Plan> {
 /// graph has no route to is tested on its own: its Given arranged on its section's start, then
 /// its When. Plans that can't be made clean are skipped.
 pub fn coverage_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec<Plan> {
+    let scopes = Scopes::new(suite);
     let mut out = reaching_plans(suite, analysis);
     let cov = coverage(suite, plans);
     let mut covered: Vec<bool> = cov.iter().map(|c| !c.is_empty()).collect();
@@ -635,7 +700,14 @@ pub fn coverage_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec
             start,
             given,
         };
-        let plan = build(suite, &analysis.precedence, head, inputs, &mut diags);
+        let plan = build(
+            suite,
+            &analysis.precedence,
+            &scopes,
+            head,
+            inputs,
+            &mut diags,
+        );
         if diags.iter().any(|d| d.is_error()) {
             continue;
         }
@@ -657,6 +729,7 @@ pub fn coverage_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec
 /// a screenshot after the step, so the map's first view has a picture of every state. `plans`
 /// are the tests there are already, generated ones included.
 pub fn visit_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec<Plan> {
+    let scopes = Scopes::new(suite);
     let by = expectation_graph::states::default_by(suite);
     let key = |c: &Condition| c.restrict(by.iter().copied());
     let mut seen: std::collections::HashSet<Condition> = plans
@@ -726,6 +799,7 @@ pub fn visit_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec<Pl
         let plan = build(
             suite,
             &analysis.precedence,
+            &scopes,
             head,
             std::iter::once(input),
             &mut diags,

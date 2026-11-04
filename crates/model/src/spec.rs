@@ -327,6 +327,14 @@ pub struct Suite {
     /// The platform this suite was read for (a lens on one platform's variants), if the
     /// suite declares platforms.
     pub platform: Option<String>,
+    /// The invariants' ids, worked out the first time [`Suite::invariants`] is asked: it is asked
+    /// at every step of every test. A suite's expectations don't change once it is loaded.
+    #[doc(hidden)]
+    pub invariant_ids: std::sync::OnceLock<Vec<ExpId>>,
+    /// Per state, the transitions that set it, worked out the first time
+    /// [`Suite::setters_of`] is asked.
+    #[doc(hidden)]
+    pub setter_ids: std::sync::OnceLock<Vec<Vec<ExpId>>>,
 }
 
 /// `Term: <name>` and the text under it: a definition for the glossary.
@@ -467,7 +475,35 @@ impl Suite {
         self.expectations.iter().filter(|e| !e.is_invariant())
     }
 
+    /// The transitions that set `var` (in their Then or as a shift), in declaration order.
+    pub fn setters_of(&self, var: VarId) -> &[ExpId] {
+        let all = self.setter_ids.get_or_init(|| {
+            let mut by: Vec<Vec<ExpId>> = vec![vec![]; self.vocabulary.variables.len()];
+            for e in self.transitions() {
+                let mut vars: Vec<VarId> = e.sets().collect();
+                vars.sort_unstable();
+                vars.dedup();
+                for v in vars {
+                    if let Some(list) = by.get_mut(v.0 as usize) {
+                        list.push(e.id);
+                    }
+                }
+            }
+            by
+        });
+        all.get(var.0 as usize).map_or(&[], Vec::as_slice)
+    }
+
     pub fn invariants(&self) -> impl Iterator<Item = &Expectation> {
-        self.expectations.iter().filter(|e| e.is_invariant())
+        self.invariant_ids
+            .get_or_init(|| {
+                self.expectations
+                    .iter()
+                    .filter(|e| e.is_invariant())
+                    .map(|e| e.id)
+                    .collect()
+            })
+            .iter()
+            .map(|&id| self.exp(id))
     }
 }

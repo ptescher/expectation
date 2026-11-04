@@ -394,21 +394,24 @@ pub fn route_to(
         .filter(|(v, g)| !start.get(*v).is_some_and(|x| x.within(g)))
         .map(|(v, _)| v)
         .collect();
-    loop {
-        let before = relevant.len();
-        for e in suite.transitions() {
-            if e.sets().any(|v| relevant.contains(&v)) {
-                relevant.extend(e.given.vars().chain(e.trigger.changes.vars()));
+    // Followed out from the states that are relevant, by the transitions that set each, so a
+    // section's route costs what is relevant to it, not the whole suite.
+    let mut chosen: BTreeSet<ExpId> = BTreeSet::new();
+    let mut queue: Vec<VarId> = relevant.iter().copied().collect();
+    while let Some(v) = queue.pop() {
+        for &id in suite.setters_of(v) {
+            if chosen.insert(id) {
+                let e = suite.exp(id);
+                for w in e.given.vars().chain(e.trigger.changes.vars()) {
+                    if relevant.insert(w) {
+                        queue.push(w);
+                    }
+                }
             }
         }
-        if relevant.len() == before {
-            break;
-        }
     }
-    let transitions: Vec<&Expectation> = suite
-        .transitions()
-        .filter(|e| e.sets().any(|v| relevant.contains(&v)))
-        .collect();
+    // In declaration order, as the suite lists them.
+    let transitions: Vec<&Expectation> = chosen.iter().map(|&id| suite.exp(id)).collect();
     let companions = companions(&transitions);
     let wrong = |c: &Condition| {
         goal.iter()
