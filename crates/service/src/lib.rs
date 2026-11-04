@@ -732,15 +732,28 @@ mod tests {
         PORTS.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// A port nothing listens on, below the ranges systems pick from for `bind(0)` and for the
-    /// local end of a connection (Linux 32768–60999, macOS and Windows 49152–65535): a port from
-    /// there could be handed to another socket meanwhile, or a connection to it could connect to
-    /// itself, and the test would see an answer from nothing.
+    /// A port nothing listens on. It comes from below the ranges systems pick from for `bind(0)`
+    /// and for the local end of a connection (Linux 32768–60999, macOS and Windows 49152–65535),
+    /// so no other socket is handed it meanwhile. And it is only taken once nothing answers on it
+    /// after it is let go: a process another test starts at the moment it is bound gets a copy of
+    /// the listener, and keeps it open until that process runs its program.
     fn quiet_port() -> u16 {
         let offset = (std::process::id() % 5000) as u16;
         (0..10_000u16)
             .map(|i| 20_000 + (offset + i) % 10_000)
-            .find(|&p| TcpListener::bind(("127.0.0.1", p)).is_ok())
+            .find(|&p| {
+                if TcpListener::bind(("127.0.0.1", p)).is_err() {
+                    return false;
+                }
+                (0..50).any(|_| {
+                    if port_answers(p) {
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                        false
+                    } else {
+                        true
+                    }
+                })
+            })
             .expect("a free port between 20000 and 30000")
     }
 
