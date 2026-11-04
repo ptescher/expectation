@@ -13,9 +13,15 @@ https://expectation.sim001.net/llms-full.txt · index: https://expectation.sim00
 
 ## Install
 
+In an existing project, use its own setup first: a setup script, a Makefile target, or the
+revision its README or CI pins. The suite, the runner and the in-app or adapter client were
+written against that revision; a global install of the latest `main` may not match them.
+
+For a new project, pin a revision yourself:
+
 ```bash
-cargo install --git https://github.com/ptescher/expectation expectation_cli     # `expectation`
-cargo install --git https://github.com/ptescher/expectation expectation_remote  # `expectation-run`, for embedded drivers
+cargo install --git https://github.com/ptescher/expectation --rev <commit> expectation_cli     # `expectation`
+cargo install --git https://github.com/ptescher/expectation --rev <commit> expectation_remote  # `expectation-run`, for remote drivers
 ```
 
 ## The commands
@@ -25,8 +31,12 @@ expectation check <dir>                 # errors exit 1: vocabulary, conflicts, 
 expectation plan <dir> --coverage       # the tests the stories compile to, plus generated ones
 expectation graph <dir> [--dot]         # the flow DAG
 expectation states <dir>                # the map of the app's states
-expectation docs <dir> <out>            # the manual; add --approved-only for agreed behaviour
+expectation docs <dir> <out>            # the manual
 ```
+
+`docs --approved-only` writes only what is marked `Approval: approved`. **Unmarked counts as
+not approved**, so on a suite that doesn't use `Approval:` it writes an empty manual. Check
+that the suite marks approval before you reach for it.
 
 ## The language in one screen
 
@@ -34,22 +44,31 @@ expectation docs <dir> <out>            # the manual; add --approved-only for ag
 Vocabulary:
   State: the kettle is off | heating | dry
   State: the dial is 0..100 %
-  Event: the user presses lock
-    Say: press LOCK                      # how the docs tell the reader to do it
   State: the preset is WARM | HOT
-    Shows: HOT: the display reads HOT    # what the reader sees
+    # What the reader sees:
+    Shows: HOT: the display reads HOT
+  Event: the user presses lock
+    # How the docs tell the reader to do it:
+    Say: press LOCK
 
 Background:
   Given the kettle is off
 
 Feature: Heating
-  What it does, for whom, and how to read the result (free text before the first step).
-  Approval: approved                     # or `proposed`; see the guide
+  # `approved` or `proposed`, right under the Feature line; see the guide.
+  Approval: approved
+  # Free text before the first step is the description:
+  Turn the dial past 55 % and the kettle starts heating.
 
   Expectation: Turning the dial up starts the kettle
     Given the kettle is off
     When the dial is above 55 %
     Then the kettle is heating
+
+  Expectation: Turning the dial back down stops it
+    Given the kettle is heating
+    When the dial is below 20 %
+    Then the kettle is off
 
 Story: Your first cup
   As a tea drinker
@@ -57,10 +76,16 @@ Story: Your first cup
   So that I can make tea
 
   Scenario: Dial up
+    When the preset is HOT
     When the dial is 80 %
     Then the kettle is heating
+    When the dial is 0 %
+    Then the kettle is off
 ```
 
+- Comments are whole lines starting with `#`. There are no trailing comments: a `#` after a
+  value is part of the value (`Approval: approved  # note` is a syntax error, and after `Say:`
+  or a description it becomes text in the manual).
 - A conflict is two expectations that both apply and promise different things. Settle it with
   `Overrides: <name>`, or narrow a `Given`.
 - A story only describes the journey; the expectations it passes through supply the checks. A
@@ -82,6 +107,10 @@ Story: Your first cup
    badge means), and covers what goes wrong on the way. It is not a sequence of test steps.
 4. Before running anything that trades, pays, posts or creates accounts, check what it changes,
    where it goes, and what isolates it. If you can't show it's isolated, don't run it.
+   Also check what the evidence captures: screenshots, accessibility trees, logs and HARs can
+   hold recovery phrases, keys, passwords, tokens and account data. Know what is captured, what
+   redacts it (or keeps the screen off it), and where the saved results and manual will be
+   shared, before you run.
 5. Audit: have a reviewer without your context read a rendered tutorial on its own; mark each
    claim's evidence as observed, simulated, source-inspected, unsupported or none; check for
    stale evidence.
@@ -94,8 +123,19 @@ Reference: https://expectation.sim001.net/guide/language.html.
 
 ## Running the tests
 
-Tests run through a driver that binds the vocabulary to the system under test: Rust closures
-(`Bindings`, https://expectation.sim001.net/guide/drivers.html) or an embedded client in a
-Swift, JavaScript or Rust app driven by `expectation-run`
-(https://expectation.sim001.net/guide/remote.html). Anything the driver does not bind is
-reported as "not supported yet", not as a failure.
+Tests run through a driver that binds the vocabulary to the system under test:
+
+- Rust closures (`Bindings`, https://expectation.sim001.net/guide/drivers.html), in-process.
+- A remote driver that `expectation-run` (or a `RemoteDriver`) talks to over HTTP
+  (https://expectation.sim001.net/guide/remote.html). It is either **embedded** in the app
+  (Swift, JavaScript or Rust client calling the app's own actions and state) or an **external**
+  adapter in the test process (a client inside a WebdriverIO, Appium, XCUITest or Playwright
+  run, driving the app through its UI). Embedded shows the behaviour but
+  not that the buttons are wired up; external shows what a user can reach but only observes
+  what the UI exposes. Say which one produced the evidence.
+
+**A successful command is not coverage.** Anything the driver does not bind is "not supported
+yet", not a failure, so a run where nothing was bound exits 0; a failed screenshot is a
+warning. Read the per-plan results (`✓`, `✗`, `–` lines, or the `plan` rows in
+`docs/results/*.tsv`) and check that the stories and screenshots you expect actually passed
+and were taken. Never infer "verified" from the exit code alone.

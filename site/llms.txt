@@ -22,7 +22,7 @@ For AI agents: install the skill at https://expectation.sim001.net/skills/expect
 ## Running and publishing
 
 - [Drivers](https://expectation.sim001.net/guide/drivers.html)
-- [Embedded drivers](https://expectation.sim001.net/guide/remote.html): Swift, JavaScript and Rust apps driven by `expectation-run`
+- [Remote drivers](https://expectation.sim001.net/guide/remote.html): Swift, JavaScript and Rust clients, embedded in the app or in a UI-automation test process, driven by `expectation-run`
 - [The generated manual](https://expectation.sim001.net/guide/manual.html): includes custom themes and approved-only manuals
 - [The expectation command](https://expectation.sim001.net/guide/cli.html)
 - [Diagnostics](https://expectation.sim001.net/guide/diagnostics.html)

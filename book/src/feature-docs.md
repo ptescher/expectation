@@ -325,6 +325,24 @@ If you cannot show it is isolated, do not run it. Use a safe fixture, or leave t
 so it reports "not supported yet". A gap that says so is better than a "pass" from a run that
 might have spent real money, and a demo must say plainly where its boundary is.
 
+### Evidence privacy
+
+The evidence a run saves is a second kind of side effect. Screenshots, accessibility trees,
+view hierarchies, logs and HAR files can contain recovery phrases, private keys, passwords,
+tokens, and account data such as balances, addresses and names. Before you run, answer:
+
+- **What is captured?** Which steps take a screenshot or a tree, and what is on screen or in
+  the request at that moment, including a secret shown by an earlier step that is still visible.
+- **What keeps it out?** A test account with nothing real in it, a redacting binding, a privacy
+  screen the app shows when it is backgrounded or stopped, or a step that leaves the screenshot
+  out. Check that it applies at the moment of capture; a privacy overlay that only appears on
+  the next frame doesn't.
+- **Where does it go?** The results directory, the generated manual, CI artifacts, a hosted
+  site, a pull request. Anything committed or published is public to everyone who can see it.
+
+If a step would capture a secret and nothing redacts it, don't take that screenshot (or don't
+run the step), and say in the report that the evidence was left out on purpose.
+
 ### Reporting
 
 Report three verdicts, because each can pass while another fails:
@@ -333,8 +351,11 @@ Report three verdicts, because each can pass while another fails:
    zero-context read's findings. `expectation check` and `plan --coverage` support this verdict
    but do not decide it: they check the model, not whether the manual teaches the product.
 2. **The tests and observed behaviour**: what ran, what passed, what failed, what is not
-   supported yet, and how much of it was observed and how much simulated. An unsupported step
-   did not run successfully, whatever the rest of the run did.
+   supported yet, and how much of it was observed and how much simulated, and whether by an
+   embedded or an external driver (see [Remote drivers](remote.md)). An unsupported step did
+   not run successfully, whatever the rest of the run did. Take this from the per-plan results,
+   not the exit code: a run exits 0 when nothing failed, even if nothing was bound, and a
+   missing screenshot is only a warning.
 3. **Approval and product status**: what is approved, what is proposed, what is
    `Status: pending`, and the open decisions with the question for each.
 

@@ -24,7 +24,7 @@
 # Running
 
 - [Drivers](drivers.md)
-- [Embedded drivers](remote.md)
+- [Remote drivers](remote.md)
 - [External services](services.md)
 - [The generated manual](manual.md)
 

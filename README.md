@@ -147,8 +147,9 @@ lock, and the run fails on «The child lock holds the kettle while the dial turn
 
 ## Any front end
 
-For apps that can't be driven from a Rust test, a driver goes inside the app and the runner
-talks to it over a small protocol: [Swift](clients/swift) (iOS, SwiftUI, UIKit),
+For apps that can't be driven from a Rust test, the runner talks over a small protocol to a
+client that is either embedded in the app or runs in a UI-automation test process (WebdriverIO,
+Appium, XCUITest) and drives the app from outside: [Swift](clients/swift) (iOS, SwiftUI, UIKit),
 [JavaScript](clients/js) (React Native, web) and [Rust](crates/remote) (GPUI and other Rust
 UIs). The [kettle demo](demos/kettle) is one suite run against the same app built in GPUI,
 SwiftUI and React Native.

@@ -15,8 +15,12 @@ your agent's equivalent).
 
 ## The short version
 
+In a project that already uses Expectation, install it the way the project does (its setup
+script, or the revision its README or CI pins), so the command, the runner and the client match
+the suite. Otherwise pin one:
+
 ```bash
-cargo install --git https://github.com/ptescher/expectation expectation_cli
+cargo install --git https://github.com/ptescher/expectation --rev <commit> expectation_cli
 expectation check expectations              # errors exit 1
 expectation plan expectations --coverage    # the tests the stories compile to
 expectation docs expectations docs          # the manual
@@ -39,9 +43,18 @@ language](language.md) is the reference.
   gaps. `plan --coverage` covers the model, not the product.
 - Don't run a journey that trades, pays, posts or creates accounts until you know what it
   changes, where it goes and what isolates it. See [Safety preflight](feature-docs.md#safety-preflight).
+- Don't capture what you can't share. Screenshots, accessibility trees, logs and HARs can hold
+  recovery phrases, keys, credentials and account data. Check what is captured, what redacts
+  it, and where the results and manual end up. See [Evidence privacy](feature-docs.md#evidence-privacy).
+- A command that exits 0 hasn't verified anything by itself. Unbound steps are "not supported
+  yet", not failures, so a run with nothing bound passes, and a failed screenshot is a
+  warning. Read the per-plan results and check that the stories and screenshots you expect
+  are there. See [Remote drivers](remote.md#in-the-runner).
 - Audit with a reader who lacks your context, and say for each claim whether it was observed,
   simulated, only read in the source, or not shown at all.
 - Report three verdicts separately: the specification, the tests, and approval. "Not supported
   yet" is not "passing", a passing test does not approve the prose, and `Approval:` is separate
   from both `Status: pending` and the test results. See [Reporting](feature-docs.md#reporting).
-- A manual of just the agreed behaviour: `expectation docs <dir> <out> --approved-only`.
+- A manual of just the agreed behaviour: `expectation docs <dir> <out> --approved-only`. It
+  keeps only what is marked `Approval: approved`; unmarked counts as not approved, so on a
+  suite that doesn't mark approval it writes an empty manual. Check the suite first.

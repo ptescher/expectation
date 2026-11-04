@@ -2,7 +2,7 @@
 
 The [kettle demo](https://github.com/ptescher/expectation/tree/main/demos/kettle) is the same
 app built three times, in **GPUI**, **SwiftUI** and **React Native**, and held to one suite.
-Each app embeds the Expectation driver for its stack (see [Embedded drivers](remote.md)), and
+Each app embeds the Expectation driver for its stack (see [Remote drivers](remote.md)), and
 the same runner drives all three.
 
 Browse the result: [the demo manual](../demo/site/index.html). Its Platform menu switches
