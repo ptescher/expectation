@@ -723,6 +723,14 @@ mod tests {
     use std::sync::Arc;
     use std::sync::Mutex;
 
+    /// Held by every test that picks a free port. A test that frees a port and binds it again
+    /// later would otherwise race another test whose `bind(0)` gets the same port back.
+    static PORTS: Mutex<()> = Mutex::new(());
+
+    fn ports() -> std::sync::MutexGuard<'static, ()> {
+        PORTS.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// A service that counts how it is used.
     #[derive(Clone, Default)]
     struct Fake {
@@ -916,30 +924,49 @@ mod tests {
     /// A command is a service when it can be run here; its readiness is a port answering.
     #[test]
     fn a_command_is_ready_when_its_port_answers() {
-        // The program opens its port a moment after it starts (here, a thread does).
-        let port = {
-            let l = TcpListener::bind("127.0.0.1:0").unwrap();
-            l.local_addr().unwrap().port()
+        let _ports = ports();
+        // The program opens its port a moment after it starts (here, a thread does). The port
+        // is free when picked, but anything on the machine may take it before the thread
+        // binds it; then the run would be about that, so try again on another port.
+        let mut tries = 0;
+        let (mut running, port, waited) = loop {
+            tries += 1;
+            assert!(tries <= 5, "no free port stayed free");
+            let port = {
+                let l = TcpListener::bind("127.0.0.1:0").unwrap();
+                l.local_addr().unwrap().port()
+            };
+            let opener = std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(400));
+                let listener = TcpListener::bind(("127.0.0.1", port))?;
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                drop(listener);
+                Ok::<_, std::io::Error>(())
+            });
+            let sleeper = Command::new("sleeper", "sleep")
+                .arg("30")
+                .ready(Ready::Tcp(port))
+                .patience(std::time::Duration::from_secs(5));
+            let began = std::time::Instant::now();
+            let started = sleeper.start();
+            let waited = began.elapsed();
+            match started {
+                // Taken before we looked: not ours to wait for.
+                Err(e) if e.contains("already in use") => continue,
+                Err(e) => panic!("it didn't start: {e}"),
+                // Taken after we looked: something else answered, not the program.
+                Ok(running) => match opener.join().unwrap() {
+                    Ok(()) => break (running, port, waited),
+                    Err(_) => continue,
+                },
+            }
         };
-        let opener = std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(400));
-            let listener = TcpListener::bind(("127.0.0.1", port)).unwrap();
-            std::thread::sleep(std::time::Duration::from_secs(3));
-            drop(listener);
-        });
-        let sleeper = Command::new("sleeper", "sleep")
-            .arg("30")
-            .ready(Ready::Tcp(port))
-            .patience(std::time::Duration::from_secs(5));
-        let began = std::time::Instant::now();
-        let mut running = sleeper.start().expect("starts and is ready");
         assert!(
-            began.elapsed() >= std::time::Duration::from_millis(300),
+            waited >= std::time::Duration::from_millis(300),
             "it did not wait for the port"
         );
         assert!(running.alive());
         assert_eq!(running.endpoint("port"), Some(port.to_string()));
-        opener.join().unwrap();
 
         // Nothing answers on a port that is closed: the wait ends, and says so.
         let closed = {
@@ -961,6 +988,7 @@ mod tests {
     /// is a leftover of an earlier run, and a test that talked to it would be testing that.
     #[test]
     fn a_port_somebody_else_holds_is_not_ours_to_wait_for() {
+        let _ports = ports();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let c = Command::new("server", "sleep")

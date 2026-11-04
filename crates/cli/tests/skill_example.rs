@@ -31,5 +31,8 @@ fn the_overview_skills_example_checks_clean() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(out.status.success(), "the example doesn't check:\n{text}");
-    assert!(!text.contains("warning"), "the example has warnings:\n{text}");
+    assert!(
+        !text.contains("warning"),
+        "the example has warnings:\n{text}"
+    );
 }
