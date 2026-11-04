@@ -412,6 +412,22 @@ impl StateMap {
             .max_by_key(|&i| (self.states[i].cond.vars().count(), std::cmp::Reverse(i)))
     }
 
+    /// [`StateMap::locate`] for many states at once: the exact matches are looked up in an index
+    /// built once, instead of a scan of every state for each.
+    pub fn locator(&self) -> impl Fn(&Condition) -> Option<usize> + '_ {
+        let mut exact: std::collections::HashMap<&Condition, usize> = Default::default();
+        for (i, s) in self.states.iter().enumerate() {
+            exact.entry(&s.cond).or_insert(i);
+        }
+        move |c: &Condition| {
+            let key = c.restrict(self.by.iter().copied());
+            if let Some(&i) = exact.get(&key) {
+                return Some(i);
+            }
+            self.locate(c)
+        }
+    }
+
     /// State `i` as facts, one per `by` state it pins down: "the kettle is heating".
     pub fn facts(&self, suite: &Suite, i: usize) -> Vec<String> {
         suite.vocabulary.facts(&self.states[i].cond)

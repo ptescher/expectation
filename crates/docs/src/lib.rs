@@ -164,7 +164,7 @@ pub const NO_SCREENSHOT: &str = "site/assets/no-screenshot.svg";
 
 /// Removes the pages an earlier run wrote that this one did not: a renamed feature or story
 /// would otherwise leave its old page in the manual's folders.
-fn prune(dir: &Path, written: &[PathBuf]) -> std::io::Result<()> {
+fn prune(dir: &Path, written: &std::collections::HashSet<&Path>) -> std::io::Result<()> {
     let kinds: [(&str, &str, &[&str]); 6] = [
         ("features", "md", &[""]),
         ("tutorials", "md", &[""]),
@@ -174,7 +174,15 @@ fn prune(dir: &Path, written: &[PathBuf]) -> std::io::Result<()> {
         (
             "site",
             "html",
-            &["feature-", "section-", "test-", "tutorial-", "contract-"],
+            &[
+                "feature-",
+                "section-",
+                "test-",
+                "tutorial-",
+                "contract-",
+                "tests-",
+                "map-",
+            ],
         ),
     ];
     for (sub, ext, prefixes) in kinds {
@@ -187,7 +195,7 @@ fn prune(dir: &Path, written: &[PathBuf]) -> std::io::Result<()> {
             let ours = path.is_file()
                 && path.extension().is_some_and(|e| e == ext)
                 && prefixes.iter().any(|p| name.starts_with(p));
-            if ours && !written.contains(&path) {
+            if ours && !written.contains(path.as_path()) {
                 std::fs::remove_file(&path)?;
             }
         }
@@ -288,7 +296,8 @@ impl Docs<'_> {
             std::fs::write(&path, page.content)?;
             written.push(path);
         }
-        prune(dir, &written)?;
+        // A set: the folders can hold thousands of pages, and each is looked up.
+        prune(dir, &written.iter().map(PathBuf::as_path).collect())?;
         if docs.look.stylesheet.is_none() {
             // An earlier run's custom stylesheet would otherwise sit there unused.
             let _ = std::fs::remove_file(dir.join(CUSTOM_CSS));
@@ -806,13 +815,30 @@ Feature: Paying
     }
 
     fn sections_site(n: usize) -> Vec<Page> {
-        let vocab = "Vocabulary:\n  State: the lamp is off | on\n  Event: the user flips the switch\nBackground:\n  Given the lamp is off\n";
+        site_of(n, 1, false)
+    }
+
+    /// `n` sections of `k` expectations each; with `tests`, the generated test for each too.
+    fn site_of(n: usize, k: usize, tests: bool) -> Vec<Page> {
+        let values: Vec<String> = (0..=k).map(|j| format!("s{j}")).collect();
+        let vocab = format!(
+            "Vocabulary:\n  State: the lamp is off | on\n  State: the dial is {}\n  Event: the user flips the switch\n  Event: the user turns the dial\nBackground:\n  Given the lamp is off\n  And the dial is s0\n",
+            values.join(" | ")
+        );
         let feature = |i: usize| {
-            format!(
+            let mut f = format!(
                 "Feature: Topic {i}\n  What it does.\n  Expectation: Rule {i}\n    Given the lamp is off\n    When the user flips the switch\n    Then the lamp is on\n"
-            )
+            );
+            // More expectations, each from the dial's last value to its next.
+            for j in 1..k {
+                f.push_str(&format!(
+                    "  Expectation: Rule {i}.{j}\n    Given the dial is s{}\n    When the user turns the dial\n    Then the dial is s{j}\n",
+                    j - 1
+                ));
+            }
+            f
         };
-        let mut sources = vec![("vocab.expect".to_string(), vocab.to_string())];
+        let mut sources = vec![("vocab.expect".to_string(), vocab)];
         // Only the first section needs the expectation to be unique; the rest differ by number.
         for i in 0..n {
             sources.push((format!("{i:03}-area{i}/f.expect"), feature(i)));
@@ -825,10 +851,15 @@ Feature: Paying
         assert!(!loaded.has_errors(), "{}", loaded.render_diagnostics());
         let suite = loaded.suite;
         let analysis = expectation_graph::analyze(&suite);
+        let plans = if tests {
+            expectation_story::coverage_plans(&suite, &analysis, &[])
+        } else {
+            vec![]
+        };
         Docs {
             suite: &suite,
             analysis: &analysis,
-            plans: &[],
+            plans: &plans,
             report: None,
             suite_dir: None,
             siblings: &[],
@@ -876,5 +907,66 @@ Feature: Paying
         let nav = page(&pages, "site/assets/nav.js");
         assert!(nav.contains("index.html#sections"));
         assert!(nav.contains("section-area20.html"));
+    }
+
+    /// Every relative link and image in the site's pages names a page or file the site has.
+    fn links_resolve(pages: &[Page]) {
+        let have: std::collections::HashSet<&str> = pages.iter().map(|p| p.path.as_str()).collect();
+        for p in pages
+            .iter()
+            .filter(|p| p.path.starts_with("site/") && p.path.ends_with(".html"))
+        {
+            for part in p.content.split("href=\"").skip(1) {
+                let target = part.split(['"', '#', '?']).next().unwrap_or("");
+                if target.is_empty() || target.contains(':') || target.starts_with("../") {
+                    continue;
+                }
+                assert!(
+                    have.contains(format!("site/{target}").as_str()),
+                    "{} links to {target}",
+                    p.path
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_large_test_report_and_map_are_an_index_of_section_pages() {
+        let pages = site_of(html::SPLIT_OVER / 10 + 1, 10, true);
+        let tests = page(&pages, "site/tests.html");
+        // An index: a row per section, linking its page; no row per test.
+        assert!(
+            tests.contains(r#"<a href="tests-area7.html">"#),
+            "{}",
+            &tests[..2000.min(tests.len())]
+        );
+        assert!(
+            !tests.contains("href=\"test-"),
+            "no test is listed on the index"
+        );
+        assert!(tests.len() < 20_000, "{} bytes", tests.len());
+        // A section's page lists its tests.
+        let area = page(&pages, "site/tests-area7.html");
+        assert!(area.contains("href=\"test-"));
+        assert!(area.contains(r#"<a href="tests.html">Test report</a>"#));
+        // The map too: an index without drawings, and a drawing per section.
+        let map = page(&pages, "site/map.html");
+        assert!(map.contains(r#"<a href="map-area7.html">"#) && !map.contains("<svg"));
+        assert!(page(&pages, "site/map-area7.html").contains("<svg"));
+        links_resolve(&pages);
+    }
+
+    #[test]
+    fn a_small_test_report_and_map_stay_one_page() {
+        let pages = site_of(3, 2, true);
+        let tests = page(&pages, "site/tests.html");
+        assert!(tests.contains("href=\"test-") && !tests.contains("tests-area"));
+        assert!(page(&pages, "site/map.html").contains("<svg"));
+        assert!(
+            !pages
+                .iter()
+                .any(|p| p.path.starts_with("site/tests-") || p.path.starts_with("site/map-"))
+        );
+        links_resolve(&pages);
     }
 }

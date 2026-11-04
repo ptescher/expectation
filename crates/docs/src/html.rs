@@ -38,11 +38,15 @@ enum Here {
     /// Any test's report (stories and generated ones).
     Test(usize),
     Tests,
+    /// The tests of one section, when the test report is split.
+    TestsIn(SectionId),
     /// The program's controls and which tests used them.
     Interactions,
     /// A contract's coverage, by its index in `Docs::contracts`.
     Contract(usize),
     Map,
+    /// The map of one section, when the map is split.
+    MapIn(SectionId),
     /// The app's states and the moves between them.
     States,
     /// The definitions of the suite's terms.
@@ -51,6 +55,10 @@ enum Here {
     Vocabulary,
     Theme,
 }
+
+/// Above this many tests (or expectations, for the map), the test report and the map are an index
+/// of one page per section, so no page grows with the whole suite.
+pub(crate) const SPLIT_OVER: usize = 300;
 
 /// More subsections than this under a section are folded in the navigation of a page that isn't in them.
 const NAV_SIBLINGS: usize = 30;
@@ -131,6 +139,28 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
         path: "site/tests.html".into(),
         content: site.tests_page(),
     });
+    if site.split_tests() {
+        for (n, tests) in site.tests_by_section().iter().enumerate() {
+            if !tests.is_empty() {
+                let id = SectionId(n as u32);
+                pages.push(Page {
+                    path: format!("site/{}", site.tests_url(id)),
+                    content: site.section_tests_page(id, tests),
+                });
+            }
+        }
+    }
+    if site.split_map() {
+        for section in &s.sections {
+            let own = site.exps_of(section.id);
+            if !own.is_empty() {
+                pages.push(Page {
+                    path: format!("site/{}", site.map_url(section.id)),
+                    content: site.section_map_page(section.id, &own),
+                });
+            }
+        }
+    }
     let controls = d.control_rows();
     if !controls.is_empty() {
         pages.push(Page {
@@ -269,6 +299,61 @@ impl Site<'_> {
         )
     }
 
+    /// A section's own test report, when the test report is split.
+    fn tests_url(&self, id: SectionId) -> String {
+        format!("tests-{}.html", self.section_key(id))
+    }
+
+    /// A section's own map, when the map is split.
+    fn map_url(&self, id: SectionId) -> String {
+        format!("map-{}.html", self.section_key(id))
+    }
+
+    fn section_key(&self, id: SectionId) -> String {
+        match self.suite().section(id) {
+            x if x.parent.is_none() || x.slug.is_empty() => "suite".into(),
+            x => x.slug.clone(),
+        }
+    }
+
+    /// "Billing › Invoices": a section with the sections it is in.
+    fn chain_name(&self, id: SectionId) -> String {
+        let chain: Vec<String> = self
+            .suite()
+            .chain(id)
+            .iter()
+            .map(|x| x.name.clone())
+            .collect();
+        chain.join(" › ")
+    }
+
+    /// The tests of each section, by section id.
+    fn tests_by_section(&self) -> Vec<Vec<usize>> {
+        let mut by = vec![vec![]; self.suite().sections.len()];
+        for (i, p) in self.d.plans.iter().enumerate() {
+            by[p.section.0 as usize].push(i);
+        }
+        by
+    }
+
+    /// A section's own expectations: those of its features.
+    fn exps_of(&self, id: SectionId) -> Vec<ExpId> {
+        let s = self.suite();
+        s.section(id)
+            .features
+            .iter()
+            .flat_map(|&f| s.feature(f).expectations.clone())
+            .collect()
+    }
+
+    pub(crate) fn split_tests(&self) -> bool {
+        self.d.plans.len() > SPLIT_OVER
+    }
+
+    pub(crate) fn split_map(&self) -> bool {
+        self.suite().expectations.len() > SPLIT_OVER
+    }
+
     fn page_url(&self, i: usize) -> String {
         format!("page-{}.html", self.outline().pages[i].slug)
     }
@@ -364,6 +449,11 @@ impl Site<'_> {
             Here::Tutorial(i) => (self.tutorial_url(i), self.short_title(i)),
             Here::Test(i) => (self.test_url(i), self.d.plans[i].title.clone()),
             Here::Tests => ("tests.html".into(), "Test report".into()),
+            Here::TestsIn(id) => (
+                self.tests_url(id),
+                format!("Tests: {}", self.chain_name(id)),
+            ),
+            Here::MapIn(id) => (self.map_url(id), format!("Map: {}", self.chain_name(id))),
             Here::Interactions => ("interactions.html".into(), "Interactions".into()),
             Here::Contract(i) => (
                 self.contract_url(i),
@@ -1308,48 +1398,128 @@ impl Site<'_> {
                 c.count(State::Unknown)
             );
         }
-        for section in &s.sections {
-            let tests: Vec<usize> = (0..self.d.plans.len())
-                .filter(|&i| self.d.plans[i].section == section.id)
-                .collect();
-            if tests.is_empty() {
-                continue;
-            }
-            let chain: Vec<String> = s.chain(section.id).iter().map(|x| x.name.clone()).collect();
-            let _ = write!(
-                o,
-                "<h2>{}</h2><table class=\"tests\"><thead><tr><th>Test</th><th>Kind</th><th>Result</th></tr></thead><tbody>",
-                esc(&chain.join(" › "))
+        let by = self.tests_by_section();
+        if self.split_tests() {
+            o.push_str(
+                "<h2>By section</h2><table class=\"tests\"><thead><tr><th>Section</th><th>Tests</th><th>Results</th></tr></thead><tbody>",
             );
-            for i in tests {
-                let kind = match self.d.plans[i].origin {
-                    Origin::Story { .. } => {
-                        format!(r#"<a href="{}">tutorial</a>"#, esc(&self.tutorial_url(i)))
-                    }
-                    Origin::Coverage { .. } | Origin::Reaching { .. } => "generated".into(),
-                };
+            for section in &s.sections {
+                let tests = &by[section.id.0 as usize];
+                if tests.is_empty() {
+                    continue;
+                }
                 let _ = write!(
                     o,
-                    "<tr><td>{}</td><td>{kind}</td><td>{}</td></tr>",
-                    self.test_link(i),
-                    self.status_badge(self.f.status[i])
+                    r#"<tr><td><a href="{}">{}</a></td><td>{}</td><td>{}</td></tr>"#,
+                    esc(&self.tests_url(section.id)),
+                    esc(&self.chain_name(section.id)),
+                    tests.len(),
+                    self.status_counts(tests)
                 );
             }
             o.push_str("</tbody></table>");
+            let open = all
+                .iter()
+                .filter(|&&e| self.f.verdict(e).is_some_and(|v| v != Verdict::Verified))
+                .count();
+            if open > 0 {
+                let _ = write!(
+                    o,
+                    "<p>{open} expectations aren't verified yet; each section's page lists its own.</p>"
+                );
+            }
+        } else {
+            for section in &s.sections {
+                let tests = &by[section.id.0 as usize];
+                if tests.is_empty() {
+                    continue;
+                }
+                let _ = write!(o, "<h2>{}</h2>", esc(&self.chain_name(section.id)));
+                o.push_str(&self.tests_table(tests));
+            }
+            o.push_str(&self.not_verified(&all));
         }
-        let open: Vec<ExpId> = all
+        self.page(Here::Tests, "Test report", &o)
+    }
+
+    /// One section's tests, when the test report is split.
+    fn section_tests_page(&self, id: SectionId, tests: &[usize]) -> String {
+        let mut o = format!(
+            r#"<p class="kicker"><a href="tests.html">Test report</a></p><h1>{}</h1><p class="tally">{}</p>"#,
+            esc(&self.chain_name(id)),
+            self.status_counts(tests)
+        );
+        o.push_str(&self.tests_table(tests));
+        o.push_str(&self.not_verified(&self.exps_of(id)));
+        self.page(
+            Here::TestsIn(id),
+            &format!("Tests: {}", self.chain_name(id)),
+            &o,
+        )
+    }
+
+    /// A table of tests: each one's kind and result.
+    fn tests_table(&self, tests: &[usize]) -> String {
+        let mut o = String::from(
+            "<table class=\"tests\"><thead><tr><th>Test</th><th>Kind</th><th>Result</th></tr></thead><tbody>",
+        );
+        for &i in tests {
+            let kind = match self.d.plans[i].origin {
+                Origin::Story { .. } => {
+                    format!(r#"<a href="{}">tutorial</a>"#, esc(&self.tutorial_url(i)))
+                }
+                Origin::Coverage { .. } | Origin::Reaching { .. } => "generated".into(),
+            };
+            let _ = write!(
+                o,
+                "<tr><td>{}</td><td>{kind}</td><td>{}</td></tr>",
+                self.test_link(i),
+                self.status_badge(self.f.status[i])
+            );
+        }
+        o.push_str("</tbody></table>");
+        o
+    }
+
+    /// The expectations of `exps` that aren't verified, with their verdicts.
+    fn not_verified(&self, exps: &[ExpId]) -> String {
+        let open: Vec<ExpId> = exps
             .iter()
             .copied()
             .filter(|&e| self.f.verdict(e).is_some_and(|v| v != Verdict::Verified))
             .collect();
-        if !open.is_empty() {
-            o.push_str("<h2>Not verified yet</h2><ul class=\"exps\">");
-            for e in open {
-                let _ = write!(o, "<li>{} {}</li>", self.exp_link(e), self.verdict_badge(e));
-            }
-            o.push_str("</ul>");
+        if open.is_empty() {
+            return String::new();
         }
-        self.page(Here::Tests, "Test report", &o)
+        let mut o = String::from("<h2>Not verified yet</h2><ul class=\"exps\">");
+        for e in open {
+            let _ = write!(o, "<li>{} {}</li>", self.exp_link(e), self.verdict_badge(e));
+        }
+        o.push_str("</ul>");
+        o
+    }
+
+    /// How many of `tests` have each result, as badges: "3 passed 1 failed".
+    fn status_counts(&self, tests: &[usize]) -> String {
+        let order = [
+            Status::Passed,
+            Status::Failed,
+            Status::Skipped,
+            Status::Unsupported,
+            Status::Pending,
+            Status::NotRun,
+        ];
+        order
+            .iter()
+            .filter_map(|&st| {
+                let n = tests.iter().filter(|&&i| self.f.status[i] == st).count();
+                (n > 0).then(|| {
+                    self.status_badge(st)
+                        .replacen("\">", &format!("\">{n} "), 1)
+                })
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     /// The controls the tests found, and which tests used them.
@@ -1861,24 +2031,51 @@ impl Site<'_> {
             "<h1>Map</h1><p class=\"lede\">Every expectation, placed after the ones that get the system into a state where it applies, starting from each section's setup. Dashed arrows are exceptions, red ones are conflicts nobody has settled, and dashed outlines are invariants. Colours show each expectation's verdict.</p>",
         );
         o.push_str(r#"<p class="legend"><span class="badge ok">verified</span> <span class="badge bad">failed</span> <span class="badge warn">not supported yet</span> <span class="badge pending">pending</span> <span class="badge idle">untested</span></p>"#);
-        for section in &s.sections {
-            let own: Vec<ExpId> = section
-                .features
-                .iter()
-                .flat_map(|&f| s.feature(f).expectations.clone())
-                .collect();
-            if own.is_empty() {
-                continue;
+        if self.split_map() {
+            o.push_str("<p>The map has a page for each section:</p><ul>");
+            for section in &s.sections {
+                let own = self.exps_of(section.id);
+                if own.is_empty() {
+                    continue;
+                }
+                let _ = write!(
+                    o,
+                    r#"<li><a href="{}">{}</a> <span class="muted">({} expectations)</span></li>"#,
+                    esc(&self.map_url(section.id)),
+                    esc(&self.chain_name(section.id)),
+                    own.len()
+                );
             }
-            let chain: Vec<String> = s.chain(section.id).iter().map(|x| x.name.clone()).collect();
-            let map = crate::map::svg(self.d, self.f, &own, &|e| self.exp_url(e));
-            let _ = write!(
-                o,
-                r#"<h2>{}</h2><div class="map">{map}</div>"#,
-                esc(&chain.join(" › "))
-            );
+            o.push_str("</ul>");
+        } else {
+            for section in &s.sections {
+                let own = self.exps_of(section.id);
+                if own.is_empty() {
+                    continue;
+                }
+                let map = crate::map::svg(self.d, self.f, &own, &|e| self.exp_url(e));
+                let _ = write!(
+                    o,
+                    r#"<h2>{}</h2><div class="map">{map}</div>"#,
+                    esc(&self.chain_name(section.id))
+                );
+            }
         }
         self.page(Here::Map, "Map", &o)
+    }
+
+    /// One section's map, when the map is split.
+    fn section_map_page(&self, id: SectionId, own: &[ExpId]) -> String {
+        let map = crate::map::svg(self.d, self.f, own, &|e| self.exp_url(e));
+        let o = format!(
+            r#"<p class="kicker"><a href="map.html">Map</a></p><h1>{}</h1><p class="legend"><span class="badge ok">verified</span> <span class="badge bad">failed</span> <span class="badge warn">not supported yet</span> <span class="badge pending">pending</span> <span class="badge idle">untested</span></p><div class="map">{map}</div>"#,
+            esc(&self.chain_name(id))
+        );
+        self.page(
+            Here::MapIn(id),
+            &format!("Map: {}", self.chain_name(id)),
+            &o,
+        )
     }
 
     fn states_page(&self) -> String {

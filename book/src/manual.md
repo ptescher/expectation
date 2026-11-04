@@ -22,6 +22,13 @@ page's size does not grow with the manual. A section with more than 30 subsectio
 under one "N more sections" entry. It works from disk and from any static host; without scripts
 the sidebar shows the current section and links to the rest.
 
+With more than 300 tests, the test report (`site/tests.html`) is an index: one row per section,
+with its results, linking to that section's own report (`site/tests-<section>.html`), which lists
+its tests and what isn't verified yet. With more than 300 expectations, the map
+(`site/map.html`) is likewise a list of sections, each drawn on its own page
+(`site/map-<section>.html`). Smaller manuals keep one page each. The Markdown report is always one
+file.
+
 ## Approved-only manuals
 
 Mark what is agreed with `Approval: approved` and what is not with `Approval: proposed` (see

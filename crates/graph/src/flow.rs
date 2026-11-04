@@ -140,138 +140,213 @@ pub fn explore(
     roots: &[(Condition, SectionId)],
     limits: Limits,
 ) -> Flow {
-    let n = suite.expectations.len();
-    let followed = vec![false; suite.sections.len()];
-    let mut flow = Flow {
-        level: vec![None; n],
-        routes: vec![None; n],
-        followed,
-        ..Flow::default()
-    };
-    let follows: Vec<(usize, &Condition)> = suite
-        .sections
-        .iter()
-        .filter_map(|s| s.follows.as_ref().map(|f| (s.id.0 as usize, f)))
-        .collect();
-    let mut states: Vec<State> = vec![];
-    let mut seen: HashMap<Condition, usize> = HashMap::new();
+    Explorer::new(suite).explore(prec, roots, limits)
+}
 
-    let mut scopes: HashMap<SectionId, Vec<bool>> = HashMap::new();
-    for (root, section) in roots {
-        let scope = scopes
-            .entry(*section)
-            .or_insert_with(|| in_scope(suite, *section));
-        let (cond, invariants) = settle(suite, prec, root, &[]);
-        if !cond.is_satisfiable() || seen.contains_key(&cond) {
-            continue;
+/// What every search of a suite shares, worked out once: its transitions, the ones each might
+/// set off along with it, and each top-level section's scope. Searching many sections one at a
+/// time (as generated tests do, from each section's own start) then costs each search its own
+/// area, not the whole suite again.
+pub struct Explorer<'a> {
+    suite: &'a Suite,
+    transitions: Vec<&'a Expectation>,
+    companions: Vec<Vec<usize>>,
+    /// Per expectation, its index among the transitions, if it is one.
+    transition_of: Vec<Option<usize>>,
+    /// Per top-level section, the scope of the sections under it.
+    scopes: std::cell::RefCell<HashMap<SectionId, std::rc::Rc<Scope>>>,
+}
+
+/// The expectations a section's search may take: those of its top-level section's subtree.
+struct Scope {
+    members: std::collections::HashSet<ExpId>,
+    /// Indices into the transitions, in suite order.
+    transitions: Vec<usize>,
+}
+
+impl Scope {
+    fn has(&self, e: ExpId) -> bool {
+        self.members.contains(&e)
+    }
+}
+
+impl<'a> Explorer<'a> {
+    pub fn new(suite: &'a Suite) -> Self {
+        let transitions: Vec<&Expectation> = suite.transitions().collect();
+        let companions = companions(&transitions);
+        let mut transition_of = vec![None; suite.expectations.len()];
+        for (t, e) in transitions.iter().enumerate() {
+            transition_of[e.id.0 as usize] = Some(t);
         }
-        for inv in invariants.into_iter().filter(|e| scope[e.0 as usize]) {
-            flow.record(inv, 0, Node::Start, || Route {
-                start: root.clone(),
-                steps: vec![],
-            });
+        Explorer {
+            suite,
+            transitions,
+            companions,
+            transition_of,
+            scopes: Default::default(),
         }
-        seen.insert(cond.clone(), states.len());
-        let section = *section;
-        states.push(State {
-            cond,
-            section,
-            level: 0,
-            parent: None,
-            via: None,
-            start: root.clone(),
-            touched: BTreeSet::new(),
-        });
     }
 
-    let transitions: Vec<&Expectation> = suite.transitions().collect();
-    let companions = companions(&transitions);
-    // The transitions in each section's scope, so a state is only tried against its own.
-    let in_scope_of: HashMap<SectionId, Vec<usize>> = scopes
-        .iter()
-        .map(|(section, scope)| {
-            let list = (0..transitions.len())
-                .filter(|&t| scope[transitions[t].id.0 as usize])
-                .collect();
-            (*section, list)
-        })
-        .collect();
-    let mut i = 0;
-    while i < states.len() {
-        for &(s, f) in &follows {
-            flow.followed[s] |= states[i].cond.implies(f);
-        }
-        let scope = &scopes[&states[i].section];
-        for &t in &in_scope_of[&states[i].section] {
-            let e = transitions[t];
-            let s = &states[i];
-            if !s.cond.overlaps(&e.given) {
-                continue;
-            }
-            // Take the part of this state where `e` applies. Assumptions about states nothing
-            // has changed yet can be arranged at the start.
-            let pre = s.cond.and(&e.given);
-            let out = perform_among(
-                suite,
-                prec,
-                &pre,
-                &e.trigger,
-                companions[t].iter().map(|&c| transitions[c]),
-            );
-            if !out.fired.contains(&e.id) {
-                continue;
-            }
-            let assumed = s
-                .cond
-                .unproven(&e.given)
-                .restrict(e.given.vars().filter(|v| !s.touched.contains(v)));
-            let start = s.start.and(&assumed);
-            let route = || {
-                let mut steps = steps_to(&states, i);
-                steps.push(e.id);
-                Route {
-                    start: start.clone(),
-                    steps,
+    /// The scope of `section`, as [`in_scope`] says, from the expectations of its top-level
+    /// section's subtree alone.
+    fn scope(&self, section: SectionId) -> std::rc::Rc<Scope> {
+        let suite = self.suite;
+        let chain = suite.chain(section);
+        let top = chain.get(1).unwrap_or(&chain[0]).id;
+        self.scopes
+            .borrow_mut()
+            .entry(top)
+            .or_insert_with(|| {
+                let mut members = std::collections::HashSet::new();
+                for s in suite.subtree(top) {
+                    for &f in &suite.section(s).features {
+                        members.extend(suite.feature(f).expectations.iter().copied());
+                    }
                 }
-            };
-            let (level, from) = (s.level, s.from());
-            for &f in &out.fired {
-                flow.record(f, level, from, route);
-            }
-            if !out.after.is_satisfiable() {
+                let mut transitions: Vec<usize> = members
+                    .iter()
+                    .filter_map(|e| self.transition_of[e.0 as usize])
+                    .collect();
+                transitions.sort_unstable();
+                std::rc::Rc::new(Scope {
+                    members,
+                    transitions,
+                })
+            })
+            .clone()
+    }
+
+    /// As [`explore`].
+    pub fn explore(
+        &self,
+        prec: &Precedence,
+        roots: &[(Condition, SectionId)],
+        limits: Limits,
+    ) -> Flow {
+        let suite = self.suite;
+        let n = suite.expectations.len();
+        let followed = vec![false; suite.sections.len()];
+        let mut flow = Flow {
+            level: vec![None; n],
+            routes: vec![None; n],
+            followed,
+            ..Flow::default()
+        };
+        let follows: Vec<(usize, &Condition)> = suite
+            .sections
+            .iter()
+            .filter_map(|s| s.follows.as_ref().map(|f| (s.id.0 as usize, f)))
+            .collect();
+        let mut states: Vec<State> = vec![];
+        let mut seen: HashMap<Condition, usize> = HashMap::new();
+
+        let mut scopes: HashMap<SectionId, std::rc::Rc<Scope>> = HashMap::new();
+        for (root, section) in roots {
+            let scope = scopes
+                .entry(*section)
+                .or_insert_with(|| self.scope(*section));
+            let (cond, invariants) = settle(suite, prec, root, &[]);
+            if !cond.is_satisfiable() || seen.contains_key(&cond) {
                 continue;
             }
-            for &inv in out.invariants.iter().filter(|e| scope[e.0 as usize]) {
-                flow.record(inv, level + 1, Node::Exp(e.id), route);
+            for inv in invariants.into_iter().filter(|e| scope.has(*e)) {
+                flow.record(inv, 0, Node::Start, || Route {
+                    start: root.clone(),
+                    steps: vec![],
+                });
             }
-            if seen.contains_key(&out.after) {
-                continue;
-            }
-            if level + 1 > limits.depth || states.len() >= limits.states {
-                flow.truncated = true;
-                continue;
-            }
-            let mut touched = states[i].touched.clone();
-            touched.extend(e.trigger.changes.vars());
-            for &f in &out.fired {
-                touched.extend(suite.exp(f).sets());
-            }
-            seen.insert(out.after.clone(), states.len());
-            let section = states[i].section;
+            seen.insert(cond.clone(), states.len());
+            let section = *section;
             states.push(State {
-                cond: out.after,
+                cond,
                 section,
-                level: level + 1,
-                parent: Some(i),
-                via: Some(e.id),
-                start,
-                touched,
+                level: 0,
+                parent: None,
+                via: None,
+                start: root.clone(),
+                touched: BTreeSet::new(),
             });
         }
-        i += 1;
+
+        let (transitions, companions) = (&self.transitions, &self.companions);
+        let mut i = 0;
+        while i < states.len() {
+            for &(s, f) in &follows {
+                flow.followed[s] |= states[i].cond.implies(f);
+            }
+            let scope = scopes[&states[i].section].clone();
+            // Only the transitions in the state's own scope are tried.
+            for &t in &scope.transitions {
+                let e = transitions[t];
+                let s = &states[i];
+                if !s.cond.overlaps(&e.given) {
+                    continue;
+                }
+                // Take the part of this state where `e` applies. Assumptions about states nothing
+                // has changed yet can be arranged at the start.
+                let pre = s.cond.and(&e.given);
+                let out = perform_among(
+                    suite,
+                    prec,
+                    &pre,
+                    &e.trigger,
+                    companions[t].iter().map(|&c| transitions[c]),
+                );
+                if !out.fired.contains(&e.id) {
+                    continue;
+                }
+                let assumed = s
+                    .cond
+                    .unproven(&e.given)
+                    .restrict(e.given.vars().filter(|v| !s.touched.contains(v)));
+                let start = s.start.and(&assumed);
+                let route = || {
+                    let mut steps = steps_to(&states, i);
+                    steps.push(e.id);
+                    Route {
+                        start: start.clone(),
+                        steps,
+                    }
+                };
+                let (level, from) = (s.level, s.from());
+                for &f in &out.fired {
+                    flow.record(f, level, from, route);
+                }
+                if !out.after.is_satisfiable() {
+                    continue;
+                }
+                for &inv in out.invariants.iter().filter(|e| scope.has(**e)) {
+                    flow.record(inv, level + 1, Node::Exp(e.id), route);
+                }
+                if seen.contains_key(&out.after) {
+                    continue;
+                }
+                if level + 1 > limits.depth || states.len() >= limits.states {
+                    flow.truncated = true;
+                    continue;
+                }
+                let mut touched = states[i].touched.clone();
+                touched.extend(e.trigger.changes.vars());
+                for &f in &out.fired {
+                    touched.extend(suite.exp(f).sets());
+                }
+                seen.insert(out.after.clone(), states.len());
+                let section = states[i].section;
+                states.push(State {
+                    cond: out.after,
+                    section,
+                    level: level + 1,
+                    parent: Some(i),
+                    via: Some(e.id),
+                    start,
+                    touched,
+                });
+            }
+            i += 1;
+        }
+        flow.states = states.len();
+        flow
     }
-    flow.states = states.len();
-    flow
 }
 
 /// For each transition, the transitions its own trigger might also set off.
@@ -319,21 +394,24 @@ pub fn route_to(
         .filter(|(v, g)| !start.get(*v).is_some_and(|x| x.within(g)))
         .map(|(v, _)| v)
         .collect();
-    loop {
-        let before = relevant.len();
-        for e in suite.transitions() {
-            if e.sets().any(|v| relevant.contains(&v)) {
-                relevant.extend(e.given.vars().chain(e.trigger.changes.vars()));
+    // Followed out from the states that are relevant, by the transitions that set each, so a
+    // section's route costs what is relevant to it, not the whole suite.
+    let mut chosen: BTreeSet<ExpId> = BTreeSet::new();
+    let mut queue: Vec<VarId> = relevant.iter().copied().collect();
+    while let Some(v) = queue.pop() {
+        for &id in suite.setters_of(v) {
+            if chosen.insert(id) {
+                let e = suite.exp(id);
+                for w in e.given.vars().chain(e.trigger.changes.vars()) {
+                    if relevant.insert(w) {
+                        queue.push(w);
+                    }
+                }
             }
         }
-        if relevant.len() == before {
-            break;
-        }
     }
-    let transitions: Vec<&Expectation> = suite
-        .transitions()
-        .filter(|e| e.sets().any(|v| relevant.contains(&v)))
-        .collect();
+    // In declaration order, as the suite lists them.
+    let transitions: Vec<&Expectation> = chosen.iter().map(|&id| suite.exp(id)).collect();
     let companions = companions(&transitions);
     let wrong = |c: &Condition| {
         goal.iter()
