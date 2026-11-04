@@ -544,24 +544,32 @@ pub fn coverage_plans(suite: &Suite, analysis: &Analysis, plans: &[Plan]) -> Vec
         covered[e] |= !by.is_empty();
     }
     // Routes from each section's own start, so a generated test starts where the section does.
-    let mut flows: Vec<Option<expectation_graph::Flow>> =
+    // The searches share what doesn't depend on the section, and each keeps only the routes to
+    // its own section's expectations.
+    let explorer = expectation_graph::flow::Explorer::new(suite);
+    let mut routes: Vec<Option<std::collections::HashMap<ExpId, expectation_graph::Route>>> =
         suite.sections.iter().map(|_| None).collect();
     for e in &suite.expectations {
         if covered[e.id.0 as usize] {
             continue;
         }
         let section = suite.section_of(e.id);
-        let flow = flows[section.id.0 as usize].get_or_insert_with(|| {
+        let own = routes[section.id.0 as usize].get_or_insert_with(|| {
             let roots = [(section.start.clone(), section.id)];
-            expectation_graph::flow::explore(
-                suite,
+            let mut flow = explorer.explore(
                 &analysis.precedence,
                 &roots,
                 expectation_graph::Limits::default(),
-            )
+            );
+            section
+                .features
+                .iter()
+                .flat_map(|&f| suite.feature(f).expectations.iter().copied())
+                .filter_map(|x| Some((x, flow.routes[x.0 as usize].take()?)))
+                .collect()
         });
-        let route = flow.routes[e.id.0 as usize]
-            .as_ref()
+        let route = own
+            .get(&e.id)
             .or(analysis.flow.routes[e.id.0 as usize].as_ref());
         if route.is_some_and(|r| r.steps.is_empty()) {
             continue;

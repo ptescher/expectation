@@ -36,13 +36,14 @@ struct Shot {
 fn shots(d: &Docs, map: &StateMap) -> Vec<Vec<Shot>> {
     let mut out: Vec<Vec<Shot>> = (0..map.states.len()).map(|_| vec![]).collect();
     let Some(report) = d.report else { return out };
+    let locate = map.locator();
     for (i, (plan, result)) in d.plans.iter().zip(&report.results).enumerate() {
         let steps = std::iter::once((&plan.start, &result.start))
             .chain(plan.steps.iter().map(|s| &s.state).zip(&result.steps));
         for (state, r) in steps {
-            let (Some(path), Some(at)) = (&r.screenshot, map.locate(state)) else {
-                continue;
-            };
+            // Only a step with a screenshot is looked for on the map.
+            let Some(path) = &r.screenshot else { continue };
+            let Some(at) = locate(state) else { continue };
             let passed = r.status == Status::Passed && r.checks.iter().all(|c| c.passed);
             if !out[at].iter().any(|s| s.path == *path) {
                 out[at].push(Shot {
