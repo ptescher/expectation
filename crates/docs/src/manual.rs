@@ -463,27 +463,32 @@ pub enum Reading {
 }
 
 pub fn reading_order(d: &Docs) -> Vec<Reading> {
-    fn walk(d: &Docs, id: SectionId, out: &mut Vec<Reading>) {
+    fn walk(d: &Docs, stories: &[Vec<usize>], id: SectionId, out: &mut Vec<Reading>) {
         let s = d.suite.section(id);
         out.push(Reading::Section(id));
         out.extend(
-            (0..d.plans.len())
-                .filter(|&i| {
-                    d.plans[i].section == id && matches!(d.plans[i].origin, Origin::Story { .. })
-                })
+            stories[id.0 as usize]
+                .iter()
+                .copied()
                 .map(Reading::Tutorial),
         );
         out.extend(s.features.iter().map(|&f| Reading::Feature(f)));
         for &c in &s.children {
             // A section the outline places elsewhere is read there.
             if !d.outline.is_some_and(|o| o.listed(c)) {
-                walk(d, c, out);
+                walk(d, stories, c, out);
             }
+        }
+    }
+    let mut stories = vec![vec![]; d.suite.sections.len()];
+    for (i, plan) in d.plans.iter().enumerate() {
+        if matches!(plan.origin, Origin::Story { .. }) {
+            stories[plan.section.0 as usize].push(i);
         }
     }
     let mut out = vec![];
     let Some(outline) = d.outline else {
-        walk(d, SectionId(0), &mut out);
+        walk(d, &stories, SectionId(0), &mut out);
         return out;
     };
     // The suite's own page, then each part's chapters and pages in the outline's order.
@@ -491,7 +496,7 @@ pub fn reading_order(d: &Docs) -> Vec<Reading> {
     for part in &outline.parts {
         for item in &part.items {
             match *item {
-                crate::outline::Item::Section(id) => walk(d, id, &mut out),
+                crate::outline::Item::Section(id) => walk(d, &stories, id, &mut out),
                 crate::outline::Item::Page(i) => out.push(Reading::Page(i)),
             }
         }

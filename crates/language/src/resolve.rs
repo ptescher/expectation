@@ -9,6 +9,7 @@ use expectation_model::{
     Phrase, PhraseBody, PhraseId, Said, Scenario, Section, SectionId, Shift, Span, StepText, Story,
     StoryId, StoryStep, Suite, Trigger, VarId, Vocabulary,
 };
+use std::collections::HashMap;
 
 pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
     let mut named: Option<&(String, Span)> = None;
@@ -79,7 +80,8 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
             .unwrap()
     };
 
-    // Features and their expectations.
+    // Features and their expectations. `by_key` finds one by name without a search.
+    let mut by_key: HashMap<String, ExpId> = HashMap::new();
     let mut overrides: Vec<(ExpId, Vec<(String, Span)>)> = vec![];
     for f in files {
         for rf in &f.features {
@@ -95,11 +97,8 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
             };
             for re in &rf.expectations {
                 let id = ExpId(suite.expectations.len() as u32);
-                if let Some(prev) = suite
-                    .expectations
-                    .iter()
-                    .find(|e| text::key(&e.name) == text::key(&re.name))
-                {
+                let key = text::key(&re.name);
+                if let Some(prev) = by_key.get(&key).map(|p| &suite.expectations[p.0 as usize]) {
                     diags.push(
                         Diagnostic::error(
                             "duplicate",
@@ -109,6 +108,7 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
                         .at(&prev.span, "first defined here"),
                     );
                 }
+                by_key.entry(key).or_insert(id);
                 suite
                     .expectations
                     .push(expectation(id, fid, re, vocab, diags));
@@ -127,7 +127,7 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
     for (id, names) in overrides {
         for (name, span) in names {
             let k = text::key(&name);
-            match suite.expectations.iter().find(|e| text::key(&e.name) == k) {
+            match by_key.get(&k).map(|t| &suite.expectations[t.0 as usize]) {
                 Some(target) if target.id == id => diags.push(
                     Diagnostic::error("bad-override", "an expectation can't override itself")
                         .at(&span, ""),

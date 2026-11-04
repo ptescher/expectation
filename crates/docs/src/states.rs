@@ -3,7 +3,7 @@
 //! number of moves from the start, start on the left.
 //!
 //! The page holds the states and the moves as data, each string written once, and a small
-//! script (the only one on the site) draws a state when it is opened: at first the start
+//! script (besides the navigation's, `assets/nav.js`) draws a state when it is opened: at first the start
 //! states and the states a move from them, then the states that a picked state leads to.
 //! Without the script, the panels of the start states are there as plain HTML.
 

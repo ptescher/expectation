@@ -9,7 +9,10 @@
 //! winner is an exception to the loser. Settled conflicts are kept, since docs show them.
 
 use crate::precedence::Precedence;
-use expectation_model::{Condition, Diagnostic, ExpId, Expectation, Shift, Suite, Trigger, VarId};
+use expectation_model::{
+    Condition, Diagnostic, EventId, ExpId, Expectation, Shift, Suite, Trigger, VarId,
+};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -56,9 +59,17 @@ pub fn detect(suite: &Suite, prec: &Precedence) -> Vec<Conflict> {
         }
     };
 
+    // Two transitions can only clash if one action sets off both, which needs the same event
+    // (or none), so only those are compared. The order is the same as comparing every pair.
     let transitions: Vec<&Expectation> = suite.transitions().collect();
+    let mut by_event: HashMap<Option<EventId>, Vec<usize>> = HashMap::new();
+    for (i, t) in transitions.iter().enumerate() {
+        by_event.entry(t.trigger.event).or_default().push(i);
+    }
     for (i, a) in transitions.iter().enumerate() {
-        for b in &transitions[i + 1..] {
+        let same = &by_event[&a.trigger.event];
+        for &j in &same[same.partition_point(|&k| k <= i)..] {
+            let b = transitions[j];
             if !a.trigger.compatible(&b.trigger) {
                 continue;
             }
@@ -87,14 +98,36 @@ pub fn detect(suite: &Suite, prec: &Precedence) -> Vec<Conflict> {
         }
     }
 
+    // An expectation can only break an invariant if something it changes is a state the
+    // invariant is about, so look up the invariants by the states they mention.
+    let invariants: Vec<&Expectation> = suite.invariants().collect();
+    let mut about: HashMap<VarId, Vec<usize>> = HashMap::new();
+    for (k, inv) in invariants.iter().enumerate() {
+        for v in inv.given.vars().chain(inv.then.vars()) {
+            let list = about.entry(v).or_default();
+            if list.last() != Some(&k) {
+                list.push(k);
+            }
+        }
+    }
+    let mut seen: HashSet<(ExpId, ExpId)> = HashSet::new();
     for x in &suite.expectations {
+        let changed: Vec<VarId> = x.sets().chain(x.trigger.changes.vars()).collect();
+        let mut candidates: Vec<usize> = changed
+            .iter()
+            .filter_map(|v| about.get(v))
+            .flatten()
+            .copied()
+            .collect();
+        if candidates.is_empty() {
+            continue;
+        }
+        candidates.sort_unstable();
+        candidates.dedup();
         let after = x.outcome(&suite.vocabulary);
-        for inv in suite.invariants() {
-            if inv.id == x.id
-                || out
-                    .iter()
-                    .any(|c| c.kind == Kind::Invariant && c.involves(x.id, inv.id))
-            {
+        for k in candidates {
+            let inv = invariants[k];
+            if inv.id == x.id || seen.contains(&(x.id.min(inv.id), x.id.max(inv.id))) {
                 continue;
             }
             let scope = after.and(&inv.given);
@@ -105,13 +138,13 @@ pub fn detect(suite: &Suite, prec: &Precedence) -> Vec<Conflict> {
             // or is what the invariant gets wrong. Otherwise the clash was in its Given already,
             // a state the invariant itself rules out.
             let vars = scope.contradictions(&inv.then);
-            let changed: Vec<VarId> = x.sets().chain(x.trigger.changes.vars()).collect();
             if !changed
                 .iter()
                 .any(|v| inv.given.get(*v).is_some() || vars.contains(v))
             {
                 continue;
             }
+            seen.insert((x.id.min(inv.id), x.id.max(inv.id)));
             out.push(Conflict {
                 kind: Kind::Invariant,
                 a: x.id,
@@ -259,5 +292,174 @@ fn exception_help(a: &Expectation, b: &Expectation) -> String {
         )
     } else {
         "if one is an exception to the other, add `Overrides: <the other>` to it; otherwise narrow a Given so they can't both apply".into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::precedence::Precedence;
+
+    fn detect_all_pairs(suite: &Suite, prec: &Precedence) -> Vec<Conflict> {
+        let mut out = vec![];
+        let winner = |a: ExpId, b: ExpId| {
+            if prec.beats(a, b) {
+                Some(a)
+            } else if prec.beats(b, a) {
+                Some(b)
+            } else {
+                None
+            }
+        };
+
+        let transitions: Vec<&Expectation> = suite.transitions().collect();
+        for (i, a) in transitions.iter().enumerate() {
+            for b in &transitions[i + 1..] {
+                if !a.trigger.compatible(&b.trigger) {
+                    continue;
+                }
+                let situation = a.given.and(&b.given);
+                if !situation.is_satisfiable() {
+                    continue;
+                }
+                let trigger = Trigger {
+                    event: a.trigger.event,
+                    changes: a.trigger.changes.and(&b.trigger.changes),
+                };
+                let before = situation.overlay(&trigger.changes);
+                let vars = disagree(suite, a, b, &before);
+                if vars.is_empty() {
+                    continue;
+                }
+                out.push(Conflict {
+                    kind: Kind::Outcome,
+                    a: a.id,
+                    b: b.id,
+                    vars,
+                    situation,
+                    trigger,
+                    winner: winner(a.id, b.id),
+                });
+            }
+        }
+
+        for x in &suite.expectations {
+            let after = x.outcome(&suite.vocabulary);
+            for inv in suite.invariants() {
+                if inv.id == x.id
+                    || out
+                        .iter()
+                        .any(|c| c.kind == Kind::Invariant && c.involves(x.id, inv.id))
+                {
+                    continue;
+                }
+                let scope = after.and(&inv.given);
+                if !scope.is_satisfiable() || scope.and(&inv.then).is_satisfiable() {
+                    continue;
+                }
+                // Only if `x` is what breaks it: something it changes is in the invariant's Given
+                // or is what the invariant gets wrong. Otherwise the clash was in its Given already,
+                // a state the invariant itself rules out.
+                let vars = scope.contradictions(&inv.then);
+                let changed: Vec<VarId> = x.sets().chain(x.trigger.changes.vars()).collect();
+                if !changed
+                    .iter()
+                    .any(|v| inv.given.get(*v).is_some() || vars.contains(v))
+                {
+                    continue;
+                }
+                out.push(Conflict {
+                    kind: Kind::Invariant,
+                    a: x.id,
+                    b: inv.id,
+                    vars,
+                    situation: scope,
+                    trigger: x.trigger.clone(),
+                    winner: winner(x.id, inv.id),
+                });
+            }
+        }
+        out
+    }
+
+    /// Conflicts as a comparable list, in the order they were found.
+    fn shape(cs: &[Conflict]) -> Vec<String> {
+        cs.iter()
+            .map(|c| format!("{:?}", (c.kind, c.a, c.b, &c.vars, c.winner)))
+            .collect()
+    }
+
+    fn same_as_all_pairs(src: &str) -> usize {
+        let loaded = expectation_language::load_sources("S", &[("s.expect", src)]);
+        let suite = loaded.suite;
+        let prec = crate::precedence::build(&suite).0;
+        let (fast, slow) = (detect(&suite, &prec), detect_all_pairs(&suite, &prec));
+        assert_eq!(shape(&fast), shape(&slow));
+        fast.len()
+    }
+
+    #[test]
+    fn finds_what_comparing_every_pair_finds() {
+        // Outcome conflicts (with and without an event), a settled one, and invariants.
+        let src = "
+Vocabulary:
+  State: the kettle is off | heating | dry
+  State: the dial is 0..100 %
+  State: the child lock is on | off
+  Event: the user presses start
+  Event: the user presses lock
+Background:
+  Given the kettle is off
+  And the child lock is off
+Feature: F
+  Expectation: Dial starts it
+    Given the kettle is off
+    When the dial is above 55 %
+    Then the kettle is heating
+  Expectation: Lock holds it
+    Given the kettle is off
+    And the child lock is on
+    When the dial is above 55 %
+    Then the kettle is off
+  Expectation: Start starts it
+    Given the kettle is off
+    When the user presses start
+    Then the kettle is heating
+  Expectation: Start with the lock does not
+    Given the kettle is off
+    And the child lock is on
+    When the user presses start
+    Then the kettle is off
+  Expectation: Lock locks
+    Given the child lock is off
+    When the user presses lock
+    Then the child lock is on
+  Expectation: Dry never heats
+    Given the kettle is dry
+    Then the kettle is dry
+  Expectation: Dry can start
+    Given the kettle is dry
+    When the user presses start
+    Then the kettle is heating
+";
+        let n = same_as_all_pairs(src);
+        assert_eq!(n, 2);
+    }
+
+    #[test]
+    fn matches_comparing_every_pair_on_the_examples() {
+        for dir in [
+            "../harness/examples/kettle",
+            "../../examples/smart-kettle",
+            "../../demos/kettle/expectations",
+        ] {
+            let loaded = expectation_language::load_dir(std::path::Path::new(dir)).unwrap();
+            let prec = crate::precedence::build(&loaded.suite).0;
+            assert_eq!(
+                shape(&detect(&loaded.suite, &prec)),
+                shape(&detect_all_pairs(&loaded.suite, &prec)),
+                "{dir}"
+            );
+        }
     }
 }

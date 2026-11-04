@@ -10,7 +10,7 @@
 
 use crate::precedence::Precedence;
 use crate::semantics::{perform_among, settle};
-use expectation_model::{Condition, ExpId, Expectation, SectionId, Suite, VarId};
+use expectation_model::{Condition, EventId, ExpId, Expectation, SectionId, Suite, VarId};
 use std::collections::{BTreeSet, HashMap};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -186,15 +186,26 @@ pub fn explore(
 
     let transitions: Vec<&Expectation> = suite.transitions().collect();
     let companions = companions(&transitions);
+    // The transitions in each section's scope, so a state is only tried against its own.
+    let in_scope_of: HashMap<SectionId, Vec<usize>> = scopes
+        .iter()
+        .map(|(section, scope)| {
+            let list = (0..transitions.len())
+                .filter(|&t| scope[transitions[t].id.0 as usize])
+                .collect();
+            (*section, list)
+        })
+        .collect();
     let mut i = 0;
     while i < states.len() {
         for &(s, f) in &follows {
             flow.followed[s] |= states[i].cond.implies(f);
         }
         let scope = &scopes[&states[i].section];
-        for (t, e) in transitions.iter().enumerate() {
+        for &t in &in_scope_of[&states[i].section] {
+            let e = transitions[t];
             let s = &states[i];
-            if !scope[e.id.0 as usize] || !s.cond.overlaps(&e.given) {
+            if !s.cond.overlaps(&e.given) {
                 continue;
             }
             // Take the part of this state where `e` applies. Assumptions about states nothing
@@ -265,10 +276,17 @@ pub fn explore(
 
 /// For each transition, the transitions its own trigger might also set off.
 pub(crate) fn companions(transitions: &[&Expectation]) -> Vec<Vec<usize>> {
+    // An action only sets off transitions with its own event, so only those are tried.
+    let mut by_event: HashMap<Option<EventId>, Vec<usize>> = HashMap::new();
+    for (t, e) in transitions.iter().enumerate() {
+        by_event.entry(e.trigger.event).or_default().push(t);
+    }
     transitions
         .iter()
         .map(|e| {
-            (0..transitions.len())
+            by_event[&e.trigger.event]
+                .iter()
+                .copied()
                 .filter(|&c| e.trigger.may_fire(&transitions[c].trigger))
                 .collect()
         })

@@ -763,4 +763,76 @@ Feature: Paying
         let tall = thumb(Some(9.0 / 19.5));
         assert!(tall.contains(",442,"), "{tall}");
     }
+
+    fn sections_site(n: usize) -> Vec<Page> {
+        let vocab = "Vocabulary:\n  State: the lamp is off | on\n  Event: the user flips the switch\nBackground:\n  Given the lamp is off\n";
+        let feature = |i: usize| {
+            format!(
+                "Feature: Topic {i}\n  What it does.\n  Expectation: Rule {i}\n    Given the lamp is off\n    When the user flips the switch\n    Then the lamp is on\n"
+            )
+        };
+        let mut sources = vec![("vocab.expect".to_string(), vocab.to_string())];
+        // Only the first section needs the expectation to be unique; the rest differ by number.
+        for i in 0..n {
+            sources.push((format!("{i:03}-area{i}/f.expect"), feature(i)));
+        }
+        let refs: Vec<(&str, &str)> = sources
+            .iter()
+            .map(|(a, b)| (a.as_str(), b.as_str()))
+            .collect();
+        let loaded = expectation_language::load_sources("S", &refs);
+        assert!(!loaded.has_errors(), "{}", loaded.render_diagnostics());
+        let suite = loaded.suite;
+        let analysis = expectation_graph::analyze(&suite);
+        Docs {
+            suite: &suite,
+            analysis: &analysis,
+            plans: &[],
+            report: None,
+            suite_dir: None,
+            siblings: &[],
+            outline: None,
+            inventory: &[],
+            look: Look::default(),
+        }
+        .pages()
+    }
+
+    fn page<'a>(pages: &'a [Page], path: &str) -> &'a str {
+        &pages
+            .iter()
+            .find(|p| p.path == path)
+            .unwrap_or_else(|| {
+                let paths: Vec<_> = pages.iter().map(|p| &p.path).collect();
+                panic!("no {path} in {paths:?}")
+            })
+            .content
+    }
+
+    #[test]
+    fn a_page_lists_its_own_surroundings_and_the_script_has_the_rest() {
+        let pages = sections_site(3);
+        let nav = page(&pages, "site/assets/nav.js");
+        let here = page(&pages, "site/feature-area1--topic-1.html");
+        // Its own section is open with its topic; the others are links with nothing under them.
+        assert!(here.contains(r#"<details open><summary><a href="section-area1.html""#));
+        assert!(here.contains(r#"<details data-nav="section-area0.html">"#));
+        assert!(!here.contains("feature-area0--topic-0.html"));
+        assert!(here.contains(r#"src="assets/nav.js""#));
+        // The script knows what is under every section.
+        assert!(nav.contains("feature-area0--topic-0.html"));
+        assert!(nav.contains("feature-area2--topic-2.html"));
+    }
+
+    #[test]
+    fn many_sibling_sections_are_folded_into_one_entry() {
+        let pages = sections_site(40);
+        let here = page(&pages, "site/feature-area7--topic-7.html");
+        assert!(here.contains("39 more sections"), "{}", here.len());
+        assert!(!here.contains("section-area20.html"));
+        assert!(here.matches("<details").count() < 5);
+        let nav = page(&pages, "site/assets/nav.js");
+        assert!(nav.contains("index.html#sections"));
+        assert!(nav.contains("section-area20.html"));
+    }
 }

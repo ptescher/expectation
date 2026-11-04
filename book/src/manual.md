@@ -14,6 +14,14 @@ or, from results that runs have saved in `docs/results/`:
 expectation docs expectations docs
 ```
 
+## Navigation and size
+
+Each page lists only the sections on the way to it, with the others as links. Opening one fills
+in what is under it from `site/assets/nav.js`, which is written once for the whole site, so a
+page's size does not grow with the manual. A section with more than 30 subsections shows them
+under one "N more sections" entry. It works from disk and from any static host; without scripts
+the sidebar shows the current section and links to the rest.
+
 ## Approved-only manuals
 
 Mark what is agreed with `Approval: approved` and what is not with `Approval: proposed` (see
