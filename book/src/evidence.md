@@ -70,6 +70,24 @@ them. Keeping secrets out of a capture in the first place is the driver's job.
 Attachments are optional. An extension can also read a capture made by any other tool (a
 browser's HAR export, Playwright, a proxy) and match its entries to steps by time.
 
+## The HAR and OpenAPI extension
+
+[`extensions/har-openapi`](https://github.com/ptescher/expectation/tree/main/extensions/har-openapi)
+holds captured HTTP traffic against an OpenAPI 3.0 or 3.1 document:
+
+```bash
+expectation-run expectations --docs docs --attachments captures
+npx expectation-har-openapi --results docs/results/app.tsv --attachments captures \
+  --openapi api.yaml --source live --complete
+expectation docs expectations docs
+```
+
+Each documented status (exact, range or `default`), each `enum` value and each `oneOf`/`anyOf`
+branch of a JSON response becomes an outcome. It also reads a HAR made by any other tool
+(`--har`), and places its requests in steps by time. Its README lists what it assesses and what
+it leaves unknown. `crates/harness/examples/quote` runs the whole pipeline, with a stand-in
+quote service.
+
 ## Writing an extension
 
 An extension reads:

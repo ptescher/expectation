@@ -27,3 +27,19 @@ jobs:
       - run: cargo run -p expectation_cli -- docs examples/smart-kettle target/smart-kettle-approved --approved-only
       - run: cargo run -p expectation_harness --example turnstile
       - run: cargo build -p expectation_remote && node --test clients/js/test.mjs
+
+  extensions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: extensions/har-openapi
+      # The unit tests, and the quote example end to end: a run, this extension, `expectation docs`.
+      - run: npm test
+        working-directory: extensions/har-openapi
+        env:
+          EXPECTATION_E2E: "1"

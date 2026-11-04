@@ -1,0 +1,28 @@
+{
+  "name": "expectation-har-openapi",
+  "version": "0.1.0",
+  "description": "An Expectation extension: hold the HTTP traffic a test run captured (HAR) against an OpenAPI document, and write the contract coverage the manual shows",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ptescher/expectation",
+    "directory": "extensions/har-openapi"
+  },
+  "type": "module",
+  "bin": {
+    "expectation-har-openapi": "bin/expectation-har-openapi.js"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "yaml": "2.9.1"
+  }
+}

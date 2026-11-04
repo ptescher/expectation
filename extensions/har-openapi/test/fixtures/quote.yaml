@@ -1,0 +1,99 @@
+openapi: 3.0.3
+info:
+  title: Quote API
+  version: 1.2.0
+servers:
+  - url: https://api.example.com/v1
+paths:
+  /quote:
+    post:
+      summary: Ask for a quote
+      responses:
+        '200':
+          description: A quote
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Quote'
+        '429':
+          description: Rate limited
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        default:
+          description: Something went wrong
+  /quotes/latest:
+    get:
+      responses:
+        '200':
+          description: The latest quote
+  /quotes/{id}:
+    get:
+      responses:
+        '200':
+          description: One quote
+        '404':
+          description: No such quote
+        4XX:
+          description: A bad request
+  /prices:
+    get:
+      responses:
+        '200':
+          description: Prices as they change
+          content:
+            text/event-stream:
+              schema:
+                type: string
+  /odd:
+    get:
+      responses:
+        '200':
+          description: A schema this extension can't assess
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shape:
+                    not:
+                      type: string
+                  remote:
+                    $ref: 'https://example.com/schemas/remote.json'
+components:
+  schemas:
+    Quote:
+      type: object
+      required: [kind, price]
+      properties:
+        kind:
+          type: string
+          enum: [firm, indicative]
+        note:
+          type: string
+        price:
+          oneOf:
+            - $ref: '#/components/schemas/Fixed'
+            - $ref: '#/components/schemas/Range'
+    Fixed:
+      type: object
+      required: [amount]
+      additionalProperties: false
+      properties:
+        amount:
+          type: number
+    Range:
+      type: object
+      required: [low, high]
+      additionalProperties: false
+      properties:
+        low:
+          type: number
+        high:
+          type: number
+    Problem:
+      type: object
+      properties:
+        type:
+          type: string
