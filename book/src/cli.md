@@ -77,7 +77,10 @@ expectation docs <dir> <out-dir>
 ```
 
 Writes the manual (Markdown and the HTML site) to `<out-dir>`, using the results that runs
-have saved in `<out-dir>/results/`. Without results, every test shows as "not run".
+have saved in `<out-dir>/results/`. Without results, every test shows as "not run". Coverage
+files that extensions wrote there (`*.coverage.tsv`) each get a contract coverage page (see
+[Evidence and contract coverage](evidence.md)). A file that can't be read is a warning, not an
+error.
 
 - `--approved-only` writes just what the suite marks `Approval: approved` (see
   [Approved-only manuals](manual.md#approved-only-manuals)); `--results <dir>` reads the saved

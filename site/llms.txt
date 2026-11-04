@@ -24,6 +24,7 @@ For AI agents: install the skill at https://expectation.sim001.net/skills/expect
 - [Drivers](https://expectation.sim001.net/guide/drivers.html)
 - [Remote drivers](https://expectation.sim001.net/guide/remote.html): Swift, JavaScript and Rust clients, embedded in the app or in a UI-automation test process, driven by `expectation-run`
 - [The generated manual](https://expectation.sim001.net/guide/manual.html): includes custom themes and approved-only manuals
+- [Evidence and contract coverage](https://expectation.sim001.net/guide/evidence.html): run ids, step windows and attachments for extensions; the coverage file format and the rules it is held to
 - [The expectation command](https://expectation.sim001.net/guide/cli.html)
 - [Diagnostics](https://expectation.sim001.net/guide/diagnostics.html)
 

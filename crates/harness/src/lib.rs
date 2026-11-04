@@ -16,7 +16,7 @@ pub mod run;
 pub use expectation_service as service;
 
 pub use bindings::Bindings;
-pub use driver::{Driver, Need, Progress, Screenshot};
+pub use driver::{Capture, Driver, Need, Progress, Screenshot};
 pub use run::{RunOptions, Worker, run, run_parallel};
 
 use expectation_docs::Docs;
@@ -188,6 +188,7 @@ impl Acceptance {
             siblings: &[],
             outline: None,
             inventory: &self.inventory,
+            contracts: &[],
             look: expectation_docs::Look {
                 stylesheet: self.stylesheet.as_deref(),
                 shot_ratio: self.shot_ratio,
@@ -208,7 +209,16 @@ impl Acceptance {
             &self.plans,
             self.suite.platform.as_deref(),
         );
-        self.docs(Some(&merged)).write(&self.tree(dir))?;
+        // What extensions made of this platform's evidence, held to these results.
+        let (found, _) =
+            expectation_story::load_contracts_for(&results, self.suite.platform.as_deref());
+        let judged: Vec<_> = found
+            .into_iter()
+            .map(|c| expectation_story::Coverage::judge(c, &self.plans, &merged))
+            .collect();
+        let mut docs = self.docs(Some(&merged));
+        docs.contracts = &judged;
+        docs.write(&self.tree(dir))?;
         Ok(merged)
     }
 

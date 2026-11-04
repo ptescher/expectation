@@ -13,7 +13,10 @@ use crate::{manual, voice};
 use expectation_graph::Node;
 use expectation_model::text::paragraphs;
 use expectation_model::{ExpId, FeatureId, Keyword, PhraseBody, SectionId, StepText, Suite};
-use expectation_story::{Because, Check, CheckResult, Origin, Status, StepResult, Verdict};
+use expectation_story::{
+    Attribution, Because, Check, CheckResult, Completeness, Credit, Origin, Source, State, Status,
+    StepResult, Verdict,
+};
 use std::collections::HashMap;
 use std::fmt::Write;
 
@@ -37,6 +40,8 @@ enum Here {
     Tests,
     /// The program's controls and which tests used them.
     Interactions,
+    /// A contract's coverage, by its index in `Docs::contracts`.
+    Contract(usize),
     Map,
     /// The app's states and the moves between them.
     States,
@@ -133,6 +138,12 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
             content: site.interactions_page(&controls),
         });
     }
+    for i in 0..d.contracts.len() {
+        pages.push(Page {
+            path: format!("site/{}", site.contract_url(i)),
+            content: site.contract_page(i),
+        });
+    }
     pages.push(Page {
         path: "site/map.html".into(),
         content: site.map_page(),
@@ -212,6 +223,10 @@ impl Site<'_> {
     fn exp_url(&self, e: ExpId) -> String {
         let x = self.suite().exp(e);
         format!("{}#{}", self.feature_url(x.feature), x.slug)
+    }
+
+    fn contract_url(&self, i: usize) -> String {
+        format!("contract-{}.html", self.d.contract_slugs()[i])
     }
 
     fn test_url(&self, i: usize) -> String {
@@ -350,6 +365,10 @@ impl Site<'_> {
             Here::Test(i) => (self.test_url(i), self.d.plans[i].title.clone()),
             Here::Tests => ("tests.html".into(), "Test report".into()),
             Here::Interactions => ("interactions.html".into(), "Interactions".into()),
+            Here::Contract(i) => (
+                self.contract_url(i),
+                self.d.contracts[i].contract.name.clone(),
+            ),
             Here::Map => ("map.html".into(), "Map".into()),
             Here::States => ("states.html".into(), "State map".into()),
             Here::Glossary => ("glossary.html".into(), "Glossary".into()),
@@ -1277,6 +1296,18 @@ impl Site<'_> {
                 controls.iter().filter(|r| !r.used()).count()
             );
         }
+        for (i, c) in self.d.contracts.iter().enumerate() {
+            let _ = write!(
+                o,
+                r#"<p>{}: <a href="{}">{}</a>: {} observed, {} not observed, {} unknown.</p>"#,
+                esc(&c.contract.kind_or_default()),
+                esc(&self.contract_url(i)),
+                esc(&c.contract.name),
+                c.count(State::Observed),
+                c.count(State::NotObserved),
+                c.count(State::Unknown)
+            );
+        }
         for section in &s.sections {
             let tests: Vec<usize> = (0..self.d.plans.len())
                 .filter(|&i| self.d.plans[i].section == section.id)
@@ -1490,7 +1521,7 @@ impl Site<'_> {
         }
 
         // The section's setup is the page's context; what the test adds to it is the news.
-        o.push_str(r#"<section class="step"><h2>Start</h2>"#);
+        o.push_str(r#"<section class="step" id="step-0"><h2>Start</h2>"#);
         let section = s.section(plan.section);
         let own: Vec<String> = plan
             .start
@@ -1513,11 +1544,13 @@ impl Site<'_> {
             self.given_lines(&s.vocabulary.facts(&plan.start))
         );
         o.push_str(&self.step_body(&plan.start_checks, result.map(|r| &r.start), status));
+        o.push_str(&self.step_evidence(i, 0));
         o.push_str("</section>");
         for (n, step) in plan.steps.iter().enumerate() {
             let _ = write!(
                 o,
-                r#"<section class="step"><h2><span class="n">{}</span> {}</h2>"#,
+                r#"<section class="step" id="step-{}"><h2><span class="n">{}</span> {}</h2>"#,
+                n + 1,
                 n + 1,
                 esc(&action_heading(&step.text))
             );
@@ -1531,9 +1564,229 @@ impl Site<'_> {
                 );
             }
             o.push_str(&self.step_body(&step.checks, result.and_then(|r| r.steps.get(n)), status));
+            o.push_str(&self.step_evidence(i, n + 1));
             o.push_str("</section>");
         }
         self.page(Here::Test(i), &plan.title, &o)
+    }
+
+    /// The contract evidence that counts for a step: what it did, and the contract it was held against.
+    fn step_evidence(&self, plan: usize, step: usize) -> String {
+        let found = self.d.evidence_at(plan, step);
+        if found.is_empty() {
+            return String::new();
+        }
+        let mut o = String::from(r#"<p class="muted">Evidence:</p><ul class="evidence">"#);
+        for (c, e) in found {
+            let cov = &self.d.contracts[c];
+            let ev = &cov.contract.evidence[e];
+            let _ = write!(
+                o,
+                r#"<li><code>{}</code> <span class="muted">({}, {})</span> in <a href="{}">{}</a></li>"#,
+                esc(&ev.label),
+                ev.source.name(),
+                ev.attribution.describe(),
+                esc(&self.contract_url(c)),
+                esc(&cov.contract.name)
+            );
+        }
+        o.push_str("</ul>");
+        o
+    }
+
+    /// A link to a step of a test's page: "Get a quote › step 1".
+    fn step_link(&self, plan: usize, step: usize) -> String {
+        let at = if step == 0 {
+            "start".to_string()
+        } else {
+            format!("step {step}")
+        };
+        format!(
+            r#"<a href="{}#step-{step}">{} › {at}</a>"#,
+            esc(&self.test_url(plan)),
+            esc(&self.d.plans[plan].title)
+        )
+    }
+
+    fn evidence_link(&self, cov: &expectation_story::Coverage, e: usize) -> String {
+        let ev = &cov.contract.evidence[e];
+        let place = match cov.credit[e] {
+            Credit::Counts { plan, step } => self.step_link(plan, step),
+            _ => "no test".into(),
+        };
+        let mut how = vec![ev.source.name()];
+        if !matches!(ev.attribution, Attribution::Declared | Attribution::Timed) {
+            how.push(ev.attribution.describe());
+        }
+        let fault = if ev.source == Source::Fault {
+            r#" <span class="badge warn">injected</span>"#
+        } else {
+            ""
+        };
+        format!(
+            r#"{place} <span class="muted">({})</span>{fault}"#,
+            esc(&how.join(", "))
+        )
+    }
+
+    /// One contract, held against the evidence: what was seen, what wasn't, and what nobody can say.
+    fn contract_page(&self, i: usize) -> String {
+        let cov = &self.d.contracts[i];
+        let c = &cov.contract;
+        let slug = &self.d.contract_slugs()[i];
+        let mut about = vec![esc(&c.kind_or_default())];
+        if !c.revision.is_empty() {
+            about.push(format!("revision <code>{}</code>", esc(&c.revision)));
+        }
+        about.push(format!("from <code>{}</code>", esc(&c.file)));
+        let (seen, unseen, unknown) = (
+            cov.count(State::Observed),
+            cov.count(State::NotObserved),
+            cov.count(State::Unknown),
+        );
+        let mut o = format!(
+            "<p class=\"kicker\"><a href=\"tests.html\">Test report</a></p><h1>{}</h1><p class=\"muted\">{}</p>\
+             <p class=\"lede\">What the contract describes, held against the evidence the tests left. <strong>Observed</strong>: \
+             a test that ran saw it. <strong>Not observed</strong>: every run's capture was complete and no test saw it, so it \
+             may deserve a story; it is a candidate for review, not a failure. <strong>Unknown</strong>: nobody can tell, and \
+             the note says why. Evidence only counts for the run its results are from, and none of this changes any test's \
+             result. <a href=\"../contracts/{}.json\">{}.json</a> has it for machines.</p>\
+             <p class=\"tally\"><span class=\"badge ok\">{seen} observed</span> <span class=\"badge warn\">{unseen} not observed</span> \
+             <span class=\"badge idle\">{unknown} unknown</span></p>",
+            esc(&c.name),
+            about.join(" · "),
+            esc(slug),
+            esc(slug)
+        );
+        if !cov.runs.is_empty() {
+            let runs: Vec<String> = cov
+                .runs
+                .iter()
+                .map(|(id, how)| {
+                    let how = match how {
+                        Some(Completeness::Yes) => "complete capture",
+                        Some(Completeness::Partial) => "partial capture",
+                        Some(Completeness::No) => "no capture",
+                        None => "nothing says how complete",
+                    };
+                    format!("<code>{}</code> ({how})", esc(id))
+                })
+                .collect();
+            let _ = write!(o, "<p>Runs: {}.</p>", runs.join(", "));
+        }
+        for group in cov.groups() {
+            if c.excluded.iter().any(|(g, _)| g == group) {
+                continue;
+            }
+            let _ = write!(
+                o,
+                "<h2>{}</h2><table class=\"tests\"><thead><tr><th>Outcome</th><th>State</th><th>Evidence</th><th>Note</th></tr></thead><tbody>",
+                esc(group)
+            );
+            for (n, (item, j)) in c.items.iter().zip(&cov.judged).enumerate() {
+                if item.group != group || cov.excluded(n) {
+                    continue;
+                }
+                let (class, label) = match j.state {
+                    State::Observed => ("ok", "observed"),
+                    State::NotObserved => ("warn", "not observed"),
+                    State::Unknown => ("idle", "unknown"),
+                };
+                let location = if item.location.is_empty() {
+                    String::new()
+                } else {
+                    format!("<br><code class=\"muted\">{}</code>", esc(&item.location))
+                };
+                let mut evidence: Vec<String> =
+                    j.by.iter()
+                        .take(5)
+                        .map(|&e| self.evidence_link(cov, e))
+                        .collect();
+                if j.by.len() > 5 {
+                    evidence.push(format!("{} more", j.by.len() - 5));
+                }
+                let _ = write!(
+                    o,
+                    "<tr><td>{}{location}</td><td><span class=\"badge {class}\">{label}</span></td><td>{}</td><td>{}</td></tr>",
+                    esc(&item.label),
+                    if evidence.is_empty() {
+                        "—".into()
+                    } else {
+                        evidence.join("<br>")
+                    },
+                    esc(&j.why)
+                );
+            }
+            o.push_str("</tbody></table>");
+        }
+        let notes =
+            |o: &mut String, title: &str, intro: &str, notes: &[expectation_story::Note]| {
+                if notes.is_empty() {
+                    return;
+                }
+                let _ = write!(o, "<h2>{title}</h2><p>{intro}</p><ul>");
+                for n in notes {
+                    let mut line = esc(&n.label);
+                    if !n.group.is_empty() {
+                        line = format!("{} — {line}", esc(&n.group));
+                    }
+                    if !n.reason.is_empty() {
+                        line = format!("{line}: {}", esc(&n.reason));
+                    }
+                    let seen = match c.evidence.iter().position(|e| e.id == n.evidence) {
+                        Some(idx) => match cov.credit[idx].why_not() {
+                            None => self.evidence_link(cov, idx),
+                            Some(why) => format!("evidence {why}"),
+                        },
+                        None => "no evidence listed".into(),
+                    };
+                    let _ = write!(o, "<li>{line} <span class=\"muted\">({seen})</span></li>");
+                }
+                o.push_str("</ul>");
+            };
+        notes(
+            &mut o,
+            "Seen, but not in the contract",
+            "Outcomes the tests saw that the contract doesn't describe.",
+            &c.undocumented,
+        );
+        notes(
+            &mut o,
+            "Matched nothing in the contract",
+            "What the evidence holds that the extension couldn't place in the contract.",
+            &c.unmatched,
+        );
+        let mut uncounted: Vec<(&'static str, usize)> = vec![];
+        for credit in &cov.credit {
+            if let Some(why) = credit.why_not() {
+                match uncounted.iter_mut().find(|(w, _)| *w == why) {
+                    Some((_, n)) => *n += 1,
+                    None => uncounted.push((why, 1)),
+                }
+            }
+        }
+        if !uncounted.is_empty() {
+            o.push_str("<h2>Evidence that doesn't count</h2><ul>");
+            for (why, n) in uncounted {
+                let _ = write!(o, "<li>{n} {}</li>", esc(why));
+            }
+            o.push_str("</ul>");
+        }
+        if !c.excluded.is_empty() {
+            o.push_str("<h2>Left out of the count</h2><ul>");
+            for (g, why) in &c.excluded {
+                let _ = write!(o, "<li>{}: {}</li>", esc(g), esc(why));
+            }
+            o.push_str("</ul>");
+        }
+        if !c.problems.is_empty() {
+            o.push_str("<h2>Lines of the coverage file left out</h2><ul>");
+            for p in &c.problems {
+                let _ = write!(o, "<li>{}</li>", esc(p));
+            }
+            o.push_str("</ul>");
+        }
+        self.page(Here::Contract(i), &c.name, &o)
     }
 
     fn step_body(

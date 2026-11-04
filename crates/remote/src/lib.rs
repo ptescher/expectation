@@ -40,12 +40,19 @@
 //! the vocabulary event using the control makes happen). `used` answers with `used`, a list of
 //! `{"view", "id"}` for the controls the app's `set` and `perform` acted on since the last
 //! `used`, and empties it.
+//!
+//! An app that says `"attachments": true` can hand over files it captured, such as a network log
+//! of what the last step did. After a test's start and after each step the runner sends
+//! `{"id": 9, "op": "attachments"}`, and the app answers with `attachments`, a list of
+//! `{"name", "type", "text"}` or `{"name", "type", "base64"}` for what it captured since it
+//! was last asked, and empties it. The runner saves them as they are (see
+//! `RunOptions::attachments_dir`), so keep secrets out of them in the app.
 
 pub mod client;
 pub mod http;
 pub mod json;
 
-use expectation_harness::{Control, Driver, Need, Progress, Screenshot};
+use expectation_harness::{Capture, Control, Driver, Need, Progress, Screenshot};
 use expectation_model::text::key;
 use expectation_model::{Event, Value, Variable};
 use json::Json;
@@ -73,6 +80,8 @@ pub struct App {
     pub reset: bool,
     /// It can list its controls and say which ones its actions used.
     pub controls: bool,
+    /// It can hand over what it captured during each step.
+    pub attachments: bool,
 }
 
 impl App {
@@ -90,6 +99,7 @@ impl App {
             screenshot: flag("screenshot"),
             reset: flag("reset"),
             controls: flag("controls"),
+            attachments: flag("attachments"),
         }
     }
 
@@ -104,6 +114,7 @@ impl App {
             ("screenshot", self.screenshot.into()),
             ("reset", self.reset.into()),
             ("controls", self.controls.into()),
+            ("attachments", self.attachments.into()),
         ])
     }
 
@@ -445,6 +456,42 @@ impl Driver for RemoteDriver {
             .map(|u| {
                 let text = |k: &str| u.get(k).and_then(Json::as_str).unwrap_or("");
                 Control::new(text("view"), text("id"), "", "").key()
+            })
+            .collect()
+    }
+
+    fn take_attachments(&mut self) -> Vec<Capture> {
+        if !self
+            .shared
+            .lock()
+            .app
+            .as_ref()
+            .is_some_and(|a| a.attachments)
+        {
+            return vec![];
+        }
+        let Ok(reply) = self.call(vec![("op", "attachments".into())]) else {
+            return vec![];
+        };
+        reply
+            .get("attachments")
+            .map(Json::as_array)
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|a| {
+                let text = |k: &str| a.get(k).and_then(Json::as_str);
+                let bytes = match (text("text"), text("base64")) {
+                    (Some(t), _) => t.as_bytes().to_vec(),
+                    (None, Some(b)) => json::base64_decode(b).ok()?,
+                    _ => return None,
+                };
+                Some(Capture {
+                    name: text("name").unwrap_or("attachment").to_string(),
+                    media_type: text("type")
+                        .unwrap_or("application/octet-stream")
+                        .to_string(),
+                    bytes,
+                })
             })
             .collect()
     }

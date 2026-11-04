@@ -175,7 +175,7 @@ JSON over HTTP/1.1. Anything that can make an HTTP request can be a client.
 
 | Request | Body | Answer |
 | --- | --- | --- |
-| `POST /hello` | `{"platform", "app", "observe": [..], "set": [..], "arrange": [..], "events": [..], "screenshot": bool, "reset": bool, "controls": bool}` | `{"session": n}` |
+| `POST /hello` | `{"platform", "app", "observe": [..], "set": [..], "arrange": [..], "events": [..], "screenshot": bool, "reset": bool, "controls": bool, "attachments": bool}` | `{"session": n}` |
 | `GET /next?session=n` | | a command (200), nothing yet (204: ask again), or 410: say hello again |
 | `POST /reply?session=n` | `{"id", "value"}`, `{"id", "png"}`, `{"id", "svg"}`, `{"id"}` or `{"id", "error"}` | 204 |
 
@@ -190,6 +190,7 @@ A command is one of:
 {"id": 6, "op": "screenshot"}
 {"id": 7, "op": "controls"}
 {"id": 8, "op": "used"}
+{"id": 9, "op": "attachments"}
 ```
 
 Terms are the app's own spelling from its hello. A named value is a JSON string and a number
@@ -202,6 +203,14 @@ three optional; `event` is the vocabulary event using the control makes happen).
 with `used`, a list of `{"view", "id"}` for the controls `set` and `perform` acted on since the
 last `used`, and empties it. In Rust that is `Handlers::on_controls` and `on_used`, in JavaScript
 `onControls` and `onUsed`, in Swift `controls` and `used`.
+
+An app that says `"attachments": true` can hand over files it captured, such as a network log.
+After a test's start and after each step, the runner sends `attachments`. The app answers with
+`attachments`, a list of `{"name", "type", "text"}` or `{"name", "type", "base64"}` for what it
+captured since it was last asked, and empties it. `expectation-run --attachments DIR` keeps
+them. In Rust that is `Handlers::on_attachments`. The JavaScript and Swift clients don't offer
+it yet, but any client can answer the command. See
+[Evidence and contract coverage](evidence.md).
 
 ## Events: real taps or the app's actions?
 

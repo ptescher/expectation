@@ -1,0 +1,46 @@
+Suite: Quotes
+
+Vocabulary:
+  State: the quote is none | shown
+    Shows: none: the screen says "No quote yet"
+    Shows: shown: the screen shows a firm price
+  Event: the user asks for a quote
+    Say: tap Get quote
+  Event: the user dismisses the quote
+    Say: tap Dismiss
+
+Background:
+  Given the quote is none
+
+Feature: Quotes
+  Approval: approved
+
+  You ask for a quote before you buy, and the app shows a firm price from the quote service.
+  Dismiss it and ask again for a fresh one.
+
+  Expectation: Asking shows a quote
+    Given the quote is none
+    When the user asks for a quote
+    Then the quote is shown
+
+  Expectation: Dismissing clears it
+    Given the quote is shown
+    When the user dismisses the quote
+    Then the quote is none
+
+Story: Get a quote
+  Approval: approved
+  As a buyer
+  I want a price before I commit
+  So that I know what I will pay
+
+  You open the app and ask for a quote. The app asks the quote service, and shows the firm
+  price it sends. If you want a fresh price, dismiss it and ask again.
+
+  Scenario: Ask, dismiss, ask again
+    When the user asks for a quote
+    Then the quote is shown
+    When the user dismisses the quote
+    Then the quote is none
+    When the user asks for a quote
+    Then the quote is shown

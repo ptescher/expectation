@@ -233,18 +233,29 @@ fn docs(
         c.plans.extend(extra);
         let visits = expectation_story::visit_plans(&c.suite, &c.analysis, &c.plans);
         c.plans.extend(visits);
-        let report = expectation_story::load_results_for(
-            &results.as_deref().map_or_else(
-                || Path::new(out).join("results"),
-                |r| Path::new(r).to_path_buf(),
-            ),
-            &c.plans,
-            name.as_deref(),
+        let results_dir = results.as_deref().map_or_else(
+            || Path::new(out).join("results"),
+            |r| Path::new(r).to_path_buf(),
         );
-        manuals.push((c, report));
+        let report = expectation_story::load_results_for(&results_dir, &c.plans, name.as_deref());
+        // Coverage files that extensions wrote next to the results, held to these results.
+        let (found, errors) = expectation_story::load_contracts_for(&results_dir, name.as_deref());
+        for e in errors {
+            eprintln!("warning: coverage file {e}");
+        }
+        let contracts: Vec<expectation_story::Coverage> = found
+            .into_iter()
+            .map(|contract| {
+                for p in &contract.problems {
+                    eprintln!("warning: {}: {p}", contract.file);
+                }
+                expectation_story::Coverage::judge(contract, &c.plans, &report)
+            })
+            .collect();
+        manuals.push((c, report, contracts));
     }
     let docs_of = |i: usize, siblings: &[expectation_docs::Sibling]| {
-        let (c, report) = &manuals[i];
+        let (c, report, contracts) = &manuals[i];
         let docs = expectation_docs::Docs {
             suite: &c.suite,
             analysis: &c.analysis,
@@ -254,6 +265,7 @@ fn docs(
             siblings,
             outline: None,
             inventory: &[],
+            contracts,
             look,
         };
         let tree = match &names[i] {
@@ -269,7 +281,7 @@ fn docs(
     let several = manuals.len() > 1;
     let all: Vec<expectation_docs::Sibling> = (0..if several { manuals.len() } else { 0 })
         .map(|i| {
-            let (c, report) = &manuals[i];
+            let (c, report, contracts) = &manuals[i];
             expectation_docs::Docs {
                 suite: &c.suite,
                 analysis: &c.analysis,
@@ -279,6 +291,7 @@ fn docs(
                 siblings: &[],
                 outline: None,
                 inventory: &[],
+                contracts,
                 look,
             }
             .sibling()

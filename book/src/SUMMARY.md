@@ -27,6 +27,7 @@
 - [Remote drivers](remote.md)
 - [External services](services.md)
 - [The generated manual](manual.md)
+- [Evidence and contract coverage](evidence.md)
 
 # Reference
 

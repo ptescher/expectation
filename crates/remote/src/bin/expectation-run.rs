@@ -3,6 +3,7 @@
 //! ```text
 //! expectation-run <suite-dir> [--platform NAME] [--addr 127.0.0.1:4477] [--wait SECONDS]
 //!                 [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd "COMMAND"]
+//!                 [--attachments DIR]
 //! ```
 //!
 //! It listens, waits for the app to say hello, runs every story and a generated test for each
@@ -10,6 +11,8 @@
 //! as `DIR/results/<runner>.tsv` (merged with what other runners saved), with screenshots, and
 //! writes the manual. `--screenshot-cmd` takes screenshots from outside the app: the command
 //! gets a path in `$1` and writes a PNG there (`xcrun simctl io booted screenshot "$1"`).
+//! `--attachments` keeps what the app captures during each step (a network log) in `DIR`, as
+//! `DIR/<run>/<plan>/<step>/<name>`; keep it outside `--docs`, which is for publishing.
 //! Exits 1 if anything failed.
 
 use expectation_harness::{Acceptance, RunOptions, Screenshot};
@@ -21,7 +24,7 @@ use std::time::Duration;
 
 const USAGE: &str = "usage: expectation-run <suite-dir> [--platform NAME] [--addr HOST:PORT] [--wait SECONDS] \
                      [--command-timeout SECONDS] \
-                     [--stylesheet CSS] [--state-shot-ratio W:H] [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd COMMAND]";
+                     [--stylesheet CSS] [--state-shot-ratio W:H] [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd COMMAND] [--attachments DIR]";
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -46,7 +49,7 @@ fn main() {
         None,
         None,
     );
-    let (mut stylesheet, mut ratio) = (None, None);
+    let (mut stylesheet, mut ratio, mut attachments) = (None, None, None);
     while let Some(a) = args.next() {
         let mut value = || {
             args.next()
@@ -88,6 +91,7 @@ fn main() {
                     .unwrap_or_else(|_| fail("--settle is in milliseconds"))
             }
             "--screenshot-cmd" => shot = Some(value()),
+            "--attachments" => attachments = Some(PathBuf::from(value())),
             "-h" | "--help" => {
                 println!("{USAGE}");
                 return;
@@ -153,6 +157,7 @@ fn main() {
         &mut driver,
         &RunOptions {
             docs_dir: tree,
+            attachments_dir: attachments,
             ..Default::default()
         },
     );

@@ -131,6 +131,7 @@ fn behaves_as_expected() {
 | --- | --- |
 | [turnstile](crates/harness/examples/turnstile.rs) | The smallest whole run: an inline suite, closures for the driver, one story and a generated test. |
 | [kettle](crates/harness/examples/kettle) | A suite across several files: two exceptions, four stories, three generated tests, a toy world with time in it, SVG screenshots and the generated manual. |
+| [quote](crates/harness/examples/quote) | Contract coverage end to end: the driver hands over each step's HTTP requests as HAR, [the HAR and OpenAPI extension](extensions/har-openapi) holds them against the contract, and the manual shows what the tests saw. |
 
 ```bash
 cargo run -p expectation_harness --example turnstile

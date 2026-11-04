@@ -9,7 +9,7 @@
 //!     .on_advance(|w| { w.tick(0.1); Progress::Advanced });
 //! ```
 
-use crate::driver::{Driver, Need, Progress, Screenshot};
+use crate::driver::{Capture, Driver, Need, Progress, Screenshot};
 use expectation_model::text;
 use expectation_model::{Event, Value, Variable};
 use expectation_story::Control;
@@ -22,6 +22,7 @@ type Advancer<W> = Box<dyn FnMut(&mut W) -> Progress>;
 type Lister<W> = Box<dyn FnMut(&W) -> Vec<Control>>;
 type Taker<W> = Box<dyn FnMut(&mut W) -> Vec<String>>;
 type Shooter<W> = Box<dyn FnMut(&W) -> Screenshot>;
+type Capturer<W> = Box<dyn FnMut(&mut W) -> Vec<Capture>>;
 
 pub struct Bindings<W> {
     pub world: W,
@@ -35,6 +36,7 @@ pub struct Bindings<W> {
     screenshot: Option<Shooter<W>>,
     controls: Option<Lister<W>>,
     used: Option<Taker<W>>,
+    attachments: Option<Capturer<W>>,
     needs: Vec<String>,
     fresh: Vec<String>,
 }
@@ -53,6 +55,7 @@ impl<W> Bindings<W> {
             screenshot: None,
             controls: None,
             used: None,
+            attachments: None,
             needs: vec![],
             fresh: vec![],
         }
@@ -124,6 +127,13 @@ impl<W> Bindings<W> {
     /// is read (see [`Driver::take_used`]).
     pub fn on_used(mut self, f: impl FnMut(&mut W) -> Vec<String> + 'static) -> Self {
         self.used = Some(Box::new(f));
+        self
+    }
+
+    /// What the world captured since this was last called, emptied as it is read (see
+    /// [`Driver::take_attachments`]).
+    pub fn on_attachments(mut self, f: impl FnMut(&mut W) -> Vec<Capture> + 'static) -> Self {
+        self.attachments = Some(Box::new(f));
         self
     }
 
@@ -202,6 +212,13 @@ impl<W> Driver for Bindings<W> {
 
     fn take_used(&mut self) -> Vec<String> {
         self.used
+            .as_mut()
+            .map(|f| f(&mut self.world))
+            .unwrap_or_default()
+    }
+
+    fn take_attachments(&mut self) -> Vec<Capture> {
+        self.attachments
             .as_mut()
             .map(|f| f(&mut self.world))
             .unwrap_or_default()

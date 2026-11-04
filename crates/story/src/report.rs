@@ -58,6 +58,58 @@ pub struct CheckResult {
     pub error: Option<String>,
 }
 
+/// One run of the tests: an id no other run has, and when it started. Evidence gathered outside
+/// Expectation (a network capture, a log) names the run it came from, so it is only ever
+/// credited to the results of that run.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Run {
+    pub id: String,
+    /// Wall-clock milliseconds since the Unix epoch.
+    pub started_ms: u64,
+}
+
+impl Run {
+    /// A new run, starting now.
+    pub fn start() -> Run {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNT: AtomicU64 = AtomicU64::new(0);
+        let started_ms = now_ms();
+        let n = COUNT.fetch_add(1, Ordering::Relaxed);
+        Run {
+            id: format!("{started_ms:x}-{:x}-{n:x}", std::process::id()),
+            started_ms,
+        }
+    }
+}
+
+/// Wall-clock milliseconds since the Unix epoch: what step windows and runs are measured in, so
+/// that timestamps from other tools (a HAR's `startedDateTime`) can be lined up with them.
+pub fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// When a step ran, in wall-clock milliseconds since the Unix epoch: from the start of its action
+/// (or, for a test's start, of resetting it) to after its screenshot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Window {
+    pub start_ms: u64,
+    pub end_ms: u64,
+}
+
+/// A file the driver handed over for a step (a network capture, a log), saved as it was. The
+/// runner doesn't read it; extensions do.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Attachment {
+    /// 0 is the test's start; 1 is its first step.
+    pub step: usize,
+    pub media_type: String,
+    /// Relative to the attachments directory: `<run>/<plan>/<step>/<name>`.
+    pub path: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct StepResult {
     pub status: Status,
@@ -68,6 +120,8 @@ pub struct StepResult {
     pub error: Option<String>,
     /// How many times the checks were observed before they passed or it gave up.
     pub polls: u32,
+    /// When it ran, if it did.
+    pub window: Option<Window>,
 }
 
 impl StepResult {
@@ -82,6 +136,7 @@ impl StepResult {
             screenshot: None,
             error: None,
             polls: 0,
+            window: None,
         }
     }
 }
@@ -95,6 +150,10 @@ pub struct PlanResult {
     pub controls: Vec<Control>,
     /// The ones the test's actions used (`Control::key`s), not counting arranging the start.
     pub used: Vec<String>,
+    /// The run this result came from, if it was saved by a version of Expectation that says.
+    pub run: Option<Run>,
+    /// What the driver handed over while it ran.
+    pub attachments: Vec<Attachment>,
 }
 
 impl PlanResult {
@@ -110,6 +169,8 @@ impl PlanResult {
                 .collect(),
             controls: vec![],
             used: vec![],
+            run: None,
+            attachments: vec![],
         }
     }
 }
@@ -234,9 +295,21 @@ impl Report {
         let field = |s: &str| s.replace(['\t', '\n'], " ");
         let opt = |s: &Option<String>| s.as_deref().map(field).unwrap_or_else(|| "-".into());
         let mut out = String::from("expectation-results 1\n");
+        // A run line applies to the plans after it, up to the next one. Readers that don't know
+        // it skip it, as they skip every line they don't know.
+        let mut run: Option<&Run> = None;
         for (plan, r) in plans.iter().zip(&self.results) {
             if r.status == Status::NotRun {
                 continue;
+            }
+            if r.run.as_ref() != run {
+                run = r.run.as_ref();
+                match run {
+                    Some(x) => {
+                        let _ = writeln!(out, "run\t{}\t{}", field(&x.id), x.started_ms);
+                    }
+                    None => out.push_str("run\t-\t-\n"),
+                }
             }
             let _ = writeln!(
                 out,
@@ -268,6 +341,17 @@ impl Report {
                     opt(&step.screenshot),
                     opt(&step.error)
                 );
+                if let Some(w) = step.window {
+                    let _ = writeln!(out, "window\t{n}\t{}\t{}", w.start_ms, w.end_ms);
+                }
+                for a in r.attachments.iter().filter(|a| a.step == n) {
+                    let _ = writeln!(
+                        out,
+                        "attachment\t{n}\t{}\t{}",
+                        field(&a.media_type),
+                        field(&a.path)
+                    );
+                }
                 for c in &step.checks {
                     let observed = match &c.observed {
                         Some(Value::Number(v)) => format!("n:{v}"),
@@ -294,9 +378,46 @@ impl Report {
         let mut current: Option<(String, PlanResult)> = None;
         // What each saved plan was when it ran; a plan that has changed since hasn't run.
         let mut prints: std::collections::HashMap<String, String> = Default::default();
+        let mut run: Option<Run> = None;
         for line in text.lines().skip(1) {
             let f: Vec<&str> = line.split('\t').collect();
             match f.as_slice() {
+                ["run", id, started, ..] => {
+                    run = match (*id, started.parse()) {
+                        ("-", _) | (_, Err(_)) => None,
+                        (id, Ok(started_ms)) => Some(Run {
+                            id: id.to_string(),
+                            started_ms,
+                        }),
+                    };
+                }
+                ["window", n, start, end] => {
+                    let Some((_, r)) = current.as_mut() else {
+                        continue;
+                    };
+                    let (Ok(n), Ok(start_ms), Ok(end_ms)) =
+                        (n.parse::<usize>(), start.parse(), end.parse())
+                    else {
+                        continue;
+                    };
+                    let step = if n == 0 {
+                        Some(&mut r.start)
+                    } else {
+                        r.steps.get_mut(n - 1)
+                    };
+                    if let Some(step) = step {
+                        step.window = Some(Window { start_ms, end_ms });
+                    }
+                }
+                ["attachment", n, media_type, path] => {
+                    if let (Some((_, r)), Ok(step)) = (current.as_mut(), n.parse()) {
+                        r.attachments.push(Attachment {
+                            step,
+                            media_type: media_type.to_string(),
+                            path: path.to_string(),
+                        });
+                    }
+                }
                 ["plan", slug, status, rest @ ..] => {
                     found.extend(current.take());
                     if let [print] = rest {
@@ -311,6 +432,8 @@ impl Report {
                             steps: vec![],
                             controls: vec![],
                             used: vec![],
+                            run: run.clone(),
+                            attachments: vec![],
                         },
                     ));
                 }
@@ -336,6 +459,7 @@ impl Report {
                         screenshot: opt(shot),
                         error: opt(error),
                         polls: polls.parse().unwrap_or(0),
+                        window: None,
                     };
                     if *n == "0" {
                         r.start = step
@@ -496,6 +620,8 @@ pub fn load_results_for(dir: &std::path::Path, plans: &[Plan], platform: Option<
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "tsv"))
+        // Coverage files sit next to the results; they aren't results.
+        .filter(|p| !crate::coverage::is_coverage_file(p))
         .filter(|p| {
             match p
                 .file_stem()
