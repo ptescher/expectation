@@ -66,7 +66,10 @@ the page: "the sign-in tests use a stand-in provider; they don't show Google sig
 4. Safety preflight before running or demoing anything that trades, pays, posts, follows,
    notifies or creates an account: what can change, which environment/account/network receives
    it, and what actually isolates it (check the code path). Not provably isolated → don't run
-   it; use a safe fixture or leave the step unbound ("not supported yet").
+   it; use a safe fixture or leave the step unbound ("not supported yet"). Then evidence
+   privacy: what each screenshot, accessibility tree, log or HAR captures (recovery phrases,
+   keys, credentials, account data), what redacts it at the moment of capture, and where the
+   results and manual are shared. Can't keep a secret out → don't capture it, and say so.
 5. `expectation docs <dir> <out>`.
 6. Zero-context read: a fresh reviewer without your context (e.g. a subagent given only the
    rendered page and its screenshots) reads one tutorial on its own and answers: where do I
@@ -80,7 +83,9 @@ the page: "the sign-in tests use a stand-in provider; they don't show Google sig
 8. Report three verdicts separately:
    - specification: complete and readable? (coverage gaps, zero-context findings; `check` and
      `plan --coverage` support this but don't decide it);
-   - tests: what ran, passed, failed, is unsupported, and observed vs simulated;
+   - tests: what ran, passed, failed, is unsupported, observed vs simulated, embedded vs
+     external driver. Read the per-plan results, not the exit code: a run exits 0 when nothing
+     failed, even with nothing bound, and a failed screenshot is a warning;
    - approval/product status: approved, proposed, `Status: pending`, open decisions.
    Also list assumptions and claims with no evidence. Don't present any as verified. A passing
    test doesn't approve the prose; an approved spec doesn't prove the product works.
@@ -89,5 +94,6 @@ the page: "the sign-in tests use a stand-in provider; they don't show Google sig
 
 `Approval: approved | proposed` under a Feature, Expectation or Story. Only a person who owns
 the decision approves; leave things unmarked or `proposed` otherwise.
-`expectation docs <dir> <out> --approved-only` writes the agreed part. It is separate from
+`expectation docs <dir> <out> --approved-only` writes the agreed part. Unmarked counts as not
+approved, so a suite that doesn't mark approval gives an empty manual. It is separate from
 `Status: pending` and from test results.

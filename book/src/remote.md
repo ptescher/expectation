@@ -1,27 +1,45 @@
-# Embedded drivers
+# Remote drivers
 
 Some systems can't be driven from inside a Rust test: a phone app in a simulator, a desktop
-app in its own process, a React Native bundle. For those, the driver goes **inside the app**,
-and the runner talks to it over a small protocol.
+app in its own process, a React Native bundle. For those, the runner talks over a small
+protocol to a client that binds the vocabulary. That client lives in one of two places:
+
+- **Embedded in the app.** It calls the app's own actions and reads its state directly.
+- **In a test process outside the app.** An adapter in a WebdriverIO, Appium, XCUITest,
+  Espresso or Playwright run drives the app through its UI and reads what the UI exposes.
 
 ```text
- runner (Rust)                                   app (any stack)
-┌────────────────────────┐   POST /hello        ┌─────────────────────────────┐
-│ Acceptance + RemoteDriver│ ◀──────────────────── │ embedded Expectation driver │
-│ listens on :4477       │   GET /next (long poll) │  observe / set / arrange /  │
-│                        │ ────────────────────▶ │  on(event) / reset /        │
-│                        │   POST /reply         │  screenshot                 │
-└────────────────────────┘ ◀──────────────────── └─────────────────────────────┘
+ runner (Rust)                                    client: in the app, or an adapter driving it
+┌──────────────────────────┐   POST /hello          ┌───────────────────────────┐
+│ Acceptance + RemoteDriver│ ◀───────────────────── │ Expectation client        │
+│ listens on :4477         │   GET /next (long poll)│  observe / set / arrange /│
+│                          │ ─────────────────────▶ │  on(event) / reset /      │
+│                          │   POST /reply          │  screenshot               │
+└──────────────────────────┘ ◀───────────────────── └───────────────────────────┘
 ```
 
-The app connects out to the runner, so it never hosts a server: that suits phones,
-sandboxes and simulators. The embedded driver says hello, long-polls for commands, runs each
-one on the app's own thread, and posts the answer. When no runner is listening it waits
-quietly and retries, so it can stay in development builds.
+The client connects out to the runner, so it never hosts a server: that suits phones,
+sandboxes and simulators. It says hello, long-polls for commands, runs each one (on the app's
+own thread when embedded), and posts the answer. When no runner is listening it waits quietly
+and retries, so an embedded client can stay in development builds.
+
+The two placements show different things, so a report should say which produced the evidence:
+
+| | Embedded | External adapter |
+| --- | --- | --- |
+| An event is | the action the button calls | a real tap, click or typed text |
+| An observation is | the app's own state | what the screen or accessibility tree shows |
+| `arrange` and `reset` | set state directly | need a UI path, a launch argument or a test backdoor |
+| It shows | the behaviour | that a user can reach and see it |
+| It doesn't show | that the control is wired up or visible | state the UI doesn't expose |
+| It needs | a client in the app's build | only a test build the automation can drive |
+
+See [Events: real taps or the app's actions?](#events-real-taps-or-the-apps-actions) for
+mixing them.
 
 ## In the app
 
-Each client binds the vocabulary to the app the same way `Bindings` does in Rust: one closure
+Each client binds the vocabulary the same way `Bindings` does in Rust: one closure
 per term.
 
 ### Swift (iOS, macOS, SwiftUI, UIKit)
@@ -82,7 +100,27 @@ while let Some(request) = client.try_recv() {
 The client runs on its own thread; `try_recv` hands each command to the thread that owns the
 app.
 
-## In the runner
+## Outside the app
+
+The JavaScript and Rust clients don't have to run in the app. In a UI-automation run they run
+in the test process, and each handler drives the app through the automation API. (Any test
+framework that can make HTTP requests can do the same; see [the protocol](#the-protocol).) With
+WebdriverIO, for example:
+
+```js
+import { ExpectationDriver } from 'expectation-driver';
+
+const driver = new ExpectationDriver({ platform: 'iOS', app: 'Kettle' })
+  .observe('the kettle', async () => (await $('~kettle-status')).getText())
+  .on('the user presses lock', async () => (await $('~lock')).click())
+  .onScreenshot(() => browser.takeScreenshot());
+driver.start(process.env.EXPECTATION_URL);
+```
+
+Bind only what the UI really shows and lets a person do. Anything else stays unbound and is
+reported as "not supported yet", which is honest: a binding that reaches round the UI into the
+app's internals is an embedded driver in disguise, and should be reported as one.
+
 
 ```rust
 use expectation_remote::RemoteDriver;
@@ -95,9 +133,14 @@ let acceptance = Acceptance::load_for("expectations", &app.platform)?.with_cover
 let report = acceptance.run(&mut driver, &RunOptions::default());
 ```
 
-`RemoteDriver` knows what the app can do from its hello, so anything the app didn't bind is
+`RemoteDriver` knows what the client can do from its hello, so anything it didn't bind is
 "not supported yet", not a failure. Time is real: it sleeps to settle after each action and
 between looks. If no app connects, every test is "not supported yet".
+
+So `report.passed()` means only that nothing failed. A run where nothing was bound passes.
+Check what you expect: that the stories meant to pass did pass (`report.count(Status::Passed)`
+and each result's status), and that the screenshots you need were taken
+(`driver.screenshot_error()`).
 
 Each command the runner sends gets 10 seconds to be answered. For apps whose actions take
 longer, `.command_timeout(Duration::from_secs(240))?` raises that deadline (it must be positive;
@@ -119,6 +162,12 @@ expectation-run expectations --platform SwiftUI --docs docs --runner app
 It listens, waits for the app, runs the suite for that platform, prints the results, and
 with `--docs` saves them and writes the manual. `--screenshot-cmd 'xcrun simctl io booted
 screenshot "$1"'` takes screenshots from outside, for apps that don't take their own.
+
+It exits 1 if a test failed and 0 otherwise, **including when every test was "not supported
+yet"**. A failed screenshot is only a warning on stderr. Read the per-plan lines it prints
+(`✓` passed, `✗` failed, `–` anything else) or the `plan` rows in
+`docs/results/<runner>@<platform>.tsv`, and check the ones you expect to pass, before calling
+anything verified.
 
 ## The protocol
 
@@ -156,8 +205,8 @@ last `used`, and empties it. In Rust that is `Handlers::on_controls` and `on_use
 
 ## Events: real taps or the app's actions?
 
-An embedded driver makes an event happen by calling the same action the button calls, not by
+An embedded client makes an event happen by calling the same action the button calls, not by
 synthesising a tap. That's fast, works the same on every stack, and tests the behaviour. It
 doesn't test that the button is wired to the action, or that it's visible. If that matters,
-pair the suite with a UI-automation smoke test (XCUITest, Espresso, Detox), or bind the event
-to a handler that drives the UI.
+pair the suite with a UI-automation smoke test (XCUITest, Espresso, Detox), bind the event
+to a handler that drives the UI, or run the suite through an [external adapter](#outside-the-app).

@@ -153,6 +153,10 @@ A top-level section that no part names goes into a last part, "More", with a war
 
 ## The look
 
-The site is plain HTML and CSS, with no scripts. It follows the reader's light or dark
-preference. The colours, type and corners come from the `expectation_theme` crate, and the
+The site is static HTML and CSS with a little JavaScript: `assets/nav.js` fills in the sidebar
+(see [Navigation and size](#navigation-and-size)), and the states map (`states.html`) draws
+itself from data in the page. Neither is needed to read it: without scripts every page reads and
+links, the sidebar shows the current section, and the states map falls back to a list of the
+start states and where they lead. It follows the reader's light or dark preference. The
+colours, type and corners come from the `expectation_theme` crate, and the
 theme page in each manual shows them.
