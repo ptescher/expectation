@@ -3,17 +3,42 @@
 
 Vocabulary:
   State: the kettle is off | starting | heating | dry
+    Shows: off: the display reads OFF and the light is grey
+    Shows: starting: the display reads STARTING and the light turns red
+    Shows: heating: the display reads HEATING, the light is red and steam rises
+    Shows: dry: the display reads DRY in red and says "Refill, then press reset"
   State: the dial is 0..100 %
+    Set: turn the dial to {value}
   State: the preset is WARM | HOT | BOIL
+    Shows: the PRESET line reads {value}
   State: the child lock is on | off
+    Shows: on: a CHILD LOCK sign says the dial and buttons do nothing
+    Shows: off: the CHILD LOCK sign goes away
   Event: the user presses start
+    Say: press START
   Event: the user presses reset
+    Say: press RESET
   Event: the user presses preset
+    Say: press PRESET
   Event: the user presses lock
+    Say: press LOCK
+  # A sensor, not something the user does: the tests make it happen.
   Event: the water runs out
+    Say: the kettle boils dry
+
+  Phrase: the kettle is plugged in and full
+    Say: fill the kettle and plug it in
+    Given the kettle is off
+    And the dial is 0 %
+    And the preset is WARM
+    And the child lock is off
+
+  Term: display
+    The panel at the top left of the kettle. PRESET is the temperature it heats to, STATE is
+    what it is doing, and WATER is the water's temperature now.
+  Term: dial
+    The bar beside the display, from 0 to 100 %. The dashed line on it is the 55 % mark: hold
+    the dial above it for a moment and the kettle starts. It is a switch, not a thermostat.
 
 Background:
-  Given the kettle is off
-  And the dial is 0 %
-  And the preset is WARM
-  And the child lock is off
+  Given the kettle is plugged in and full

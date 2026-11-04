@@ -72,11 +72,22 @@ Story: Your first cup
 
 1. Inspect the product first. Don't invent behaviour: if something is undecided, ask, or write
    `Unresolved: <question>` in the description and mark it `Approval: proposed`.
-2. Write the explanation and the expectations together, then `expectation check`, then
-   `expectation plan --coverage`, then `expectation docs`, and read the generated pages as a
-   newcomer would.
-3. Report your assumptions, claims with no evidence, steps the driver can't do yet ("not
-   supported yet" is not "passing"), and open decisions. Never present those as verified.
+2. Map the product's user goals (from the product, not the suite) to feature pages,
+   tutorials, expectations and evidence; list the gaps.
+3. Write the explanation and the expectations together, then `expectation check`, then
+   `expectation plan --coverage`, then `expectation docs`. Write the product workflow; keep mock
+   providers and fixtures out of the main prose, but keep caveats that change what a reader can
+   conclude. Each story becomes a tutorial: it follows a real user goal from where the reader
+   starts, explains how the feature works and how to read the result (units, what a number or
+   badge means), and covers what goes wrong on the way. It is not a sequence of test steps.
+4. Before running anything that trades, pays, posts or creates accounts, check what it changes,
+   where it goes, and what isolates it. If you can't show it's isolated, don't run it.
+5. Audit: have a reviewer without your context read a rendered tutorial on its own; mark each
+   claim's evidence as observed, simulated, source-inspected, unsupported or none; check for
+   stale evidence.
+6. Report three verdicts separately: the specification (complete, readable), the tests (what
+   ran, observed vs simulated; "not supported yet" is not "passing"), and approval/status. List
+   assumptions, claims with no evidence and open decisions. Never present those as verified.
 
 Depth and a worked example: https://expectation.sim001.net/guide/feature-docs.html.
 Reference: https://expectation.sim001.net/guide/language.html.

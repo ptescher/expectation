@@ -1,6 +1,7 @@
 Feature: Child lock
   LOCK turns the child lock on and off. While it is on, the dial and the other
-  buttons do nothing, so turning the dial doesn't start the kettle.
+  buttons do nothing, so turning the dial doesn't start the kettle. The lock does not move the
+  dial: it stays where it was turned, so bring it down before you unlock.
 
   Expectation: Lock turns the child lock on
     Given the child lock is off

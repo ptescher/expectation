@@ -226,6 +226,40 @@ Story: First cup
 ";
 
     #[test]
+    fn any_as_line_before_i_want_is_narrative() {
+        let src = "\
+Vocabulary:
+  State: the kettle is off | heating
+  Event: the user presses start
+Background:
+  Given the kettle is off
+Feature: F
+  Expectation: Start
+    Given the kettle is off
+    When the user presses start
+    Then the kettle is heating
+Story: S
+  As someone who drinks green tea
+  I want hot water
+  So that I can make tea
+
+  As you will see, it starts at once.
+  When the user presses start
+  Then the kettle is heating
+";
+        let l = load_sources("t", &[("t.expect", src)]);
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        let story = &l.suite.stories[0];
+        assert_eq!(story.narrative.len(), 3);
+        assert_eq!(story.narrative[0], "As someone who drinks green tea");
+        // An "As …" line with no "I want" after it is the introduction.
+        assert_eq!(
+            story.description,
+            vec!["As you will see, it starts at once."]
+        );
+    }
+
+    #[test]
     fn launch_is_inherited_and_overridden() {
         let l = load_sources(
             "t",

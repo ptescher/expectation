@@ -38,14 +38,12 @@ fn every_story_passes_and_documents_itself() {
     assert!(read("tests.md").contains("```mermaid"));
     assert!(read("features/heating.md").contains("**Except** when the child lock is on"));
     // The story is a tutorial in the reader's words, and a test report step by step.
-    let tutorial = read("tutorials/first-cup--turn-it-up-then-turn-it-off.md");
-    assert!(tutorial.contains("2. **Set the dial to 0 %. Then press reset.**"));
-    let test = read("tests/first-cup--turn-it-up-then-turn-it-off.md");
-    assert!(test.contains("## 2. When the dial is 0 % and the user presses reset"));
-    assert!(
-        docs.join("screenshots/first-cup--turn-it-up-then-turn-it-off/01.svg")
-            .exists()
-    );
+    let first = "first-cup--set-it-to-boil-turn-it-up-then-turn-it-off";
+    let tutorial = read(&format!("tutorials/{first}.md"));
+    assert!(tutorial.contains("4. **Turn the dial to 0 %. Then press RESET.**"));
+    let test = read(&format!("tests/{first}.md"));
+    assert!(test.contains("## 4. When the dial is 0 % and the user presses reset"));
+    assert!(docs.join(format!("screenshots/{first}/01.svg")).exists());
 }
 
 #[test]
@@ -117,7 +115,8 @@ fn results_save_and_load() {
     let none = expectation_story::Report::not_run(&a.plans);
     assert!(none.results.iter().all(|r| r.status == Status::NotRun));
     let merged = none.merge(loaded);
-    assert_eq!(merged.count(Status::Failed), 1);
+    // The leaky lock fails the parent's story and the generated test for unlocking.
+    assert_eq!(merged.count(Status::Failed), 2);
     // Results saved for an older version of a plan aren't its results.
     let mut changed = a.plans.clone();
     changed[0].steps[0].checks.clear();

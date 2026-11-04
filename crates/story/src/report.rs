@@ -453,7 +453,11 @@ pub fn fingerprint(plan: &Plan) -> String {
     };
     eat(&plan.title);
     // Results saved before it was marked pending (or after it stopped being) aren't its results.
-    eat(if plan.pending { "pending" } else { "" });
+    // Only a pending plan adds to the print, so every other plan's print, and its saved results,
+    // are what they were before pending existed.
+    if plan.pending {
+        eat("pending");
+    }
     for t in &plan.given {
         eat(&t.text);
     }

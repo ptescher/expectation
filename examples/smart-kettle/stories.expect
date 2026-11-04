@@ -25,8 +25,17 @@ Story: Knowing how far to trust the price
   I want to see when the price is old
   So that I do not wait for, or rely on, a price that has already changed
 
-  The dot next to the price tells you how current it is. This tutorial follows a price from
-  live to late to missing, and shows what each state means for you.
+  You check the price to decide whether to boil now or wait, so you need to know whether the
+  number in front of you is still true. Most of these steps are not something you do; they
+  happen to you: the provider falls behind or goes quiet. This tutorial shows what you
+  see each time and what it means for that decision.
+
+  A green dot means the price is current: if it is low enough, boil now. An amber dot means
+  the provider is late and the price is old; the app says when it was last updated, so judge
+  it by that, and treat it as a guide. Whether a cheap boil may start on a late price is not
+  decided yet. When the price is replaced by "Prices unavailable" there is nothing to decide
+  on: a waiting cheap boil keeps waiting, and when the provider is back, Retry brings the
+  price back.
 
   Scenario: A price goes late, then missing, then returns
     When the feed falls behind

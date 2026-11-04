@@ -1,6 +1,7 @@
 Feature: Presets
-  The preset button steps through WARM, HOT and BOIL, and back to WARM. The kettle starts on
-  WARM. The child lock ignores it, like every other button.
+  The preset is how hot the kettle makes the water: WARM is 70 °C, HOT is 85 °C and BOIL is
+  100 °C. The preset button steps through them, and back to WARM. The kettle starts on WARM.
+  The child lock ignores it, like every other button.
 
   Expectation: WARM to HOT
     Given the preset is WARM

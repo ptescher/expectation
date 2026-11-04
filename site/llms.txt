@@ -14,7 +14,7 @@ For AI agents: install the skill at https://expectation.sim001.net/skills/expect
 
 ## Writing suites
 
-- [Feature docs that explain](https://expectation.sim001.net/guide/feature-docs.html): the depth a feature page needs, with a worked example
+- [Feature docs that explain](https://expectation.sim001.net/guide/feature-docs.html): the depth a feature page needs, a worked example, and how to audit coverage, evidence and readability
 - [Writing specs that read well](https://expectation.sim001.net/guide/writing-specs.html)
 - [Platforms](https://expectation.sim001.net/guide/platforms.html)
 - [From stories to acceptance tests](https://expectation.sim001.net/guide/stories.html)

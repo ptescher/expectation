@@ -13,30 +13,45 @@ The manual it writes is published here: [the kettle manual](../example/site/inde
 
 ## The vocabulary
 
-`vocabulary.expect` declares every word the suite may use, and where every test starts:
+`vocabulary.expect` declares every word the suite may use, how the manual words it, and where
+every test starts (shortened here):
 
 ```gherkin
 Vocabulary:
   State: the kettle is off | starting | heating | dry
+    Shows: off: the display reads OFF and the light is grey
+    Shows: heating: the display reads HEATING, the light is red and steam rises
+    Shows: dry: the display reads DRY in red and says "Refill, then press reset"
   State: the dial is 0..100 %
+    Set: turn the dial to {value}
   State: the preset is WARM | HOT | BOIL
+    Shows: the PRESET line reads {value}
   State: the child lock is on | off
   Event: the user presses start
+    Say: press START
   Event: the user presses reset
   Event: the user presses preset
   Event: the user presses lock
+  # A sensor, not something the user does: the tests make it happen.
   Event: the water runs out
+    Say: the kettle boils dry
+
+  Phrase: the kettle is plugged in and full
+    Say: fill the kettle and plug it in
+    Given the kettle is off
+    And the dial is 0 %
+    And the preset is WARM
+    And the child lock is off
 
 Background:
-  Given the kettle is off
-  And the dial is 0 %
-  And the preset is WARM
-  And the child lock is off
+  Given the kettle is plugged in and full
 ```
 
 The dial is a number, so steps can compare it: `above 55 %`, `between 20 and 40 %`. The
-others have named values. "The water runs out" is an event without a person: the docs will
-say "wait until the water runs out" instead of telling the reader to do it.
+others have named values. `Say:`, `Set:` and `Shows:` are what the manual tells the reader to
+do and what they will see. "The water runs out" is an event without a person, so its `Say:`
+describes what happens rather than telling the reader to do it. The phrase makes "Before you
+begin" one line.
 
 ## Features and an exception
 
@@ -44,8 +59,13 @@ say "wait until the water runs out" instead of telling the reader to do it.
 
 ```gherkin
 Feature: Heating
-  The kettle starts off. Turn the dial past 55 % to start it, the way you would an old
-  stovetop knob, or press start.
+  The kettle starts off. Turn the [[dial]] past 55 % to start it, the way you would an old
+  stovetop knob, or press START. It heats the water to the preset's temperature and holds it
+  there; the [[display]] shows the water's temperature as it goes. RESET turns it off, but only
+  with the dial down: a dial left up starts it again.
+
+  If the water runs out while it is heating, the kettle stops and reads DRY until you refill it
+  and reset it.
 
   Expectation: Turning the dial up starts the kettle
     Holding the dial above 55 % for a moment starts it.
@@ -70,10 +90,10 @@ and they say opposite things. `expectation check` refuses the suite:
 
 ```text
 error[conflict]: «The child lock holds the kettle while the dial turns» and «Turning the dial up starts the kettle» disagree about the kettle
-  --> child_lock.expect:15
+  --> child_lock.expect:16
    |   Expectation: The child lock holds the kettle while the dial turns
    = «The child lock holds the kettle while the dial turns» says the kettle is off
-  --> heating.expect:5
+  --> heating.expect:10
    |   Expectation: Turning the dial up starts the kettle
    = «Turning the dial up starts the kettle» says the kettle is heating
    = note: both apply when the kettle is off and the child lock is on, and the dial is above 55 %
@@ -97,13 +117,22 @@ turns."
 
 ## Stories
 
-`stories.expect` has three stories. Here's one:
+`stories.expect` has four stories, one for each thing a person uses the kettle for. Each
+becomes a tutorial, so its introduction explains what the reader needs to follow it: here, why
+the dial goes back to 0 before unlocking.
 
 ```gherkin
 Story: Keeping little hands off
   As a parent
   I want the child lock to keep the kettle off
   So that a curious toddler turning the dial doesn't start it
+
+  LOCK turns the child lock on and off, and a CHILD LOCK sign shows while it is on. While it is
+  on, the dial, START and PRESET do nothing, so a turned dial cannot start the kettle.
+
+  The lock stops the dial from reaching the kettle; it does not move the dial. If the dial is
+  still above the 55 % mark when you unlock, the kettle starts as soon as the lock comes off.
+  So turn the dial down before you press LOCK again, as this tutorial does.
 
   Scenario: Turn the dial with the lock on, then unlock and boil
     When the user presses lock
@@ -144,25 +173,25 @@ to happen is `unspecified`, and a Then that contradicts the expectations is `con
 
 ## Coverage
 
-Four expectations have no story. `check` warns about each one, with a story that would reach it:
+Three expectations have no story. `check` warns about each one, with a story that would reach it:
 
 ```text
-warning[untested]: no story exercises «Running dry stops the kettle»
-  --> heating.expect:16
-   |   Expectation: Running dry stops the kettle
-   = help: a story that would: When the dial is above 55 % / When the water runs out
+warning[untested]: no story exercises «Unlocking with the dial up starts the kettle»
+  --> child_lock.expect:30
+   |   Expectation: Unlocking with the dial up starts the kettle
+   = help: a story that would: When the user presses lock / When the dial is above 55 % / When the user presses lock
 ```
 
 `Acceptance::with_coverage()` turns those routes into generated tests, so every expectation
 is verified even if no story mentions it:
 
 ```text
-✓ First cup › Turn it up, then turn it off
+✓ First cup › Set it to boil, turn it up, then turn it off
+✓ Choosing a preset › Step to HOT, start, and turn it off
 ✓ Keeping little hands off › Turn the dial with the lock on, then unlock and boil
-✓ Choosing a preset › Step to HOT and start
+✓ When the kettle boils dry › Boil dry, then refill and reset
 ✓ Reaching «The child lock ignores the start button»
-✓ Reaching «Running dry stops the kettle»
-✓ Reaching «HOT to BOIL»
+✓ Reaching «Unlocking with the dial up starts the kettle»
 ✓ Reaching «BOIL back to WARM»
 ```
 
@@ -204,7 +233,8 @@ cargo run -p expectation_harness --example kettle -- out --bug
     expected the kettle is off («The child lock holds the kettle while the dial turns»); observed heating
 ```
 
-The failure names the step, the check, the expectation that promised it, and what the kettle
+The generated test for «Unlocking with the dial up starts the kettle» fails the same way,
+since it turns the dial up with the lock on before it unlocks. The failure names the step, the check, the expectation that promised it, and what the kettle
 actually did. The steps after it are skipped, not failed. In the docs, that expectation is
 marked failed, and so is the tutorial.
 
@@ -215,29 +245,37 @@ The run writes a manual. The story became this tutorial, in the reader's words:
 ```markdown
 # First cup
 
+You want boiling water for a cup of black tea. The kettle starts the way an old stovetop
+knob does: turn the dial past the dashed 55 % mark and hold it there for a moment. […]
+
 ## Before you begin
 
-- The kettle is off.
-- The dial is 0 %.
-- The preset is WARM.
-- The child lock is off.
+- Fill the kettle and plug it in.
 
 ## Steps
 
-1. **Set the dial to 80 %.**
+1. **Press PRESET.**
 
-   The kettle is heating.
+   The PRESET line reads HOT.
 
    <screenshot>
 
-2. **Set the dial to 0 %. Then press reset.**
+2. **Press PRESET.**
 
-   The kettle is off.
+   The PRESET line reads BOIL.
+
+3. **Turn the dial to 80 %.**
+
+   The display reads HEATING, the light is red and steam rises.
+
+4. **Turn the dial to 0 %. Then press RESET.**
+
+   The display reads OFF and the light is grey.
 ```
 
 Each feature is a topic page, and the test evidence is collapsed under "How this is tested".
-The vocabulary here has no `Say:`, `Set:` or `Shows:` lines, so the wording is worked out
-from the steps. With them, step 1 could read "Turn the dial past halfway. The red light
-comes on." See [Writing specs that read well](writing-specs.md).
+The wording comes from the vocabulary's `Say:`, `Set:` and `Shows:`; without them, it is
+worked out from the steps ("Set the dial to 80 %. The kettle is heating."). See
+[Writing specs that read well](writing-specs.md) and [What a story needs](feature-docs.md#what-a-story-needs).
 
 Browse the result: [the kettle manual](../example/site/index.html).

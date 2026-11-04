@@ -202,13 +202,23 @@ fn step_keyword(line: &str) -> Option<(Keyword, &str)> {
     Some((k, rest.trim()))
 }
 
+/// The next line after `i` with something on it, trimmed: not blank, not a comment.
+fn next_line<'a>(lines: &[&'a str], i: usize) -> &'a str {
+    lines[i + 1..]
+        .iter()
+        .map(|l| l.trim())
+        .find(|l| !l.is_empty() && !l.starts_with('#'))
+        .unwrap_or("")
+}
+
 pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
     let mut out = RawFile::default();
     let mut block = Block::None;
     let mut last = Last::None;
     // A blank line between lines of description text starts a new paragraph.
     let mut blank = false;
-    for (i, raw) in text.lines().enumerate() {
+    let lines: Vec<&str> = text.lines().collect();
+    for (i, raw) in lines.iter().enumerate() {
         let span = Span::new(file, i as u32 + 1);
         let line = raw.trim();
         if line.is_empty() {
@@ -749,10 +759,12 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
             }
             Block::Story => {
                 // The user story's own lines are the narrative; anything else introduces it.
+                // "As someone who …" is narrative too when "I want" follows it.
                 let story = out.stories.last_mut().unwrap();
                 let narrative = ["As a ", "As an ", "I want", "So that", "In order to"]
                     .iter()
-                    .any(|p| line.starts_with(p));
+                    .any(|p| line.starts_with(p))
+                    || line.starts_with("As ") && next_line(&lines, i).starts_with("I want");
                 if narrative {
                     story.narrative.push(text)
                 } else {
