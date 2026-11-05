@@ -22,6 +22,7 @@ mod manual;
 mod map;
 mod markdown;
 pub mod outline;
+pub mod partial;
 mod states;
 mod thumbs;
 mod voice;
@@ -51,6 +52,8 @@ pub struct Docs<'a> {
     /// Contracts that extensions held the evidence of these results against (see
     /// [`expectation_story::coverage`](mod@expectation_story::coverage)), each judged against `report`. One page each.
     pub contracts: &'a [expectation_story::Coverage],
+    /// Just these sections, for a preview (see [`partial`]); `None` writes the whole manual.
+    pub partial: Option<&'a partial::Partial>,
     /// How the HTML site looks beyond its built-in theme.
     pub look: Look<'a>,
 }
@@ -261,6 +264,11 @@ impl Docs<'_> {
         }
     }
 
+    /// Does this build write the pages of section `id`? All of them, unless it is partial.
+    pub fn includes(&self, id: expectation_model::SectionId) -> bool {
+        self.partial.is_none_or(|p| p.sections.contains(&id))
+    }
+
     /// Each contract's slug, for its pages: from its name, with a number when two share one.
     pub fn contract_slugs(&self) -> Vec<String> {
         let mut out: Vec<String> = vec![];
@@ -352,7 +360,10 @@ impl Docs<'_> {
             written.push(path);
         }
         // A set: the folders can hold thousands of pages, and each is looked up.
-        prune(dir, &written.iter().map(PathBuf::as_path).collect())?;
+        // A preview writes some pages: the others in the directory are not stale.
+        if self.partial.is_none() {
+            prune(dir, &written.iter().map(PathBuf::as_path).collect())?;
+        }
         if docs.look.stylesheet.is_none() {
             // An earlier run's custom stylesheet would otherwise sit there unused.
             let _ = std::fs::remove_file(dir.join(CUSTOM_CSS));
@@ -424,6 +435,24 @@ impl Docs<'_> {
         facts.thumbs = thumbs.clone();
         let mut pages = markdown::pages(&docs, &facts);
         pages.extend(html::pages(&docs, &facts));
+        // In a partial build, a link to a page it doesn't write goes to the full manual or is text.
+        if let Some(p) = self.partial {
+            let built: std::collections::HashSet<String> =
+                pages.iter().map(|p| p.path.clone()).collect();
+            let base = p.base_url.as_deref();
+            for page in &mut pages {
+                let from = page
+                    .path
+                    .rsplit_once('/')
+                    .map_or("", |(d, _)| d)
+                    .to_string();
+                if page.path.ends_with(".html") {
+                    page.content = partial::html(&page.content, &from, &built, base);
+                } else if page.path.ends_with(".md") {
+                    page.content = partial::markdown(&page.content, &from, &built, base);
+                }
+            }
+        }
         pages
     }
 }
@@ -636,6 +665,7 @@ mod tests {
             outline: None,
             inventory: &[],
             contracts: &[],
+            partial: None,
             look: Look::default(),
         };
         let pages = docs.pages();
@@ -751,6 +781,7 @@ Feature: Paying
             outline: None,
             inventory: &[],
             contracts: &[],
+            partial: None,
             look,
         };
         docs.write(out).unwrap();
@@ -841,6 +872,7 @@ Feature: Paying
             outline: None,
             inventory: &[],
             contracts: &[],
+            partial: None,
             look: Look::default(),
         };
         assert!(
@@ -960,6 +992,7 @@ Feature: Paying
             outline: None,
             inventory: &[],
             contracts: &[],
+            partial: None,
             look: Look::default(),
         }
         .pages()

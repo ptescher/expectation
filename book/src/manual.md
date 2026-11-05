@@ -115,6 +115,37 @@ to, its verdict and the tests that cover it) are collapsed under "How this is te
 Generated coverage tests appear only in the test report. A step without a screenshot shows a
 "Not supported yet" or "No screenshot" placeholder.
 
+## Previews of some sections
+
+A pull request that touches one area needs a preview of that area, not the whole manual:
+
+```bash
+expectation docs expectations preview --section Billing --section 04-orders/returns \
+  --base-url https://docs.example.com/manual/
+```
+
+`--section` takes a section's name (ignoring case), its slug, or its directory. Give it more than
+once for several sections. A name that two sections share is an error that lists their
+directories.
+
+**What the preview has:**
+- the pages of those sections and everything under them: their features, tests and tutorials,
+  and their own test report and map pages when the manual is split by section;
+- the Markdown overview (`README.md`) and the site's assets.
+
+**What it leaves out:** the pages about the whole suite (the test report, the maps, the
+glossary, the vocabulary, the interactions and contracts).
+
+**Links.** The navigation still shows the whole tree. A link to a page the preview doesn't have
+goes to the same page under `--base-url`: the address of the full manual, the directory
+`expectation docs` wrote it to. Without `--base-url`, such a link reads as plain text. Either way
+no link is broken.
+
+**What doesn't change:**
+- The whole suite is still loaded, checked and planned, and the results are the whole suite's.
+  A preview of one section is not a way past an error in another.
+- Writing a preview into a directory that holds a full manual removes nothing from it.
+
 ## Screenshots in large projects
 
 By default a run writes each step's screenshot to `screenshots/<test>/<step>.png` in the docs
