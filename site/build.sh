@@ -49,4 +49,14 @@ cp site/llms.txt "$out/llms.txt"
 cp site/index.html site/style.css "$out/"
 cp "$out/example/site/assets/theme.css" "$out/theme.css"
 touch "$out/.nojekyll"
+
+# The landing page links into generated output by hand: fail if a story was renamed under it.
+missing=0
+for ref in $(grep -oE '(src|href)="[^"]+"' site/index.html | sed -E 's/^[a-z]+="//; s/[#?"].*//' | grep -v ':' | sort -u); do
+  if [ ! -e "$out/$ref" ]; then
+    echo "site/index.html links to $ref, which the build did not produce" >&2
+    missing=1
+  fi
+done
+[ "$missing" = 0 ]
 echo "site: $out/index.html"
