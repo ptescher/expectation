@@ -105,6 +105,26 @@ Removes the screenshots in a content-addressed store, and their thumbnails, that
 in the given directories names. Only files named by a hash are touched. With no results files it
 removes nothing and exits 2.
 
+## screenshots push, pull and lfs
+
+```bash
+expectation screenshots push <store> <bucket> [--dry-run]
+expectation screenshots pull <bucket> <store> [--dry-run]
+expectation screenshots lfs <store>
+```
+
+- **`push` and `pull`** copy a store to or from a bucket, adding what the other side lacks and
+  deleting nothing. They run the provider's tool:
+  - `aws s3 sync` for `s3://…`;
+  - `gcloud storage rsync` (or `gsutil rsync`) for `gs://…`;
+  - `rclone copy` for an rclone remote (`name:path`).
+
+  A missing tool is an error that says where to get it.
+- **`lfs`** writes `<store>/.gitattributes` so the store's PNG, JPEG and WebP files are kept in
+  Git LFS. It keeps any lines already there, and running it again changes nothing.
+
+See [Screenshots in large projects](manual.md#screenshots-in-large-projects).
+
 ## In your own project
 
 The CLI is also a library: `expectation_cli::main()` runs the command with the process's

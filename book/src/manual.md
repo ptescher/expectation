@@ -159,9 +159,37 @@ It reads every results file in the directories given, every platform's, and remo
 in the store (and its `thumbs/`) that none of them names. It only touches files named by a hash,
 and with no results files at all it removes nothing.
 
-**What to commit.** Commit the specs and `results/*.tsv`. Don't commit the generated docs, the
-store, or thumbnails (`screenshots/thumbs/` is in this repository's `.gitignore`). Keep the store
-in a bucket or as a CI artifact, and build the docs from it with `--screenshots`.
+**Where the store lives** is your choice. Commit the specs and `results/*.tsv` in any case, and
+leave out the generated pages and thumbnails (add `screenshots/thumbs/` to your `.gitignore`, as
+this repository does).
+
+- **In Git.** Make the store a directory in the repository, the docs' own `screenshots/` say, and
+  commit it. Because names are content, an unchanged screenshot is never a new commit, and only
+  changed frames add to the history. Run `screenshots prune` before committing to drop the ones
+  no test takes any more. This is the simplest, and enough for most projects.
+- **In Git LFS**, when the images are large or many. Run `expectation screenshots lfs <store>`
+  once. It writes `<store>/.gitattributes` so that PNG, JPEG and WebP files go to LFS; SVGs stay
+  in Git, as text. Then commit as above. Git LFS must be installed (`git lfs install`). A clone
+  fetches only the versions it checks out.
+- **In a bucket**, when it shouldn't be in the repository at all:
+
+  ```bash
+  expectation screenshots push DIR s3://bucket/shots   # after a run
+  expectation screenshots pull s3://bucket/shots DIR   # before building docs elsewhere
+  ```
+
+  These run the provider's own tool, with its own credentials and configuration:
+  - `s3://…` uses the AWS CLI. S3-compatible stores such as R2 or MinIO work with
+    `AWS_ENDPOINT_URL` set.
+  - `gs://…` uses `gcloud storage`, or `gsutil` without it.
+  - `name:path` is an [rclone](https://rclone.org) remote, which covers most others.
+
+  Both directions add what the other side lacks and delete nothing; `--dry-run` shows what they
+  would copy. To build the docs, either pull the store first and pass `--screenshots DIR`, with
+  thumbnails, or pass the bucket's public or CDN address, `--screenshots https://…`, so the pages
+  link there.
+
+None of these is required. Without a store, screenshots stay where they always were.
 
 **Keep hashes stable.** A screenshot only matches the last run's if every pixel does:
 
