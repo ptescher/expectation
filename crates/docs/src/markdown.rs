@@ -18,25 +18,29 @@ use std::fmt::Write;
 const GENERATED: &str = "<!-- Generated from the suite's .expect files by Expectation (github.com/ptescher/expectation); edit those, not this. -->";
 
 pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
-    let mut pages = vec![
-        Page {
-            path: "README.md".into(),
-            content: index(d),
-        },
-        Page {
-            path: "tests.md".into(),
-            content: report(d, f),
-        },
-        Page {
-            path: "glossary.md".into(),
-            content: glossary(d),
-        },
-        Page {
-            path: "vocabulary.md".into(),
-            content: vocabulary(d),
-        },
-    ];
-    let controls = d.control_rows();
+    // The overview is a partial build's way in too; the pages about the whole suite are not.
+    let whole = d.partial.is_none();
+    let mut pages = vec![Page {
+        path: "README.md".into(),
+        content: index(d),
+    }];
+    if whole {
+        pages.extend([
+            Page {
+                path: "tests.md".into(),
+                content: report(d, f),
+            },
+            Page {
+                path: "glossary.md".into(),
+                content: glossary(d),
+            },
+            Page {
+                path: "vocabulary.md".into(),
+                content: vocabulary(d),
+            },
+        ]);
+    }
+    let controls = if whole { d.control_rows() } else { vec![] };
     if !controls.is_empty() {
         pages.push(Page {
             path: "interactions.md".into(),
@@ -47,7 +51,7 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
             content: expectation_story::controls_json(d.suite, &controls, d.plans),
         });
     }
-    for (i, slug) in d.contract_slugs().into_iter().enumerate() {
+    for (i, slug) in d.contract_slugs().into_iter().enumerate().filter(|_| whole) {
         pages.push(Page {
             path: format!("contracts/{slug}.md"),
             content: contract_page(d, i, &slug),
@@ -57,7 +61,7 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
             content: d.contracts[i].json(d.plans),
         });
     }
-    for i in 0..d.plans.len() {
+    for i in (0..d.plans.len()).filter(|&i| d.includes(d.plans[i].section)) {
         pages.push(Page {
             path: format!("tests/{}.md", d.plans[i].slug),
             content: test_page(d, f, i),
@@ -69,13 +73,13 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
             });
         }
     }
-    for i in 0..d.outline.map_or(0, |o| o.pages.len()) {
+    for i in 0..d.outline.filter(|_| whole).map_or(0, |o| o.pages.len()) {
         pages.push(Page {
             path: format!("manual/{}.md", d.outline.unwrap().pages[i].slug),
             content: authored_page(d, i),
         });
     }
-    for feature in &d.suite.features {
+    for feature in d.suite.features.iter().filter(|x| d.includes(x.section)) {
         let path = format!("features/{}.md", feature_slug(d.suite, feature));
         pages.push(Page {
             path,

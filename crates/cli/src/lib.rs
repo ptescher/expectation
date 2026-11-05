@@ -23,14 +23,17 @@ commands:
   plan  <dir> [--coverage]  print the acceptance tests the stories compile to
                             (--coverage adds generated tests for untested expectations)
   docs  <dir> <out-dir> [--approved-only] [--results <dir>] [--stylesheet <css>] [--state-shot-ratio <w:h>]
-        [--screenshots <dir|url>]
+        [--screenshots <dir|url>] [--section <name|dir>]... [--base-url <url>]
                             write the docs (Markdown and an HTML site), with the results runs
                             have saved in <out-dir>/results; --stylesheet restyles the site
                             with a CSS file, --state-shot-ratio shapes the state map's pictures;
                             --approved-only writes just what is marked `Approval: approved`
                             (--results <dir> reads results from there, not <out-dir>/results);
                             --screenshots says where the screenshots are: a store directory
-                            (the ones shown are copied in) or a URL prefix the pages link to
+                            (the ones shown are copied in) or a URL prefix the pages link to;
+                            --section <name|dir> (repeatable) writes just those sections, for a
+                            preview, with links elsewhere going to --base-url <full manual's URL>
+                            or, without one, as plain text
   screenshots prune <store> <results-dir>... [--dry-run]
                             remove the screenshots in a content-addressed store that no
                             results file in the given directories names, and their thumbnails
@@ -118,6 +121,12 @@ pub fn main() {
         take("--screenshots"),
     );
     let results = take("--results");
+    // `--section` may be given more than once.
+    let mut sections = vec![];
+    while let Some(v) = take("--section") {
+        sections.push(v);
+    }
+    let base_url = take("--base-url");
     let approved_only = args.iter().any(|a| a == "--approved-only");
     let flag = |f: &str| args.iter().any(|a| a == f);
     let pos: Vec<&str> = args
@@ -179,7 +188,7 @@ pub fn main() {
                 print_plan(&c.suite, p);
             }
         }
-        ["docs", dir, out] => docs(dir, out, look, approved_only, results),
+        ["docs", dir, out] => docs(dir, out, look, approved_only, results, (sections, base_url)),
         ["screenshots", "prune", store, dirs @ ..] if !dirs.is_empty() => {
             prune_screenshots(store, dirs, flag("--dry-run"))
         }
@@ -205,6 +214,7 @@ fn docs(
     (stylesheet, ratio, shots): (Option<String>, Option<String>, Option<String>),
     approved_only: bool,
     results: Option<String>,
+    (sections, base_url): (Vec<String>, Option<String>),
 ) {
     let fail = |e: String| -> ! {
         eprintln!("error: {e}");
@@ -294,10 +304,33 @@ fn docs(
                 expectation_story::Coverage::judge(contract, &c.plans, &report)
             })
             .collect();
-        manuals.push((c, report, contracts));
+        // Just some sections, for a preview: resolved in this platform's suite.
+        let partial = (!sections.is_empty()).then(|| {
+            let ids: Vec<_> = sections
+                .iter()
+                .map(|w| {
+                    expectation_docs::partial::find_sections(&c.suite, w)
+                        .unwrap_or_else(|e| fail(e))
+                })
+                .collect();
+            // A platform's manual is under platforms/<name>/ in the full manual too.
+            let base = base_url.as_ref().map(|b| match (platform, name) {
+                (Some(_), Some(n)) => format!(
+                    "{}/platforms/{}/",
+                    b.trim_end_matches('/'),
+                    expectation_model::text::slug(n)
+                ),
+                _ => b.clone(),
+            });
+            expectation_docs::partial::Partial::of(&c.suite, &ids, base)
+        });
+        manuals.push((c, report, contracts, partial));
+    }
+    if sections.is_empty() && base_url.is_some() {
+        fail("--base-url is for a partial manual: give it with --section".into());
     }
     let docs_of = |i: usize, siblings: &[expectation_docs::Sibling]| {
-        let (c, report, contracts) = &manuals[i];
+        let (c, report, contracts, partial) = &manuals[i];
         let docs = expectation_docs::Docs {
             suite: &c.suite,
             analysis: &c.analysis,
@@ -308,6 +341,7 @@ fn docs(
             outline: None,
             inventory: &[],
             contracts,
+            partial: partial.as_ref(),
             look,
         };
         let tree = match &names[i] {
@@ -323,7 +357,7 @@ fn docs(
     let several = manuals.len() > 1;
     let all: Vec<expectation_docs::Sibling> = (0..if several { manuals.len() } else { 0 })
         .map(|i| {
-            let (c, report, contracts) = &manuals[i];
+            let (c, report, contracts, partial) = &manuals[i];
             expectation_docs::Docs {
                 suite: &c.suite,
                 analysis: &c.analysis,
@@ -334,6 +368,7 @@ fn docs(
                 outline: None,
                 inventory: &[],
                 contracts,
+                partial: partial.as_ref(),
                 look,
             }
             .sibling()

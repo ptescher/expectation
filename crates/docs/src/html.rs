@@ -105,25 +105,27 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
     let site = Site::new(d, f);
     let s = d.suite;
     let mut pages = vec![];
-    for section in &s.sections {
+    // A partial build writes only its sections' pages, and none of those about the whole suite.
+    let whole = d.partial.is_none();
+    for section in s.sections.iter().filter(|x| d.includes(x.id)) {
         pages.push(Page {
             path: format!("site/{}", site.section_url(section.id)),
             content: site.section_page(section.id),
         });
     }
-    for i in 0..d.outline.map_or(0, |o| o.pages.len()) {
+    for i in 0..d.outline.filter(|_| whole).map_or(0, |o| o.pages.len()) {
         pages.push(Page {
             path: format!("site/{}", site.page_url(i)),
             content: site.authored_page(i),
         });
     }
-    for feature in &s.features {
+    for feature in s.features.iter().filter(|x| d.includes(x.section)) {
         pages.push(Page {
             path: format!("site/{}", site.feature_url(feature.id)),
             content: site.feature_page(feature.id),
         });
     }
-    for i in 0..d.plans.len() {
+    for i in (0..d.plans.len()).filter(|&i| d.includes(d.plans[i].section)) {
         pages.push(Page {
             path: format!("site/{}", site.test_url(i)),
             content: site.test_page(i),
@@ -135,13 +137,15 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
             });
         }
     }
-    pages.push(Page {
-        path: "site/tests.html".into(),
-        content: site.tests_page(),
-    });
+    if whole {
+        pages.push(Page {
+            path: "site/tests.html".into(),
+            content: site.tests_page(),
+        });
+    }
     if site.split_tests() {
         for (n, tests) in site.tests_by_section().iter().enumerate() {
-            if !tests.is_empty() {
+            if !tests.is_empty() && d.includes(SectionId(n as u32)) {
                 let id = SectionId(n as u32);
                 pages.push(Page {
                     path: format!("site/{}", site.tests_url(id)),
@@ -151,7 +155,7 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
         }
     }
     if site.split_map() {
-        for section in &s.sections {
+        for section in s.sections.iter().filter(|x| d.includes(x.id)) {
             let own = site.exps_of(section.id);
             if !own.is_empty() {
                 pages.push(Page {
@@ -161,42 +165,57 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
             }
         }
     }
-    let controls = d.control_rows();
+    let controls = if whole { d.control_rows() } else { vec![] };
     if !controls.is_empty() {
         pages.push(Page {
             path: "site/interactions.html".into(),
             content: site.interactions_page(&controls),
         });
     }
-    for i in 0..d.contracts.len() {
+    for i in (0..d.contracts.len()).filter(|_| whole) {
         pages.push(Page {
             path: format!("site/{}", site.contract_url(i)),
             content: site.contract_page(i),
         });
     }
-    pages.push(Page {
-        path: "site/map.html".into(),
-        content: site.map_page(),
-    });
-    pages.push(Page {
-        path: "site/states.html".into(),
-        content: site.states_page(),
-    });
-    pages.push(Page {
-        path: "site/vocabulary.html".into(),
-        content: site.vocabulary_page(),
-    });
-    pages.push(Page {
-        path: "site/glossary.html".into(),
-        content: site.glossary_page(),
-    });
+    if whole {
+        pages.push(Page {
+            path: "site/map.html".into(),
+            content: site.map_page(),
+        });
+        pages.push(Page {
+            path: "site/states.html".into(),
+            content: site.states_page(),
+        });
+        pages.push(Page {
+            path: "site/vocabulary.html".into(),
+            content: site.vocabulary_page(),
+        });
+        pages.push(Page {
+            path: "site/glossary.html".into(),
+            content: site.glossary_page(),
+        });
+    }
     pages.push(Page {
         path: "site/assets/theme.css".into(),
         content: expectation_theme::css::stylesheet(),
     });
+    // The navigation is the whole tree; in a partial build its links to pages not written go
+    // to the full manual, or read as text.
+    let theme_page = if whole {
+        Some(Page {
+            path: "site/theme.html".into(),
+            content: site.theme_page(),
+        })
+    } else {
+        None
+    };
+    let mut built: std::collections::HashSet<String> =
+        pages.iter().map(|p| p.path.clone()).collect();
+    built.extend(theme_page.iter().map(|p| p.path.clone()));
     pages.push(Page {
         path: "site/assets/nav.js".into(),
-        content: site.nav_script(),
+        content: site.nav_script(d.partial.map(|p| (&built, p.base_url.as_deref()))),
     });
     pages.push(Page {
         path: "site/assets/style.css".into(),
@@ -208,10 +227,7 @@ pub fn pages(d: &Docs, f: &Facts) -> Vec<Page> {
             content: css.into(),
         });
     }
-    pages.push(Page {
-        path: "site/theme.html".into(),
-        content: site.theme_page(),
-    });
+    pages.extend(theme_page);
     pages.push(Page {
         path: NOT_SUPPORTED.into(),
         content: placeholder(
@@ -601,7 +617,10 @@ impl Site<'_> {
 
     /// `assets/nav.js`: what is under each section, written once for the whole site, and the
     /// few lines that put it in when a section is opened.
-    fn nav_script(&self) -> String {
+    fn nav_script(
+        &self,
+        partial: Option<(&std::collections::HashSet<String>, Option<&str>)>,
+    ) -> String {
         let mut o = String::from("window.EXPECTATION_NAV = {");
         let mut first = true;
         let mut entry = |o: &mut String, key: String, html: String| {
@@ -609,6 +628,10 @@ impl Site<'_> {
                 o.push(',');
             }
             first = false;
+            let html = match partial {
+                Some((built, base)) => crate::partial::html(&html, "site", built, base),
+                None => html,
+            };
             let _ = write!(o, "\n{}: {}", js_string(&key), js_string(&html));
         };
         for s in &self.suite().sections {
@@ -2579,6 +2602,8 @@ h2 { font-size: 19px; margin: 36px 0 12px; display: flex; flex-wrap: wrap; align
 h3 { font-size: 15px; margin: 0 0 6px; }
 .lede { font-size: 17px; }
 .muted { color: var(--muted); }
+/* A link to a page a preview (a partial manual) doesn't have: plain text, set apart. */
+.unbuilt { color: var(--muted); cursor: default; }
 .crumbs { margin: 0; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 .crumbs span { margin: 0 4px; }
 blockquote { margin: 0 0 16px; padding: 10px 16px; border-left: 3px solid var(--ok-dim); background: var(--bezel); border-radius: 0 var(--radius-screen) var(--radius-screen) 0; font-style: italic; }

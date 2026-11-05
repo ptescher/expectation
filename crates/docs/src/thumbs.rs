@@ -71,7 +71,14 @@ impl Tool {
         };
         match self {
             Tool::Magick | Tool::Mogrify => {
-                cmd.arg("-path").arg(out).args(["-thumbnail", &size]);
+                // No metadata and no timestamps, so the same screenshot makes the same thumbnail.
+                cmd.arg("-path").arg(out).args([
+                    "-strip",
+                    "-define",
+                    "png:exclude-chunks=date,time",
+                    "-thumbnail",
+                    &size,
+                ]);
                 cmd.args(files);
             }
             Tool::Sips => {

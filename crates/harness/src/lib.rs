@@ -200,6 +200,7 @@ impl Acceptance {
             outline: None,
             inventory: &self.inventory,
             contracts: &[],
+            partial: None,
             look: expectation_docs::Look {
                 stylesheet: self.stylesheet.as_deref(),
                 shot_ratio: self.shot_ratio,
