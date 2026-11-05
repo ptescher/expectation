@@ -162,6 +162,8 @@ expectation-run expectations --platform SwiftUI --docs docs --runner app
 It listens, waits for the app, runs the suite for that platform, prints the results, and
 with `--docs` saves them and writes the manual. `--screenshot-cmd 'xcrun simctl io booted
 screenshot "$1"'` takes screenshots from outside, for apps that don't take their own.
+`--screenshot-store DIR` keeps screenshots by content in `DIR` and builds the docs from there
+(see [Screenshots in large projects](manual.md#screenshots-in-large-projects)).
 
 It exits 1 if a test failed and 0 otherwise, **including when every test was "not supported
 yet"**. A failed screenshot is only a warning on stderr. Read the per-plan lines it prints

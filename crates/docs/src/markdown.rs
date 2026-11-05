@@ -204,7 +204,7 @@ fn head(o: &mut String, s: &Suite, section: SectionId) {
 }
 
 /// A screenshot, or a placeholder. `alt` says what it shows: the step's outcome.
-fn image(o: &mut String, shot: Option<&str>, status: Status, alt: &str) {
+fn image(o: &mut String, look: &crate::Look, shot: Option<&str>, status: Status, alt: &str) {
     let alt = manual::plain(alt).replace('"', "'");
     let alt = if alt.is_empty() {
         "Screenshot".to_string()
@@ -213,7 +213,11 @@ fn image(o: &mut String, shot: Option<&str>, status: Status, alt: &str) {
     };
     match shot {
         Some(shot) => {
-            let _ = writeln!(o, "<img src=\"../{shot}\" width=\"720\" alt=\"{alt}\">\n");
+            let _ = writeln!(
+                o,
+                "<img src=\"{}\" width=\"720\" alt=\"{alt}\">\n",
+                look.screenshots.src(shot)
+            );
         }
         None => {
             let placeholder = if status == Status::Unsupported {
@@ -459,6 +463,7 @@ fn tutorial_page(d: &Docs, f: &Facts, i: usize, t: &manual::Tutorial) -> String 
         let mut img = String::new();
         image(
             &mut img,
+            &d.look,
             step.shot.as_deref(),
             step.status,
             if step.seen.is_empty() {
@@ -536,12 +541,14 @@ fn feature_page(d: &Docs, f: &Facts, fi: usize) -> String {
         match f.shot_of(d, e) {
             Some((_, _, shot)) => image(
                 &mut o,
+                &d.look,
                 Some(&shot),
                 Status::Passed,
                 &voice::how(s, &x.steps),
             ),
             None => image(
                 &mut o,
+                &d.look,
                 None,
                 f.tested_by(e)
                     .first()
@@ -1297,7 +1304,13 @@ fn step_body(
     plan_status: Status,
 ) {
     let status = result.map_or(plan_status, |r| r.status);
-    image(o, result.and_then(|r| r.screenshot.as_deref()), status, "");
+    image(
+        o,
+        &d.look,
+        result.and_then(|r| r.screenshot.as_deref()),
+        status,
+        "",
+    );
     if result.and_then(|r| r.screenshot.as_ref()).is_none() {
         let _ = writeln!(o, "*{}*\n", missing_shot(status));
     }

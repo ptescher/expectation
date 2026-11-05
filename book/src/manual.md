@@ -115,6 +115,90 @@ to, its verdict and the tests that cover it) are collapsed under "How this is te
 Generated coverage tests appear only in the test report. A step without a screenshot shows a
 "Not supported yet" or "No screenshot" placeholder.
 
+## Screenshots in large projects
+
+By default a run writes each step's screenshot to `screenshots/<test>/<step>.png` in the docs
+directory, replacing the last run's. That is simple, but every run rewrites every image. At
+2,000 tests of five steps that is around a gigabyte per platform, and none of it diffs.
+
+**Keep them by content instead.** Give the run a store:
+
+- `RunOptions { screenshot_store: Some(dir), .. }`;
+- `expectation-run --screenshot-store DIR`.
+
+Each screenshot is then named by its SHA-256 (`DIR/<hash>.png`) and written only if no
+screenshot with the same content is there yet. Identical frames across steps and runs are
+stored once, and an unchanged test writes no new file. The results name it
+`screenshots/<hash>.png`, the same kind of path as before, so older readers still work. Re-run
+unchanged tests and the results file is the same, apart from its `run` and `window` lines, which
+say which run it was and when each step ran (see [Evidence and contract coverage](evidence.md)).
+
+**Tell the docs where the store is** with `expectation docs --screenshots <dir|url>` (or
+`Acceptance::with_screenshots`; `expectation-run --screenshot-store` does both):
+
+- **A directory.** The screenshots the pages show are copied into the docs' `screenshots/`.
+- **A URL prefix**, for a store you sync to a bucket or keep as a CI artifact. The pages link to
+  `<prefix>/<hash>.png` and nothing is copied: `https://cdn.example.com/shots` makes
+  `screenshots/abc….png` into `https://cdn.example.com/shots/abc….png`. Images load lazily.
+
+A store can also be the docs' own `screenshots/` directory; then there is nothing to copy.
+
+**Thumbnails.** The state map's cards and the story cards show thumbnails when a tool can make
+them: ImageMagick (`magick`, or `mogrify` from version 6), or `sips` on macOS. Each is made once,
+as `screenshots/thumbs/<name>`, and again only when its screenshot changes. Without a tool, or
+with `EXPECTATION_THUMBNAILS=off`, the cards show the screenshots themselves. SVG screenshots
+need none, since the browser draws them at any size. With a URL prefix there are no thumbnails.
+
+**Prune** what no run names any more:
+
+```bash
+expectation screenshots prune DIR docs/results [more/results ...] [--dry-run]
+```
+
+It reads every results file in the directories given, every platform's, and removes the files
+in the store (and its `thumbs/`) that none of them names. It only touches files named by a hash,
+and with no results files at all it removes nothing.
+
+**Where the store lives** is your choice. Commit the specs and `results/*.tsv` in any case, and
+leave out the generated pages and thumbnails (add `screenshots/thumbs/` to your `.gitignore`, as
+this repository does).
+
+- **In Git.** Make the store a directory in the repository, the docs' own `screenshots/` say, and
+  commit it. Because names are content, an unchanged screenshot is never a new commit, and only
+  changed frames add to the history. Run `screenshots prune` before committing to drop the ones
+  no test takes any more. This is the simplest, and enough for most projects.
+- **In Git LFS**, when the images are large or many. Run `expectation screenshots lfs <store>`
+  once. It writes `<store>/.gitattributes` so that PNG, JPEG and WebP files go to LFS; SVGs stay
+  in Git, as text. Then commit as above. Git LFS must be installed (`git lfs install`). A clone
+  fetches only the versions it checks out.
+- **In a bucket**, when it shouldn't be in the repository at all:
+
+  ```bash
+  expectation screenshots push DIR s3://bucket/shots   # after a run
+  expectation screenshots pull s3://bucket/shots DIR   # before building docs elsewhere
+  ```
+
+  These run the provider's own tool, with its own credentials and configuration:
+  - `s3://…` uses the AWS CLI. S3-compatible stores such as R2 or MinIO work with
+    `AWS_ENDPOINT_URL` set.
+  - `gs://…` uses `gcloud storage`, or `gsutil` without it.
+  - `name:path` is an [rclone](https://rclone.org) remote, which covers most others.
+
+  Both directions add what the other side lacks and delete nothing; `--dry-run` shows what they
+  would copy. To build the docs, either pull the store first and pass `--screenshots DIR`, with
+  thumbnails, or pass the bucket's public or CDN address, `--screenshots https://…`, so the pages
+  link there.
+
+None of these is required. Without a store, screenshots stay where they always were.
+
+**Keep hashes stable.** A screenshot only matches the last run's if every pixel does:
+
+- hide or freeze clocks and anything else that shows the time;
+- turn off animations and the blinking caret;
+- use the same fonts, data, device and scale each run.
+
+A screenshot that changes on every run is stored again on every run.
+
 ## Markdown
 
 The Markdown has the same pages:

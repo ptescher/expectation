@@ -23,11 +23,23 @@ commands:
   plan  <dir> [--coverage]  print the acceptance tests the stories compile to
                             (--coverage adds generated tests for untested expectations)
   docs  <dir> <out-dir> [--approved-only] [--results <dir>] [--stylesheet <css>] [--state-shot-ratio <w:h>]
+        [--screenshots <dir|url>]
                             write the docs (Markdown and an HTML site), with the results runs
                             have saved in <out-dir>/results; --stylesheet restyles the site
                             with a CSS file, --state-shot-ratio shapes the state map's pictures;
                             --approved-only writes just what is marked `Approval: approved`
-                            (--results <dir> reads results from there, not <out-dir>/results)
+                            (--results <dir> reads results from there, not <out-dir>/results);
+                            --screenshots says where the screenshots are: a store directory
+                            (the ones shown are copied in) or a URL prefix the pages link to
+  screenshots prune <store> <results-dir>... [--dry-run]
+                            remove the screenshots in a content-addressed store that no
+                            results file in the given directories names, and their thumbnails
+  screenshots push <store> <bucket> [--dry-run]
+  screenshots pull <bucket> <store> [--dry-run]
+                            copy a store to or from a bucket, adding what the other side lacks
+                            and deleting nothing: s3://… (aws), gs://… (gcloud or gsutil), or
+                            an rclone remote (name:path)
+  screenshots lfs <store>   keep the store's images in Git LFS: writes <store>/.gitattributes
 ";
 
 struct Checked {
@@ -100,7 +112,11 @@ pub fn main() {
         })
     };
     let by = take("--by");
-    let look = (take("--stylesheet"), take("--state-shot-ratio"));
+    let look = (
+        take("--stylesheet"),
+        take("--state-shot-ratio"),
+        take("--screenshots"),
+    );
     let results = take("--results");
     let approved_only = args.iter().any(|a| a == "--approved-only");
     let flag = |f: &str| args.iter().any(|a| a == f);
@@ -164,6 +180,16 @@ pub fn main() {
             }
         }
         ["docs", dir, out] => docs(dir, out, look, approved_only, results),
+        ["screenshots", "prune", store, dirs @ ..] if !dirs.is_empty() => {
+            prune_screenshots(store, dirs, flag("--dry-run"))
+        }
+        ["screenshots", "push", store, bucket] => {
+            sync_bucket(store, bucket, true, flag("--dry-run"))
+        }
+        ["screenshots", "pull", bucket, store] => {
+            sync_bucket(store, bucket, false, flag("--dry-run"))
+        }
+        ["screenshots", "lfs", store] => lfs_screenshots(store),
         _ => {
             eprint!("{USAGE}");
             exit(2);
@@ -176,7 +202,7 @@ pub fn main() {
 fn docs(
     dir: &str,
     out: &str,
-    (stylesheet, ratio): (Option<String>, Option<String>),
+    (stylesheet, ratio, shots): (Option<String>, Option<String>, Option<String>),
     approved_only: bool,
     results: Option<String>,
 ) {
@@ -190,7 +216,23 @@ fn docs(
     let look = expectation_docs::Look {
         stylesheet: css.as_deref(),
         shot_ratio: ratio,
+        screenshots: shots
+            .as_deref()
+            .map_or_else(Default::default, expectation_docs::Screenshots::parse),
     };
+    if let Some(expectation_docs::Screenshots::Dir(d)) =
+        shots.as_deref().map(expectation_docs::Screenshots::parse)
+        && !d.is_dir()
+    {
+        let given = d.display().to_string();
+        if given.contains("://") || bucket_tool(&given).is_ok() {
+            fail(format!(
+                "--screenshots {given}: give the address it is served at (https://…), or pull it \
+                 first: `expectation screenshots pull {given} <dir>` and `--screenshots <dir>`"
+            ));
+        }
+        fail(format!("--screenshots {given}: no such directory"));
+    }
     let first = load(dir);
     let platforms = first.suite.platforms.clone();
     let names: Vec<Option<String>> = if platforms.is_empty() {
@@ -407,4 +449,275 @@ fn print_plan(s: &Suite, p: &Plan) {
         }
     }
     println!();
+}
+
+/// `expectation screenshots prune`: delete what a content-addressed store holds that no results
+/// file names. Only files named by a hash (`<64 hex>.<ext>`) are touched, in the store and its
+/// `thumbs/`; with no results files at all, nothing is.
+fn prune_screenshots(store: &str, dirs: &[&str], dry_run: bool) {
+    let mut named = std::collections::HashSet::new();
+    let mut files = 0;
+    for d in dirs {
+        for entry in std::fs::read_dir(d).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|e| e != "tsv")
+                || expectation_story::is_coverage_file(&path)
+            {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            if !text.starts_with("expectation-results ") {
+                continue;
+            }
+            files += 1;
+            named.extend(expectation_story::screenshots_named(&text));
+        }
+    }
+    if files == 0 {
+        eprintln!(
+            "error: no results files in {}, so nothing is pruned",
+            dirs.join(", ")
+        );
+        exit(2);
+    }
+    let hashed = |name: &str| {
+        name.split_once('.').is_some_and(|(stem, ext)| {
+            stem.len() == 64
+                && stem
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+                && !ext.is_empty()
+                && ext.bytes().all(|b| b.is_ascii_alphanumeric())
+        })
+    };
+    let (mut gone, mut kept, mut bytes) = (0, 0, 0u64);
+    let store = Path::new(store);
+    for dir in [store.to_path_buf(), store.join("thumbs")] {
+        for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !entry.path().is_file() || !hashed(&name) {
+                continue;
+            }
+            if named.contains(&name) {
+                kept += 1;
+                continue;
+            }
+            bytes += entry.metadata().map_or(0, |m| m.len());
+            gone += 1;
+            if dry_run {
+                println!("would remove {}", entry.path().display());
+            } else if let Err(e) = std::fs::remove_file(entry.path()) {
+                eprintln!("error: couldn't remove {}: {e}", entry.path().display());
+            }
+        }
+    }
+    println!(
+        "{} {gone} screenshots ({:.1} MB) that none of {files} results files names; kept {kept}",
+        if dry_run { "would remove" } else { "removed" },
+        bytes as f64 / 1_048_576.0
+    );
+}
+
+/// How a bucket is reached: by the command-line tool its provider ships. Expectation doesn't
+/// talk to clouds itself; the tool brings its own credentials and configuration.
+#[derive(Debug, PartialEq)]
+enum Bucket {
+    /// `s3://bucket/prefix`, with the AWS CLI. An S3-compatible store (R2, MinIO) works with
+    /// `AWS_ENDPOINT_URL` set, which the AWS CLI reads.
+    S3,
+    /// `gs://bucket/prefix`, with `gcloud storage`, or `gsutil` without it.
+    Gcs,
+    /// An rclone remote, `name:path`: any provider rclone knows.
+    Rclone,
+}
+
+fn bucket_tool(dest: &str) -> Result<Bucket, String> {
+    if dest.starts_with("s3://") {
+        Ok(Bucket::S3)
+    } else if dest.starts_with("gs://") {
+        Ok(Bucket::Gcs)
+    } else if dest
+        .split_once(':')
+        .is_some_and(|(name, _)| name.len() > 1 && !name.contains(['/', '\\', '.']))
+    {
+        Ok(Bucket::Rclone)
+    } else {
+        Err(format!(
+            "{dest}: a bucket is s3://bucket/prefix, gs://bucket/prefix, or an rclone remote (name:path)"
+        ))
+    }
+}
+
+fn installed(program: &str) -> bool {
+    std::process::Command::new(program)
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+/// The command that copies `from` to `to` for this kind of bucket, adding what `to` lacks and
+/// deleting nothing. In a content-addressed store a name never changes content, so a file that
+/// is there already is skipped. Hidden files (a write in progress) stay behind.
+fn sync_command(
+    kind: &Bucket,
+    from: &str,
+    to: &str,
+    dry_run: bool,
+) -> Result<std::process::Command, String> {
+    let hidden = r"(^|.*/)\.[^/]*$";
+    let mut cmd;
+    match kind {
+        Bucket::S3 => {
+            if !installed("aws") {
+                return Err("s3:// needs the AWS CLI (`aws`): https://aws.amazon.com/cli/".into());
+            }
+            cmd = std::process::Command::new("aws");
+            cmd.args(["s3", "sync", from, to, "--size-only"]).args([
+                "--exclude",
+                ".*",
+                "--exclude",
+                "*/.*",
+            ]);
+            if dry_run {
+                cmd.arg("--dryrun");
+            }
+        }
+        Bucket::Gcs if installed("gcloud") => {
+            cmd = std::process::Command::new("gcloud");
+            cmd.args([
+                "storage",
+                "rsync",
+                from,
+                to,
+                "--recursive",
+                "--exclude",
+                hidden,
+            ]);
+            if dry_run {
+                cmd.arg("--dry-run");
+            }
+        }
+        Bucket::Gcs => {
+            if !installed("gsutil") {
+                return Err(
+                    "gs:// needs `gcloud` or `gsutil`: https://cloud.google.com/sdk".into(),
+                );
+            }
+            cmd = std::process::Command::new("gsutil");
+            cmd.args(["-m", "rsync", "-r", "-x", hidden]);
+            if dry_run {
+                cmd.arg("-n");
+            }
+            cmd.args([from, to]);
+        }
+        Bucket::Rclone => {
+            if !installed("rclone") {
+                return Err("an rclone remote needs `rclone`: https://rclone.org".into());
+            }
+            cmd = std::process::Command::new("rclone");
+            cmd.args(["copy", from, to, "--ignore-existing"]).args([
+                "--exclude",
+                ".*",
+                "--exclude",
+                "**/.*",
+            ]);
+            if dry_run {
+                cmd.arg("--dry-run");
+            }
+        }
+    }
+    Ok(cmd)
+}
+
+/// `expectation screenshots push` and `pull`: a store to a bucket, or a bucket to a store.
+fn sync_bucket(store: &str, bucket: &str, push: bool, dry_run: bool) {
+    let fail = |e: String| -> ! {
+        eprintln!("error: {e}");
+        exit(2)
+    };
+    let kind = bucket_tool(bucket).unwrap_or_else(|e| fail(e));
+    if push && !Path::new(store).is_dir() {
+        fail(format!("{store}: no such directory"));
+    }
+    if !push && !dry_run {
+        std::fs::create_dir_all(store).unwrap_or_else(|e| fail(format!("{store}: {e}")));
+    }
+    let (from, to) = if push {
+        (store, bucket)
+    } else {
+        (bucket, store)
+    };
+    let mut cmd = sync_command(&kind, from, to, dry_run).unwrap_or_else(|e| fail(e));
+    eprintln!(
+        "{} {from} to {to}",
+        if dry_run { "would copy" } else { "copying" }
+    );
+    let tool = cmd.get_program().to_string_lossy().into_owned();
+    match cmd.status() {
+        Ok(s) if s.success() => {}
+        Ok(s) => fail(format!("{tool} exited with {s}")),
+        Err(e) => fail(format!("couldn't run {tool}: {e}")),
+    }
+}
+
+/// The lines that keep a store's images in Git LFS. SVGs stay in Git: they are text, and diff.
+const LFS_ATTRIBUTES: &[&str] = &[
+    "*.png filter=lfs diff=lfs merge=lfs -text",
+    "*.jpg filter=lfs diff=lfs merge=lfs -text",
+    "*.jpeg filter=lfs diff=lfs merge=lfs -text",
+    "*.webp filter=lfs diff=lfs merge=lfs -text",
+];
+
+/// `expectation screenshots lfs`: write the `.gitattributes` that keeps a store's images in Git
+/// LFS. Lines already there are kept, and running it again changes nothing.
+fn lfs_screenshots(store: &str) {
+    let dir = Path::new(store);
+    let path = dir.join(".gitattributes");
+    let had = std::fs::read_to_string(&path).unwrap_or_default();
+    let missing: Vec<&str> = LFS_ATTRIBUTES
+        .iter()
+        .copied()
+        .filter(|l| !had.lines().any(|h| h.trim() == *l))
+        .collect();
+    if missing.is_empty() {
+        println!(
+            "{} already keeps the store's images in Git LFS",
+            path.display()
+        );
+    } else {
+        let mut text = had.clone();
+        if !text.is_empty() && !text.ends_with('\n') {
+            text.push('\n');
+        }
+        if had.is_empty() {
+            text.push_str(
+                "# Screenshots in Git LFS (`expectation screenshots lfs`). SVGs stay in Git.\n",
+            );
+        }
+        for l in &missing {
+            text.push_str(l);
+            text.push('\n');
+        }
+        if let Err(e) = std::fs::create_dir_all(dir).and_then(|()| std::fs::write(&path, text)) {
+            eprintln!("error: couldn't write {}: {e}", path.display());
+            exit(2);
+        }
+        println!("wrote {}", path.display());
+    }
+    let lfs = std::process::Command::new("git")
+        .args(["lfs", "version"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success());
+    if !lfs {
+        eprintln!(
+            "warning: Git LFS isn't installed here. Install it (https://git-lfs.com) and run \
+             `git lfs install`, or the images are committed to Git as they are"
+        );
+    }
 }

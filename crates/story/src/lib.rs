@@ -6,6 +6,7 @@ pub mod controls;
 pub mod coverage;
 pub mod plan;
 pub mod report;
+pub mod sha256;
 
 pub use controls::{Control, ControlRow, Gap, control_coverage, controls_json};
 pub use coverage::{
@@ -18,7 +19,7 @@ pub use plan::{
 };
 pub use report::{
     Attachment, CheckResult, PlanResult, Report, Run, Status, StepResult, Verdict, Window,
-    fingerprint, load_results, load_results_for, now_ms, results_file,
+    fingerprint, load_results, load_results_for, now_ms, results_file, screenshots_named,
 };
 
 #[cfg(test)]
