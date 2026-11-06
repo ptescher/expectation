@@ -67,7 +67,8 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
         }
     }
     sections(suite, files, diags);
-    let vocab = &suite.vocabulary;
+    let scoped = files.iter().any(|f| f.scopes.is_some());
+    let mut views: HashMap<Option<String>, Vocabulary> = HashMap::new();
     let dirs: Vec<(String, SectionId)> = suite
         .sections
         .iter()
@@ -84,6 +85,12 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
     let mut by_key: HashMap<String, ExpId> = HashMap::new();
     let mut overrides: Vec<(ExpId, Vec<(String, Span)>)> = vec![];
     for f in files {
+        let vocab = view(
+            &mut views,
+            &suite.vocabulary,
+            scoped,
+            scope_of(scoped, &f.dir),
+        );
         for rf in &f.features {
             let fid = FeatureId(suite.features.len() as u32);
             let mut feature = Feature {
@@ -166,6 +173,12 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
 
     // Stories.
     for f in files {
+        let vocab = view(
+            &mut views,
+            &suite.vocabulary,
+            scoped,
+            scope_of(scoped, &f.dir),
+        );
         for rs in &f.stories {
             let id = StoryId(suite.stories.len() as u32);
             let scenarios = rs
@@ -196,6 +209,36 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
     crate::sizing::check(suite, diags);
 }
 
+/// The scope of the words a file in `dir` declares and sees: its top-level section, if the
+/// suite scopes its vocabulary (`Scopes: sections`) and the file isn't in the top directory.
+fn scope_of(scoped: bool, dir: &str) -> Option<&str> {
+    if !scoped || dir.is_empty() {
+        return None;
+    }
+    Some(dir.split('/').next().unwrap_or(dir))
+}
+
+/// What a file in `scope` can use of `base`, worked out once per scope. A suite that doesn't
+/// scope its vocabulary sees `base` itself.
+fn view<'a>(
+    views: &'a mut HashMap<Option<String>, Vocabulary>,
+    base: &'a Vocabulary,
+    scoped: bool,
+    scope: Option<&str>,
+) -> &'a Vocabulary {
+    if !scoped {
+        return base;
+    }
+    views
+        .entry(scope.map(String::from))
+        .or_insert_with(|| base.seen_from(scope).into_owned())
+}
+
+/// The top-level directory of a file's path, if it is in one.
+fn top_dir(file: &str) -> Option<&str> {
+    file.split_once('/').map(|(top, _)| top)
+}
+
 /// One section per directory with files in it, and per directory above those. Each takes its
 /// name and description from a `Section:` line in one of its files (the root: the suite's
 /// name), and its setup from its files' Backgrounds, on top of its parent's.
@@ -212,6 +255,8 @@ fn sections(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
     }
     // Parents before children, siblings in name order.
     dirs.sort_by(|a, b| a.split('/').cmp(b.split('/')));
+    let scoped = files.iter().any(|f| f.scopes.is_some());
+    let mut views: HashMap<Option<String>, Vocabulary> = HashMap::new();
 
     for dir in dirs {
         let id = SectionId(suite.sections.len() as u32);
@@ -247,6 +292,12 @@ fn sections(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
             Some(p) => format!("{}--{}", suite.section(p).slug, text::slug(&title_of(leaf))),
         };
 
+        let vocab = view(
+            &mut views,
+            &suite.vocabulary,
+            scoped,
+            scope_of(scoped, &dir),
+        );
         let what = format!("the Background of «{name}» contradicts itself");
         let mut setup = Condition::new();
         let mut setup_steps = vec![];
@@ -259,10 +310,10 @@ fn sections(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
                     );
                     continue;
                 }
-                for fact in facts_of(s, &suite.vocabulary, diags) {
-                    add(&mut setup, &fact, &suite.vocabulary, diags, &what);
+                for fact in facts_of(s, vocab, diags) {
+                    add(&mut setup, &fact, vocab, diags, &what);
                 }
-                setup_steps.push(text_of(s, &suite.vocabulary));
+                setup_steps.push(text_of(s, vocab));
             }
         }
         let mut follows: Option<Condition> = None;
@@ -273,16 +324,10 @@ fn sections(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
             .flat_map(|f| &f.follows)
         {
             let target = follows.get_or_insert_with(Condition::new);
-            for fact in facts_of(s, &suite.vocabulary, diags) {
-                add(
-                    target,
-                    &fact,
-                    &suite.vocabulary,
-                    diags,
-                    "this setup can never hold",
-                );
+            for fact in facts_of(s, vocab, diags) {
+                add(target, &fact, vocab, diags, "this setup can never hold");
             }
-            follows_steps.push(text_of(s, &suite.vocabulary));
+            follows_steps.push(text_of(s, vocab));
         }
         let start = match parent {
             Some(p) => suite.section(p).start.overlay(&setup),
@@ -403,13 +448,28 @@ fn set_for_value(var: &expectation_model::Variable, line: &str) -> Option<(Strin
 
 fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
     let mut vocab = Vocabulary::default();
+    let scoped = files.iter().any(|f| f.scopes.is_some());
     for f in files {
+        if let (Some(span), false) = (&f.scopes, f.dir.is_empty()) {
+            diags.push(
+                Diagnostic::error(
+                    "syntax",
+                    "`Scopes:` belongs in a file in the suite's top directory",
+                )
+                .at(span, "")
+                .help("it applies to the whole suite"),
+            );
+        }
+    }
+    for f in files {
+        let scope = scope_of(scoped, &f.dir).map(String::from);
         for d in &f.states {
             let id = VarId(vocab.variables.len() as u32);
             let Ok(mut var) = step::declare_state(&d.text, &d.span, id).map_err(|e| diags.push(e))
             else {
                 continue;
             };
+            var.scope = scope.clone();
             for (line, _) in &d.sets {
                 match set_for_value(&var, line) {
                     Some(one) => var.sets.push(one),
@@ -422,9 +482,34 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
                 .iter()
                 .map(|(t, span)| shows(&var, t, span, diags))
                 .collect();
+            if let Some(other) = vocab.variables.iter().find(|v| {
+                v.key == var.key
+                    && v.scope != var.scope
+                    && (v.scope.is_none() || var.scope.is_none())
+            }) {
+                diags.push(
+                    Diagnostic::error(
+                        "vocabulary-shadow",
+                        format!("{} is also a shared word", var.subject),
+                    )
+                    .at(&d.span, "")
+                    .at(&other.span, "declared here")
+                    .help(
+                        "declare it once, in the top directory, or give one of them another name",
+                    ),
+                );
+                continue;
+            }
             // A state can be declared in more than one section; a `Set:` on any of them counts.
-            match vocab.variables.iter_mut().find(|v| v.key == var.key) {
+            match vocab
+                .variables
+                .iter_mut()
+                .find(|v| v.key == var.key && v.scope == var.scope)
+            {
                 Some(prev) if prev.kind == var.kind => {
+                    if !scoped && collides(&prev.span, &d.span) {
+                        diags.push(collision(&var.subject, &d.span, &prev.span));
+                    }
                     if prev.set.is_none() {
                         prev.set = var.set;
                     }
@@ -449,7 +534,28 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
             let key = text::key(&d.text);
             if key.is_empty() {
                 diags.push(Diagnostic::error("bad-event", "an event needs a name").at(&d.span, ""));
-            } else if let Some(prev) = vocab.events.iter_mut().find(|e| e.key == key) {
+            } else if let Some(other) = vocab.events.iter().find(|e| {
+                e.key == key && e.scope != scope && (e.scope.is_none() || scope.is_none())
+            }) {
+                diags.push(
+                    Diagnostic::error(
+                        "vocabulary-shadow",
+                        format!("«{}» is also a shared word", d.text),
+                    )
+                    .at(&d.span, "")
+                    .at(&other.span, "declared here")
+                    .help(
+                        "declare it once, in the top directory, or give one of them another name",
+                    ),
+                );
+            } else if let Some(prev) = vocab
+                .events
+                .iter_mut()
+                .find(|e| e.key == key && e.scope == scope)
+            {
+                if !scoped && collides(&prev.span, &d.span) {
+                    diags.push(collision(&d.text, &d.span, &prev.span));
+                }
                 if prev.say.is_none() {
                     prev.say = d.say.as_ref().map(|(s, _)| s.clone());
                 }
@@ -457,6 +563,7 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
                 let id = EventId(vocab.events.len() as u32);
                 let say = d.say.as_ref().map(|(s, _)| s.clone());
                 vocab.events.push(Event {
+                    scope: scope.clone(),
                     id,
                     text: d.text.clone(),
                     key,
@@ -468,10 +575,14 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
     }
     // Phrases after every state and event; each can use the phrases declared before it.
     for f in files {
+        let scope = scope_of(scoped, &f.dir).map(String::from);
         for rp in &f.phrases {
             let key = text::key(&rp.name);
-            if vocab.phrases.iter().any(|p| p.key == key)
-                || vocab.events.iter().any(|e| e.key == key)
+            let taken = |k: &str, w: &Option<String>| {
+                k == key && (w == &scope || w.is_none() || scope.is_none())
+            };
+            if vocab.phrases.iter().any(|p| taken(&p.key, &p.scope))
+                || vocab.events.iter().any(|e| taken(&e.key, &e.scope))
             {
                 diags.push(
                     Diagnostic::error("duplicate", format!("«{}» is already declared", rp.name))
@@ -482,12 +593,13 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
             if let Some((say, span)) = &rp.say {
                 launch_in_step(say, span, diags);
             }
-            let Some(body) = phrase_body(rp, &vocab, diags) else {
+            let Some(body) = phrase_body(rp, &vocab.seen_from(scope.as_deref()), diags) else {
                 continue;
             };
             let id = PhraseId(vocab.phrases.len() as u32);
             let say = rp.say.as_ref().map(|(s, _)| s.clone());
             vocab.phrases.push(Phrase {
+                scope: scope.clone(),
                 id,
                 name: rp.name.clone(),
                 key,
@@ -498,6 +610,25 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
         }
     }
     vocab
+}
+
+/// Two declarations in different top-level sections: the suite doesn't scope its words, so
+/// they are one word, whether or not the two meant the same thing.
+fn collides(a: &Span, b: &Span) -> bool {
+    match (top_dir(&a.file), top_dir(&b.file)) {
+        (Some(x), Some(y)) => x != y,
+        _ => false,
+    }
+}
+
+fn collision(word: &str, here: &Span, first: &Span) -> Diagnostic {
+    Diagnostic::warning(
+        "vocabulary-collision",
+        format!("«{word}» is declared in two sections, so it is one word for both"),
+    )
+    .at(here, "")
+    .at(first, "first declared here")
+    .help("if they mean the same, declare it once in the top directory; if not, rename one, or put `Scopes: sections` in a Vocabulary block there so each section's words are its own")
 }
 
 /// A `Say:` with a shell command in backticks: text that starts with a path or a program

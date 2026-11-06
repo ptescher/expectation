@@ -1065,4 +1065,131 @@ Story: Draft
         // The full suite is fine with it.
         assert!(!load_sources_with("S", &[("s.expect", &src)], None, false).has_errors());
     }
+
+    const ROOT: &str = "Vocabulary:\n  Scopes: sections\n  State: the user is signed in | out\n  Event: the user signs out\nBackground:\n  Given the user is signed in\n";
+
+    /// A section's file: its own lamp (`words` are its values) and one expectation about it.
+    fn area(words: &str, tag: &str) -> String {
+        format!(
+            "Vocabulary:\n  State: the lamp is {words}\n  Event: the user flips the switch\nBackground:\n  Given the lamp is on\nFeature: Lamp {tag}\n  Expectation: Flip {tag}\n    Given the lamp is on\n    When the user flips the switch\n    Then the lamp is off\n"
+        )
+    }
+
+    fn codes(l: &Loaded) -> Vec<&'static str> {
+        l.diagnostics.iter().map(|d| d.code).collect()
+    }
+
+    fn error_codes(l: &Loaded) -> Vec<&'static str> {
+        l.diagnostics
+            .iter()
+            .filter(|d| d.severity == expectation_model::diagnostic::Severity::Error)
+            .map(|d| d.code)
+            .collect()
+    }
+
+    #[test]
+    fn without_scopes_the_same_word_in_two_sections_is_one_word_and_warns() {
+        let (a, b) = (area("on | off", "a"), area("on | off", "b"));
+        let l = load_sources("S", &[("a/a.expect", &a), ("b/b.expect", &b)]);
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        assert_eq!(l.suite.vocabulary.variables.len(), 1);
+        assert!(
+            codes(&l).contains(&"vocabulary-collision"),
+            "{:?}",
+            codes(&l)
+        );
+    }
+
+    #[test]
+    fn scoped_sections_can_declare_the_same_word_differently() {
+        let (a, b) = (area("on | off", "a"), area("on | off | broken", "b"));
+        let l = load_sources(
+            "S",
+            &[
+                ("vocab.expect", ROOT),
+                ("a/a.expect", &a),
+                ("b/b.expect", &b),
+            ],
+        );
+        assert!(error_codes(&l).is_empty(), "{}", l.render_diagnostics());
+        assert!(!codes(&l).contains(&"vocabulary-collision"));
+        let v = &l.suite.vocabulary;
+        let lamps: Vec<_> = v.variables.iter().filter(|v| v.key == "lamp").collect();
+        assert_eq!(
+            lamps.iter().map(|v| v.scope.as_deref()).collect::<Vec<_>>(),
+            vec![Some("a"), Some("b")]
+        );
+        // Each expectation is about its own section's lamp.
+        let scopes: Vec<_> = l
+            .suite
+            .expectations
+            .iter()
+            .map(|e| v.var(e.given.vars().next().unwrap()).scope.clone())
+            .collect();
+        assert_eq!(scopes, vec![Some("a".to_string()), Some("b".to_string())]);
+    }
+
+    #[test]
+    fn scoped_sections_share_the_words_in_the_top_directory() {
+        let shared = |tag: &str| {
+            format!(
+                "Feature: Out {tag}\n  Expectation: Sign out {tag}\n    Given the user is signed in\n    When the user signs out\n    Then the user is out\n"
+            )
+        };
+        let (a, b) = (
+            format!("{}{}", area("on | off", "a"), shared("a")),
+            format!("{}{}", area("on | off", "b"), shared("b")),
+        );
+        let l = load_sources(
+            "S",
+            &[
+                ("vocab.expect", ROOT),
+                ("a/a.expect", &a),
+                ("b/b.expect", &b),
+            ],
+        );
+        assert!(error_codes(&l).is_empty(), "{}", l.render_diagnostics());
+        // One shared user state, and a lamp each.
+        let v = &l.suite.vocabulary;
+        assert_eq!(v.variables.iter().filter(|v| v.key == "user").count(), 1);
+        assert_eq!(v.variables.iter().filter(|v| v.key == "lamp").count(), 2);
+    }
+
+    #[test]
+    fn a_word_of_another_section_is_not_visible() {
+        let b = "Feature: B\n  Expectation: Hit\n    Given the lamp is on\n    When the user flips the switch\n    Then the lamp is off\n";
+        let a = area("on | off", "a");
+        let l = load_sources(
+            "S",
+            &[
+                ("vocab.expect", ROOT),
+                ("a/a.expect", &a),
+                ("b/b.expect", b),
+            ],
+        );
+        assert!(
+            codes(&l).contains(&"unknown-step"),
+            "{}",
+            l.render_diagnostics()
+        );
+    }
+
+    #[test]
+    fn a_scoped_word_cannot_shadow_a_shared_one() {
+        let a = "Vocabulary:\n  State: the user is signed in | out\n";
+        let l = load_sources("S", &[("vocab.expect", ROOT), ("a/a.expect", a)]);
+        assert!(
+            codes(&l).contains(&"vocabulary-shadow"),
+            "{}",
+            l.render_diagnostics()
+        );
+    }
+
+    #[test]
+    fn scopes_belongs_in_the_top_directory_and_says_sections() {
+        let l = load_sources("S", &[("a/a.expect", "Vocabulary:\n  Scopes: sections\n")]);
+        assert!(l.render_diagnostics().contains("top directory"));
+        let l = load_sources("S", &[("a.expect", "Vocabulary:\n  Scopes: teams\n")]);
+        assert!(l.render_diagnostics().contains("can only say `sections`"));
+    }
 }
