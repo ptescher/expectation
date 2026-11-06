@@ -918,7 +918,14 @@ impl Site<'_> {
     /// A screenshot, or a placeholder saying why there isn't one: briefly on reading pages
     /// (`detail` false), with the test's reason on the report.
     /// `alt` says what the picture shows, for readers who can't see it: the step's outcome.
-    fn figure(&self, shot: Option<&str>, status: Status, detail: bool, alt: &str) -> String {
+    fn figure(
+        &self,
+        shot: Option<&str>,
+        status: Status,
+        stale: bool,
+        detail: bool,
+        alt: &str,
+    ) -> String {
         let alt = manual::plain(alt);
         let alt = if alt.is_empty() {
             "Screenshot".to_string()
@@ -927,9 +934,14 @@ impl Site<'_> {
         };
         match shot {
             Some(shot) => format!(
-                r#"<figure><a href="{0}"><img src="{0}" alt="{1}" loading="lazy"></a></figure>"#,
+                r#"<figure><a href="{0}"><img src="{0}" alt="{1}" loading="lazy"></a>{2}</figure>"#,
                 esc(&self.d.look.screenshots.src(shot)),
-                esc(&alt)
+                esc(&alt),
+                if stale {
+                    "<figcaption>From before this page changed.</figcaption>"
+                } else {
+                    ""
+                }
             ),
             None => {
                 let img = if status == Status::Unsupported {
@@ -938,9 +950,9 @@ impl Site<'_> {
                     NO_SCREENSHOT
                 };
                 let note = if detail {
-                    missing_shot(status)
+                    missing_shot(status, stale)
                 } else {
-                    manual::missing(status)
+                    manual::missing(status, stale)
                 };
                 format!(
                     r#"<figure class="placeholder"><img src="../{}" alt="{}" loading="lazy"><figcaption>{}</figcaption></figure>"#,
@@ -1289,7 +1301,7 @@ impl Site<'_> {
             o.push_str(&self.exception_notes(e));
             match self.f.shot_of(self.d, e) {
                 Some((_, _, shot)) => {
-                    o.push_str(&self.figure(Some(&shot), Status::Passed, false, &how))
+                    o.push_str(&self.figure(Some(&shot), Status::Passed, false, false, &how))
                 }
                 None => {
                     let status = self
@@ -1297,7 +1309,7 @@ impl Site<'_> {
                         .tested_by(e)
                         .first()
                         .map_or(Status::NotRun, |&p| self.f.status[p]);
-                    o.push_str(&self.figure(None, status, false, ""));
+                    o.push_str(&self.figure(None, status, false, false, ""));
                 }
             }
             let tutorials: Vec<String> = manual::shown_in(self.d, self.f, e)
@@ -1362,7 +1374,7 @@ impl Site<'_> {
             } else {
                 &step.seen
             };
-            o.push_str(&self.figure(step.shot.as_deref(), step.status, false, alt));
+            o.push_str(&self.figure(step.shot.as_deref(), step.status, step.stale, false, alt));
             o.push_str("</li>");
         }
         o.push_str("</ol>");
@@ -1999,6 +2011,7 @@ impl Site<'_> {
         let mut o = self.figure(
             result.and_then(|r| r.screenshot.as_deref()),
             status,
+            result.is_some_and(|r| r.stale),
             true,
             "",
         );

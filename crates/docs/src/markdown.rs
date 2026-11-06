@@ -212,7 +212,14 @@ fn head(o: &mut String, s: &Suite, section: SectionId) {
 }
 
 /// A screenshot, or a placeholder. `alt` says what it shows: the step's outcome.
-fn image(o: &mut String, look: &crate::Look, shot: Option<&str>, status: Status, alt: &str) {
+fn image(
+    o: &mut String,
+    look: &crate::Look,
+    shot: Option<&str>,
+    status: Status,
+    stale: bool,
+    alt: &str,
+) {
     let alt = manual::plain(alt).replace('"', "'");
     let alt = if alt.is_empty() {
         "Screenshot".to_string()
@@ -226,6 +233,9 @@ fn image(o: &mut String, look: &crate::Look, shot: Option<&str>, status: Status,
                 "<img src=\"{}\" width=\"720\" alt=\"{alt}\">\n",
                 look.screenshots.src(shot)
             );
+            if stale {
+                let _ = writeln!(o, "*From before this page changed.*\n");
+            }
         }
         None => {
             let placeholder = if status == Status::Unsupported {
@@ -236,7 +246,7 @@ fn image(o: &mut String, look: &crate::Look, shot: Option<&str>, status: Status,
             let _ = writeln!(
                 o,
                 "<img src=\"../{placeholder}\" width=\"360\" alt=\"{}\">\n",
-                manual::missing(status)
+                manual::missing(status, stale)
             );
         }
     }
@@ -474,6 +484,7 @@ fn tutorial_page(d: &Docs, f: &Facts, i: usize, t: &manual::Tutorial) -> String 
             &d.look,
             step.shot.as_deref(),
             step.status,
+            step.stale,
             if step.seen.is_empty() {
                 &step.doing
             } else {
@@ -552,6 +563,7 @@ fn feature_page(d: &Docs, f: &Facts, fi: usize) -> String {
                 &d.look,
                 Some(&shot),
                 Status::Passed,
+                false,
                 &voice::how(s, &x.steps),
             ),
             None => image(
@@ -561,6 +573,7 @@ fn feature_page(d: &Docs, f: &Facts, fi: usize) -> String {
                 f.tested_by(e)
                     .first()
                     .map_or(Status::NotRun, |&p| f.status[p]),
+                false,
                 "",
             ),
         }
@@ -1312,15 +1325,17 @@ fn step_body(
     plan_status: Status,
 ) {
     let status = result.map_or(plan_status, |r| r.status);
+    let stale = result.is_some_and(|r| r.stale);
     image(
         o,
         &d.look,
         result.and_then(|r| r.screenshot.as_deref()),
         status,
+        stale,
         "",
     );
     if result.and_then(|r| r.screenshot.as_ref()).is_none() {
-        let _ = writeln!(o, "*{}*\n", missing_shot(status));
+        let _ = writeln!(o, "*{}*\n", missing_shot(status, stale));
     }
     if let Some(e) = result
         .and_then(|r| r.error.as_ref())

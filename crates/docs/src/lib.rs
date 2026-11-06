@@ -640,7 +640,10 @@ fn status_label(s: Status) -> &'static str {
 }
 
 /// Why a step has no screenshot, for the placeholder's caption.
-fn missing_shot(status: Status) -> &'static str {
+fn missing_shot(status: Status, stale: bool) -> &'static str {
+    if stale && status == Status::NotRun {
+        return "Not run since this page changed.";
+    }
     match status {
         Status::Unsupported => "Screenshot to come: the tests can't run this step yet.",
         Status::Pending => "No screenshot: this behaviour is pending, so the test isn't run.",

@@ -17,6 +17,11 @@ expectation docs expectations docs
 `expectation docs` checks the links in the HTML it wrote and warns about any that go to a file
 or an anchor that isn't there.
 
+A test whose wording has changed since its results were saved is shown as not run, not as
+unsupported (another runner that can't do it says nothing about whether this one did). If its
+steps are still the same, each keeps its last screenshot, captioned "From before this page
+changed", so a published manual keeps its pictures between full runs.
+
 ## Navigation and size
 
 Each page lists only the sections on the way to it, with the others as links. Opening one fills
