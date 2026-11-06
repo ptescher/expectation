@@ -25,6 +25,7 @@ error[bad-value]: `boiling` isn't a value of the kettle
 | `approval-conflict` | error | An expectation is `Approval: approved` inside a feature that is `proposed`. |
 | `approval-dependency` | error | With `--approved-only`: an approved expectation overrides one that isn't approved. |
 | `vocabulary-collision` | warning | The same state or event is declared in two top-level sections, so it is one word for both. Declare it once in the top directory, rename one, or turn on `Scopes: sections`. |
+| `unused-word` | warning | A state, event or phrase that is declared but that no step uses. Remove it or use it. |
 | `conflicting-say` | warning | The same state or event has two different `Say:` (or `Set:`) lines in different places; only the first is used. Write one that covers both, or scope the words with `Scopes: sections`. |
 | `vocabulary-shadow` | error | With `Scopes: sections`: a section declares a word that is also declared in the top directory. |
 | `duplicate` | error | Two expectations, terms or other named things with the same name. |

@@ -65,9 +65,9 @@ Feature: Heating
     When the dial is above 55 %
     Then the kettle is heating
 
-  Expectation: Turning the dial back down stops it
+  Expectation: Pressing lock stops the kettle
     Given the kettle is heating
-    When the dial is below 20 %
+    When the user presses lock
     Then the kettle is off
 
 Story: Your first cup
@@ -79,7 +79,7 @@ Story: Your first cup
     When the preset is HOT
     When the dial is 80 %
     Then the kettle is heating
-    When the dial is 0 %
+    When the user presses lock
     Then the kettle is off
 ```
 

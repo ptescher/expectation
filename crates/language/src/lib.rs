@@ -1255,4 +1255,55 @@ Story: Draft
         let bad = src.replace("About: iOS: the app on an iPad", "About: iOS");
         assert!(load_sources("S", &[("s.expect", &bad)]).has_errors());
     }
+
+    #[test]
+    fn a_phrase_can_use_a_phrase_written_after_it() {
+        let src = |order: [&str; 2]| {
+            format!(
+                "Vocabulary:\n  State: the lamp is on | off\n  State: the dial is 0..100 %\n{}{}Background:\n  Given the lamp is off\n",
+                order[0], order[1]
+            )
+        };
+        let outer =
+            "  Phrase: the lamp is ready\n    Given the lamp is off\n    And the dial is zero\n";
+        let inner = "  Phrase: the dial is zero\n    Given the dial is 0 %\n";
+        // Either order reads the same.
+        for order in [[outer, inner], [inner, outer]] {
+            let l = load_sources("S", &[("s.expect", &src(order))]);
+            assert!(!l.has_errors(), "{}", l.render_diagnostics());
+            assert_eq!(l.suite.vocabulary.phrases.len(), 2);
+        }
+        // Two phrases that use each other can't be read.
+        let a = "  Phrase: a\n    Given b\n";
+        let b = "  Phrase: b\n    Given a\n";
+        let l = load_sources("S", &[("s.expect", &src([a, b]))]);
+        assert!(l.has_errors());
+        assert!(
+            codes(&l).contains(&"unknown-step"),
+            "{}",
+            l.render_diagnostics()
+        );
+    }
+
+    #[test]
+    fn words_nothing_uses_are_reported() {
+        let src = "Vocabulary:\n  State: the lamp is on | off\n  State: the fuse is ok | blown\n  Event: the user flips the switch\n  Event: the user kicks the wall\n  Phrase: the lamp is lit\n    Given the lamp is on\n  Phrase: the room is dark\n    Given the lamp is off\nBackground:\n  Given the room is dark\nFeature: F\n  Expectation: Flip\n    Given the room is dark\n    When the user flips the switch\n    Then the lamp is on\n";
+        let l = load_sources("S", &[("s.expect", src)]);
+        let unused: Vec<String> = l
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "unused-word")
+            .map(|d| d.message.clone())
+            .collect();
+        assert_eq!(
+            unused,
+            vec![
+                "the state «the fuse» is declared but no step uses it",
+                "the event «the user kicks the wall» is declared but no step uses it",
+                "the phrase «the lamp is lit» is declared but no step uses it",
+            ],
+            "{}",
+            l.render_diagnostics()
+        );
+    }
 }
