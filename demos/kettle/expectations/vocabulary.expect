@@ -5,6 +5,9 @@ Suite: Kettle
 
 Vocabulary:
   Platform: GPUI | SwiftUI | React Native
+    About: GPUI: the kettle app on a Mac, built with Rust and GPUI
+    About: SwiftUI: the kettle app on an iPhone, built with SwiftUI
+    About: React Native: the kettle app on an iPhone, built with React Native
 
   State: the kettle is off | starting | heating | dry
     Shows: off: the display reads OFF

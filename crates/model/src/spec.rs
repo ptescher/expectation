@@ -329,6 +329,8 @@ pub struct Suite {
     /// The platform this suite was read for (a lens on one platform's variants), if the
     /// suite declares platforms.
     pub platform: Option<String>,
+    /// `About:` under a `Platform:`: what each platform is, for the docs' version menu.
+    pub platform_about: Vec<(String, String)>,
     /// The invariants' ids, worked out the first time [`Suite::invariants`] is asked: it is asked
     /// at every step of every test. A suite's expectations don't change once it is loaded.
     #[doc(hidden)]

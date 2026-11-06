@@ -14,6 +14,14 @@ or, from results that runs have saved in `docs/results/`:
 expectation docs expectations docs
 ```
 
+`expectation docs` checks the links in the HTML it wrote and warns about any that go to a file
+or an anchor that isn't there.
+
+A test whose wording has changed since its results were saved is shown as not run, not as
+unsupported (another runner that can't do it says nothing about whether this one did). If its
+steps are still the same, each keeps its last screenshot, captioned "From before this page
+changed", so a published manual keeps its pictures between full runs.
+
 ## Navigation and size
 
 Each page lists only the sections on the way to it, with the others as links. Opening one fills
@@ -249,6 +257,22 @@ site/            the HTML version
 Pages read in order: each section, then its tutorials, its topics and its subsections. Each
 page's footer names the spec file to edit to change it.
 
+## The reader edition
+
+The manual is read by people who want to learn the product, not test it. The default edition
+keeps every gap in view for the authors; for readers, build the reader edition:
+
+```bash
+expectation docs expectations docs --reader
+```
+
+(`Edition: reader` in `outline.txt`, `--reader` on `expectation-run`, or `Acceptance::with_reader`
+do the same.) Tutorials and topic pages then have no "How this is tested" block, no "Tested by"
+list and no "Its report" link, and a step with no screenshot shows just the step and what you
+see, with no placeholder or caption. The test report, the map, the state map and the vocabulary
+are still written, linked from one "For developers" entry in the sidebar. Nothing about the
+tests or their results changes.
+
 ## The outline
 
 By default the manual follows the sections. A suite can have an `outline.txt` beside its
@@ -269,6 +293,13 @@ Part: Brewing
   troubleshooting), placed among the generated ones. A page's title is its first `# ` line.
   They can use `[[links]]` into the generated pages. `[desktop]` keeps a page out of another
   platform's manual.
+
+- `Next: tutorials` (a line of its own) makes Next and Previous follow the pages, the section
+  pages and the tutorials only. The topic pages stay in the sidebar and in each tutorial's
+  "Learn more", so a beginner pressing Next goes from tutorial to tutorial. With an outline,
+  the glossary is the last page of the chain.
+- A section page lists its own tutorials first, then those of its subsections, even where the
+  outline reads a subsection earlier than the section that holds it.
 
 The sections themselves stay where they are, because their setups inherit from their parents.
 A top-level section that no part names goes into a last part, "More", with a warning.

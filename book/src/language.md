@@ -149,7 +149,7 @@ A phrase is a step of your own, for saying more with less.
   per action). An expectation can use one that's a single action; a story step can use any.
   It becomes several test steps, but stays one numbered step in the docs.
 
-A phrase's `Say:` is how the docs put it. Phrases can use the phrases declared before them.
+A phrase's `Say:` is how the docs put it. A phrase can use any other phrase, whichever is written first; two that use each other are an error.
 
 ## Steps
 
@@ -189,7 +189,7 @@ Expectation: <name>
   instead of being a start of the state map, which goes on from the setup alone (the
   launcher's buttons say nothing about the sim). Stories and tests don't see it: they stay in
   the launcher, and check the expectation's Then.
-- `Docs: hidden` keeps it off its topic page. It's still tested, and it's in the test report.
+- `Docs: hidden` keeps it off its topic page. It's still tested, and it's in the test report; links to it from the maps and test pages go to a test that covers it.
 - `Status: pending` says the behaviour is written ahead of its implementation. A pending
   expectation stays in the model: it appears in the map and the state map, it can be reached,
   and conflicts with it (pending or required) are still errors. What changes is testing. A test

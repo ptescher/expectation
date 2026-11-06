@@ -95,6 +95,17 @@ pub fn load_sources_with(
         suite.sources.insert((*file).into(), text.to_string());
     }
     (suite.platforms, suite.platform) = lens::apply(&mut files, platform, &mut diags);
+    for (name, text, span) in files.iter().flat_map(|f| &f.platform_about) {
+        if suite.platforms.contains(name) {
+            suite.platform_about.push((name.clone(), text.clone()));
+        } else {
+            diags.push(
+                Diagnostic::error("unknown-platform", format!("no platform called `{name}`"))
+                    .at(span, "")
+                    .help(format!("the platforms are {}", suite.platforms.join(", "))),
+            );
+        }
+    }
     if approved_only {
         approval::only_approved(&mut files, &mut diags);
     }
@@ -353,7 +364,7 @@ Story: S
         assert!(!l.has_errors(), "{}", l.render_diagnostics());
         l.diagnostics
             .iter()
-            .filter(|d| !d.is_error())
+            .filter(|d| !d.is_error() && d.code != "unused-word")
             .map(|d| d.code)
             .collect()
     }
@@ -861,7 +872,11 @@ Feature: Drawing
         assert_eq!(errors("Feature: F\n On: iOS\n"), vec!["unknown-platform"]);
         let l = load_sources_for("t", &[("t.expect", vocab)], Some("Android"));
         assert_eq!(
-            l.diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+            l.diagnostics
+                .iter()
+                .map(|d| d.code)
+                .filter(|c| *c != "unused-word")
+                .collect::<Vec<_>>(),
             vec!["unknown-platform"]
         );
     }
@@ -935,6 +950,7 @@ Feature: Drawing
                 .diagnostics
                 .iter()
                 .map(|d| d.code)
+                .filter(|c| *c != "unused-word")
                 .collect::<Vec<_>>(),
             vec!["says-nothing"]
         );
@@ -945,7 +961,12 @@ Feature: Drawing
                 &with("Feature: F\n Expectation: E\n  Gvien the kettle is heating\n"),
             )],
         );
-        let codes: Vec<_> = typo.diagnostics.iter().map(|d| d.code).collect();
+        let codes: Vec<_> = typo
+            .diagnostics
+            .iter()
+            .map(|d| d.code)
+            .filter(|c| *c != "unused-word")
+            .collect();
         assert_eq!(codes, vec!["maybe-step", "no-then"]);
     }
 
@@ -1191,5 +1212,108 @@ Story: Draft
         assert!(l.render_diagnostics().contains("top directory"));
         let l = load_sources("S", &[("a.expect", "Vocabulary:\n  Scopes: teams\n")]);
         assert!(l.render_diagnostics().contains("can only say `sections`"));
+    }
+
+    #[test]
+    fn two_different_says_for_one_word_warn_and_the_first_wins() {
+        let decl = |say: &str| {
+            format!(
+                "Vocabulary:\n  State: the lamp is on | off\n    Set: {say}\n  Event: the user flips the switch\n    Say: {say}\n"
+            )
+        };
+        let (a, b) = (decl("press the button"), decl("press N"));
+        let l = load_sources("S", &[("a/a.expect", &a), ("b/b.expect", &b)]);
+        let says = l
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "conflicting-say")
+            .count();
+        assert_eq!(says, 2, "{}", l.render_diagnostics());
+        assert_eq!(
+            l.suite.vocabulary.events[0].say.as_deref(),
+            Some("press the button")
+        );
+        // The same Say twice is fine, and scoped words don't meet.
+        let l = load_sources("S", &[("a/a.expect", &a), ("b/b.expect", &a)]);
+        assert!(!codes(&l).contains(&"conflicting-say"));
+        let root = "Vocabulary:\n  Scopes: sections\n";
+        let l = load_sources(
+            "S",
+            &[("v.expect", root), ("a/a.expect", &a), ("b/b.expect", &b)],
+        );
+        assert!(
+            !codes(&l).contains(&"conflicting-say"),
+            "{}",
+            l.render_diagnostics()
+        );
+    }
+
+    #[test]
+    fn platforms_can_say_what_they_are() {
+        let src = "Vocabulary:\n  Platform: desktop | iOS\n    About: desktop: the app on a computer\n    About: iOS: the app on an iPad\n";
+        let l = load_sources("S", &[("s.expect", src)]);
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        assert_eq!(
+            l.suite.platform_about,
+            vec![
+                ("desktop".to_string(), "the app on a computer".to_string()),
+                ("iOS".to_string(), "the app on an iPad".to_string())
+            ]
+        );
+        let bad = src.replace("About: iOS:", "About: Android:");
+        assert!(codes(&load_sources("S", &[("s.expect", &bad)])).contains(&"unknown-platform"));
+        let bad = src.replace("About: iOS: the app on an iPad", "About: iOS");
+        assert!(load_sources("S", &[("s.expect", &bad)]).has_errors());
+    }
+
+    #[test]
+    fn a_phrase_can_use_a_phrase_written_after_it() {
+        let src = |order: [&str; 2]| {
+            format!(
+                "Vocabulary:\n  State: the lamp is on | off\n  State: the dial is 0..100 %\n{}{}Background:\n  Given the lamp is off\n",
+                order[0], order[1]
+            )
+        };
+        let outer =
+            "  Phrase: the lamp is ready\n    Given the lamp is off\n    And the dial is zero\n";
+        let inner = "  Phrase: the dial is zero\n    Given the dial is 0 %\n";
+        // Either order reads the same.
+        for order in [[outer, inner], [inner, outer]] {
+            let l = load_sources("S", &[("s.expect", &src(order))]);
+            assert!(!l.has_errors(), "{}", l.render_diagnostics());
+            assert_eq!(l.suite.vocabulary.phrases.len(), 2);
+        }
+        // Two phrases that use each other can't be read.
+        let a = "  Phrase: a\n    Given b\n";
+        let b = "  Phrase: b\n    Given a\n";
+        let l = load_sources("S", &[("s.expect", &src([a, b]))]);
+        assert!(l.has_errors());
+        assert!(
+            codes(&l).contains(&"unknown-step"),
+            "{}",
+            l.render_diagnostics()
+        );
+    }
+
+    #[test]
+    fn words_nothing_uses_are_reported() {
+        let src = "Vocabulary:\n  State: the lamp is on | off\n  State: the fuse is ok | blown\n  Event: the user flips the switch\n  Event: the user kicks the wall\n  Phrase: the lamp is lit\n    Given the lamp is on\n  Phrase: the room is dark\n    Given the lamp is off\nBackground:\n  Given the room is dark\nFeature: F\n  Expectation: Flip\n    Given the room is dark\n    When the user flips the switch\n    Then the lamp is on\n";
+        let l = load_sources("S", &[("s.expect", src)]);
+        let unused: Vec<String> = l
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "unused-word")
+            .map(|d| d.message.clone())
+            .collect();
+        assert_eq!(
+            unused,
+            vec![
+                "the state «the fuse» is declared but no step uses it",
+                "the event «the user kicks the wall» is declared but no step uses it",
+                "the phrase «the lamp is lit» is declared but no step uses it",
+            ],
+            "{}",
+            l.render_diagnostics()
+        );
     }
 }

@@ -3,13 +3,14 @@
 
 use crate::parse::{RawExpectation, RawFile, RawPhrase, RawScenario, RawSection, RawStep};
 use crate::step::{self, Meaning};
+use expectation_model::diagnostic::has_errors;
 use expectation_model::text;
 use expectation_model::{
     Condition, Diagnostic, Event, EventId, ExpId, Expectation, Fact, Feature, FeatureId, Keyword,
     Phrase, PhraseBody, PhraseId, Said, Scenario, Section, SectionId, Shift, Span, StepText, Story,
     StoryId, StoryStep, Suite, Trigger, VarId, Vocabulary,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
     let mut named: Option<&(String, Span)> = None;
@@ -206,7 +207,57 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
             });
         }
     }
+    unused_words(suite, files, diags);
     crate::sizing::check(suite, diags);
+}
+
+/// Words that are declared but that no step anywhere uses: dead vocabulary, which only makes
+/// the real words harder to find. A step uses a state by starting with its subject, and an
+/// event or a phrase by being, or containing, its text.
+fn unused_words(suite: &Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
+    // Every run of up to 10 words in every step.
+    let mut grams: HashSet<String> = HashSet::new();
+    let mut add = |step: &RawStep| {
+        let key = text::key(&step.text);
+        let words: Vec<&str> = key.split(' ').collect();
+        for start in 0..words.len() {
+            for end in (start + 1)..=words.len().min(start + 10) {
+                grams.insert(words[start..end].join(" "));
+            }
+        }
+    };
+    for f in files {
+        f.background.iter().chain(&f.follows).for_each(&mut add);
+        f.phrases.iter().flat_map(|p| &p.steps).for_each(&mut add);
+        for e in f.features.iter().flat_map(|x| &x.expectations) {
+            e.steps.iter().chain(&e.hands_over).for_each(&mut add);
+        }
+        for sc in f.stories.iter().flat_map(|x| &x.scenarios) {
+            sc.steps.iter().for_each(&mut add);
+        }
+    }
+    let v = &suite.vocabulary;
+    let mut unused = |kind: &str, what: String, key: &str, span: &Span| {
+        if !grams.contains(key) {
+            diags.push(
+                Diagnostic::warning(
+                    "unused-word",
+                    format!("{kind} «{what}» is declared but no step uses it"),
+                )
+                .at(span, "")
+                .help("remove it, or use it in an expectation or a story"),
+            );
+        }
+    };
+    for var in &v.variables {
+        unused("the state", var.subject.clone(), &var.key, &var.span);
+    }
+    for e in &v.events {
+        unused("the event", e.text.clone(), &e.key, &e.span);
+    }
+    for p in &v.phrases {
+        unused("the phrase", p.name.clone(), &p.key, &p.span);
+    }
 }
 
 /// The scope of the words a file in `dir` declares and sees: its top-level section, if the
@@ -510,8 +561,12 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
                     if !scoped && collides(&prev.span, &d.span) {
                         diags.push(collision(&var.subject, &d.span, &prev.span));
                     }
-                    if prev.set.is_none() {
-                        prev.set = var.set;
+                    match (&prev.set, &var.set) {
+                        (None, _) => prev.set = var.set,
+                        (Some(first), Some(second)) if first.trim() != second.trim() => {
+                            diags.push(clashing_say(&var.subject, &d.span, &prev.span));
+                        }
+                        _ => {}
                     }
                     prev.sets.extend(var.sets);
                     prev.shows.extend(var.shows);
@@ -556,8 +611,12 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
                 if !scoped && collides(&prev.span, &d.span) {
                     diags.push(collision(&d.text, &d.span, &prev.span));
                 }
-                if prev.say.is_none() {
-                    prev.say = d.say.as_ref().map(|(s, _)| s.clone());
+                match (&prev.say, &d.say) {
+                    (None, _) => prev.say = d.say.as_ref().map(|(s, _)| s.clone()),
+                    (Some(first), Some((second, at))) if first.trim() != second.trim() => {
+                        diags.push(clashing_say(&d.text, at, &prev.span));
+                    }
+                    _ => {}
                 }
             } else {
                 let id = EventId(vocab.events.len() as u32);
@@ -573,7 +632,9 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
             }
         }
     }
-    // Phrases after every state and event; each can use the phrases declared before it.
+    // Phrases after every state and event. A phrase can use any other phrase, whichever is
+    // written first: resolve the ones that can be, then the ones that waited for those.
+    let mut pending: Vec<(&RawPhrase, Option<String>)> = vec![];
     for f in files {
         let scope = scope_of(scoped, &f.dir).map(String::from);
         for rp in &f.phrases {
@@ -583,6 +644,7 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
             };
             if vocab.phrases.iter().any(|p| taken(&p.key, &p.scope))
                 || vocab.events.iter().any(|e| taken(&e.key, &e.scope))
+                || pending.iter().any(|(p, w)| taken(&text::key(&p.name), w))
             {
                 diags.push(
                     Diagnostic::error("duplicate", format!("«{}» is already declared", rp.name))
@@ -593,23 +655,58 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
             if let Some((say, span)) = &rp.say {
                 launch_in_step(say, span, diags);
             }
-            let Some(body) = phrase_body(rp, &vocab.seen_from(scope.as_deref()), diags) else {
-                continue;
-            };
-            let id = PhraseId(vocab.phrases.len() as u32);
-            let say = rp.say.as_ref().map(|(s, _)| s.clone());
-            vocab.phrases.push(Phrase {
-                scope: scope.clone(),
-                id,
-                name: rp.name.clone(),
-                key,
-                say,
-                span: rp.span.clone(),
-                body,
-            });
+            pending.push((rp, scope.clone()));
+        }
+    }
+    while !pending.is_empty() {
+        let before = pending.len();
+        let mut waiting = vec![];
+        for (rp, scope) in pending {
+            let mut attempt = vec![];
+            match phrase_body(rp, &vocab.seen_from(scope.as_deref()), &mut attempt) {
+                Some(body) if !has_errors(&attempt) => {
+                    diags.extend(attempt);
+                    push_phrase(&mut vocab, rp, scope, body);
+                }
+                _ => waiting.push((rp, scope)),
+            }
+        }
+        pending = waiting;
+        if pending.len() == before {
+            // Nothing more can be resolved: what is left is wrong, or waits on itself.
+            for (rp, scope) in pending {
+                if let Some(body) = phrase_body(rp, &vocab.seen_from(scope.as_deref()), diags) {
+                    push_phrase(&mut vocab, rp, scope, body);
+                }
+            }
+            break;
         }
     }
     vocab
+}
+
+fn push_phrase(vocab: &mut Vocabulary, rp: &RawPhrase, scope: Option<String>, body: PhraseBody) {
+    let id = PhraseId(vocab.phrases.len() as u32);
+    vocab.phrases.push(Phrase {
+        scope,
+        id,
+        name: rp.name.clone(),
+        key: text::key(&rp.name),
+        say: rp.say.as_ref().map(|(s, _)| s.clone()),
+        span: rp.span.clone(),
+        body,
+    });
+}
+
+/// The same word declared twice with different `Say:`/`Set:` lines: only the first is used.
+fn clashing_say(word: &str, second: &Span, first: &Span) -> Diagnostic {
+    Diagnostic::warning(
+        "conflicting-say",
+        format!("«{word}» has two different Says; only the first is used"),
+    )
+    .at(second, "this one is ignored")
+    .at(first, "first declared here")
+    .help("write one that covers both, or give each section its own word with `Scopes: sections`")
 }
 
 /// Two declarations in different top-level sections: the suite doesn't scope its words, so

@@ -163,6 +163,10 @@ fn ref_path(d: &Docs, r: manual::Ref) -> String {
 
 fn exp_link(d: &Docs, e: ExpId, from_subdir: bool) -> String {
     let x = d.suite.exp(e);
+    // A hidden expectation has no entry on its topic page to link to.
+    if x.hidden {
+        return x.name.clone();
+    }
     let feature = feature_slug(d.suite, d.suite.feature(x.feature));
     format!(
         "[{}]({}features/{feature}.md#{})",
@@ -208,7 +212,15 @@ fn head(o: &mut String, s: &Suite, section: SectionId) {
 }
 
 /// A screenshot, or a placeholder. `alt` says what it shows: the step's outcome.
-fn image(o: &mut String, look: &crate::Look, shot: Option<&str>, status: Status, alt: &str) {
+fn image(
+    o: &mut String,
+    look: &crate::Look,
+    shot: Option<&str>,
+    status: Status,
+    stale: bool,
+    reader: bool,
+    alt: &str,
+) {
     let alt = manual::plain(alt).replace('"', "'");
     let alt = if alt.is_empty() {
         "Screenshot".to_string()
@@ -222,7 +234,11 @@ fn image(o: &mut String, look: &crate::Look, shot: Option<&str>, status: Status,
                 "<img src=\"{}\" width=\"720\" alt=\"{alt}\">\n",
                 look.screenshots.src(shot)
             );
+            if stale {
+                let _ = writeln!(o, "*From before this page changed.*\n");
+            }
         }
+        None if reader => {}
         None => {
             let placeholder = if status == Status::Unsupported {
                 NOT_SUPPORTED
@@ -232,7 +248,7 @@ fn image(o: &mut String, look: &crate::Look, shot: Option<&str>, status: Status,
             let _ = writeln!(
                 o,
                 "<img src=\"../{placeholder}\" width=\"360\" alt=\"{}\">\n",
-                manual::missing(status)
+                manual::missing(status, stale)
             );
         }
     }
@@ -246,6 +262,20 @@ fn index(d: &Docs) -> String {
         for p in paragraphs(&root.description) {
             let _ = writeln!(o, "{}\n", prose(d, &p, false));
         }
+    }
+    if s.platforms.len() > 1 && !s.platform_about.is_empty() {
+        let _ = writeln!(o, "## Versions of this manual\n");
+        for p in &s.platforms {
+            match s.platform_about.iter().find(|(n, _)| n == p) {
+                Some((_, text)) => {
+                    let _ = writeln!(o, "- **{p}**: {text}");
+                }
+                None => {
+                    let _ = writeln!(o, "- **{p}**");
+                }
+            }
+        }
+        o.push('\n');
     }
     let _ = writeln!(
         o,
@@ -470,6 +500,8 @@ fn tutorial_page(d: &Docs, f: &Facts, i: usize, t: &manual::Tutorial) -> String 
             &d.look,
             step.shot.as_deref(),
             step.status,
+            step.stale,
+            d.reader(),
             if step.seen.is_empty() {
                 &step.doing
             } else {
@@ -492,6 +524,12 @@ fn tutorial_page(d: &Docs, f: &Facts, i: usize, t: &manual::Tutorial) -> String 
             );
         }
         o.push('\n');
+    }
+    if d.reader() {
+        if let Some(n) = &t.narrative {
+            let _ = writeln!(o, "The user story: {n}\n");
+        }
+        return o;
     }
     let _ = writeln!(
         o,
@@ -548,6 +586,8 @@ fn feature_page(d: &Docs, f: &Facts, fi: usize) -> String {
                 &d.look,
                 Some(&shot),
                 Status::Passed,
+                false,
+                d.reader(),
                 &voice::how(s, &x.steps),
             ),
             None => image(
@@ -557,6 +597,8 @@ fn feature_page(d: &Docs, f: &Facts, fi: usize) -> String {
                 f.tested_by(e)
                     .first()
                     .map_or(Status::NotRun, |&p| f.status[p]),
+                false,
+                d.reader(),
                 "",
             ),
         }
@@ -567,6 +609,7 @@ fn feature_page(d: &Docs, f: &Facts, fi: usize) -> String {
         if !shown.is_empty() {
             let _ = writeln!(o, "See it in {}.\n", shown.join(", "));
         }
+        let tested_from = o.len();
         let _ = writeln!(
             o,
             "<details><summary>How this is tested: {}</summary>\n\n```gherkin\n{}```\n",
@@ -622,6 +665,9 @@ fn feature_page(d: &Docs, f: &Facts, fi: usize) -> String {
                 links.join(", ")
             }
         );
+        if d.reader() {
+            o.truncate(tested_from);
+        }
     }
     o
 }
@@ -1308,15 +1354,18 @@ fn step_body(
     plan_status: Status,
 ) {
     let status = result.map_or(plan_status, |r| r.status);
+    let stale = result.is_some_and(|r| r.stale);
     image(
         o,
         &d.look,
         result.and_then(|r| r.screenshot.as_deref()),
         status,
+        stale,
+        false,
         "",
     );
     if result.and_then(|r| r.screenshot.as_ref()).is_none() {
-        let _ = writeln!(o, "*{}*\n", missing_shot(status));
+        let _ = writeln!(o, "*{}*\n", missing_shot(status, stale));
     }
     if let Some(e) = result
         .and_then(|r| r.error.as_ref())

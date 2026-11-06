@@ -122,6 +122,9 @@ pub struct StepResult {
     pub polls: u32,
     /// When it ran, if it did.
     pub window: Option<Window>,
+    /// Not a result of this version of the test: it ran before the test changed, and this
+    /// only keeps what it showed (see [`PlanResult::stale`]).
+    pub stale: bool,
 }
 
 impl StepResult {
@@ -137,6 +140,7 @@ impl StepResult {
             error: None,
             polls: 0,
             window: None,
+            stale: false,
         }
     }
 }
@@ -154,6 +158,9 @@ pub struct PlanResult {
     pub run: Option<Run>,
     /// What the driver handed over while it ran.
     pub attachments: Vec<Attachment>,
+    /// Not run since the test changed: saved results exist, but for an older version of it.
+    /// Its status is `NotRun`. If the steps still line up, each keeps the screenshot it had.
+    pub stale: bool,
 }
 
 impl PlanResult {
@@ -171,7 +178,30 @@ impl PlanResult {
             used: vec![],
             run: None,
             attachments: vec![],
+            stale: false,
         }
+    }
+
+    /// A plan that was run before it changed: not run now, but remembering what each step
+    /// looked like if the steps are still the same ones.
+    fn stale(plan: &Plan, old: PlanResult) -> Self {
+        let mut r = PlanResult::with(Status::NotRun, plan);
+        r.stale = old.status.ran();
+        if r.stale {
+            r.start.stale = true;
+            r.start.screenshot = old.start.screenshot;
+            if old.steps.len() == plan.steps.len() {
+                for (new, old) in r.steps.iter_mut().zip(old.steps) {
+                    new.stale = true;
+                    new.screenshot = old.screenshot;
+                }
+            } else {
+                for step in &mut r.steps {
+                    step.stale = true;
+                }
+            }
+        }
+        r
     }
 }
 
@@ -222,15 +252,17 @@ impl Report {
     /// Plan by plan, the more informative of the two: a result that ran over one that's
     /// unsupported, and either over none. Merges the runs of different drivers.
     pub fn merge(mut self, other: Report) -> Report {
-        let rank = |s: Status| match s {
+        let rank = |r: &PlanResult| match r.status {
+            Status::NotRun if r.stale => 2,
             Status::NotRun => 0,
+            // A driver that can't run it says nothing about whether another one did.
             Status::Unsupported => 1,
             // Pending comes from the suite, so every driver says it; it still beats a driver gap.
-            Status::Pending => 2,
-            _ => 3,
+            Status::Pending => 3,
+            _ => 4,
         };
         for (mine, theirs) in self.results.iter_mut().zip(other.results) {
-            if rank(theirs.status) > rank(mine.status) {
+            if rank(&theirs) > rank(mine) {
                 *mine = theirs;
             }
         }
@@ -434,6 +466,7 @@ impl Report {
                             used: vec![],
                             run: run.clone(),
                             attachments: vec![],
+                            stale: false,
                         },
                     ));
                 }
@@ -460,6 +493,7 @@ impl Report {
                         error: opt(error),
                         polls: polls.parse().unwrap_or(0),
                         window: None,
+                        stale: false,
                     };
                     if *n == "0" {
                         r.start = step
@@ -502,7 +536,9 @@ impl Report {
                 {
                     r
                 }
-                _ => PlanResult::with(Status::NotRun, p),
+                // Changed since it ran: not run now, and not something a driver can't do.
+                Some(old) => PlanResult::stale(p, old),
+                None => PlanResult::with(Status::NotRun, p),
             })
             .collect();
         Report { results }

@@ -338,6 +338,7 @@ fn run_steps(
         used: vec![],
         run: None,
         attachments,
+        stale: false,
     };
 
     if let Some(how) = suite.launch_of(plan.section)
@@ -423,6 +424,7 @@ fn run_steps(
         used: seen.used,
         run: None,
         attachments,
+        stale: false,
     }
 }
 

@@ -75,8 +75,10 @@ struct Site<'a> {
 
 impl<'a> Site<'a> {
     fn new(d: &'a Docs<'a>, f: &'a Facts) -> Self {
-        let order: Vec<Here> = manual::reading_order(d)
+        let tutorials_only = d.outline.is_some_and(|o| o.next_tutorials);
+        let mut order: Vec<Here> = manual::reading_order(d)
             .into_iter()
+            .filter(|r| !(tutorials_only && matches!(r, manual::Reading::Feature(_))))
             .map(|r| match r {
                 manual::Reading::Section(id) => Here::Section(id),
                 manual::Reading::Tutorial(i) => Here::Tutorial(i),
@@ -84,6 +86,10 @@ impl<'a> Site<'a> {
                 manual::Reading::Page(i) => Here::Page(i),
             })
             .collect();
+        // With an outline the glossary is the last page of the chain, so Next reaches it.
+        if d.outline.is_some() {
+            order.push(Here::Glossary);
+        }
         let position = order.iter().enumerate().map(|(i, h)| (*h, i)).collect();
         let mut stories = vec![vec![]; d.suite.sections.len()];
         for (i, plan) in d.plans.iter().enumerate() {
@@ -268,6 +274,13 @@ impl Site<'_> {
 
     fn exp_url(&self, e: ExpId) -> String {
         let x = self.suite().exp(e);
+        if x.hidden {
+            // It has no entry on its topic page: the report of a test that covers it is where it is read.
+            return match self.f.first_test(e) {
+                Some(i) => self.test_url(i),
+                None => "tests.html".into(),
+            };
+        }
         format!("{}#{}", self.feature_url(x.feature), x.slug)
     }
 
@@ -506,6 +519,13 @@ impl Site<'_> {
             // The test report, the map and the theme are for the people who write the specs, not the reader.
             o.push_str(&self.glossary_link(here));
             o.push_str("</ul>");
+        }
+        if self.d.reader() {
+            // The test report, with the map and the vocabulary behind it, is for developers: one entry.
+            o.push_str(&format!(
+                "<ul class=\"tree extra\"><li class=\"label\">For developers</li><li><a href=\"tests.html\"{}>Test report</a></li></ul>",
+                if here == Here::Tests { r#" class="current""# } else { "" }
+            ));
         }
         o.push_str("</nav>");
         o
@@ -779,7 +799,7 @@ impl Site<'_> {
         // From site/ up to the docs directory.
         let up = "../".repeat(root(current).matches('/').count() + 1);
         let mut o = String::from(
-            r#"<label class="platform">Platform <select aria-label="Platform" onchange="location.href=this.value">"#,
+            r#"<label class="platform">Version of this manual <select aria-label="Version of this manual" onchange="location.href=this.value">"#,
         );
         for p in &s.platforms {
             let target = format!("site/{file}");
@@ -800,9 +820,16 @@ impl Site<'_> {
             } else {
                 format!("{up}{}site/{page}", root(p))
             };
+            let title = s
+                .platform_about
+                .iter()
+                .find(|(name, _)| name == p)
+                .map_or(String::new(), |(_, text)| {
+                    format!(r#" title="{}""#, esc(text))
+                });
             let _ = write!(
                 o,
-                r#"<option value="{}"{}>{}</option>"#,
+                r#"<option value="{}"{title}{}>{}</option>"#,
                 esc(&href),
                 if p == current { " selected" } else { "" },
                 esc(p)
@@ -911,7 +938,14 @@ impl Site<'_> {
     /// A screenshot, or a placeholder saying why there isn't one: briefly on reading pages
     /// (`detail` false), with the test's reason on the report.
     /// `alt` says what the picture shows, for readers who can't see it: the step's outcome.
-    fn figure(&self, shot: Option<&str>, status: Status, detail: bool, alt: &str) -> String {
+    fn figure(
+        &self,
+        shot: Option<&str>,
+        status: Status,
+        stale: bool,
+        detail: bool,
+        alt: &str,
+    ) -> String {
         let alt = manual::plain(alt);
         let alt = if alt.is_empty() {
             "Screenshot".to_string()
@@ -920,10 +954,17 @@ impl Site<'_> {
         };
         match shot {
             Some(shot) => format!(
-                r#"<figure><a href="{0}"><img src="{0}" alt="{1}" loading="lazy"></a></figure>"#,
+                r#"<figure><a href="{0}"><img src="{0}" alt="{1}" loading="lazy"></a>{2}</figure>"#,
                 esc(&self.d.look.screenshots.src(shot)),
-                esc(&alt)
+                esc(&alt),
+                if stale {
+                    "<figcaption>From before this page changed.</figcaption>"
+                } else {
+                    ""
+                }
             ),
+            // A reader doesn't need to be told a picture is missing.
+            None if self.d.reader() && !detail => String::new(),
             None => {
                 let img = if status == Status::Unsupported {
                     NOT_SUPPORTED
@@ -931,9 +972,9 @@ impl Site<'_> {
                     NO_SCREENSHOT
                 };
                 let note = if detail {
-                    missing_shot(status)
+                    missing_shot(status, stale)
                 } else {
-                    manual::missing(status)
+                    manual::missing(status, stale)
                 };
                 format!(
                     r#"<figure class="placeholder"><img src="../{}" alt="{}" loading="lazy"><figcaption>{}</figcaption></figure>"#,
@@ -987,6 +1028,7 @@ impl Site<'_> {
         let (shot, status) = self.thumbnail(i);
         let img = match &shot {
             Some(s) => self.d.look.screenshots.thumb(&self.f.thumbs, s),
+            None if self.d.reader() => String::new(),
             None if status == Status::Unsupported => format!("../{NOT_SUPPORTED}"),
             None => format!("../{NO_SCREENSHOT}"),
         };
@@ -1008,10 +1050,14 @@ impl Site<'_> {
             ),
         };
         let _ = status;
+        let img = if img.is_empty() {
+            String::new()
+        } else {
+            format!(r#"<img src="{}" alt="" loading="lazy">"#, esc(&img))
+        };
         format!(
-            r#"<a class="card story" href="{}"><img src="{}" alt="" loading="lazy"><span class="body"><strong>{}</strong><span>{}</span></span></a>"#,
+            r#"<a class="card story" href="{}">{img}<span class="body"><strong>{}</strong><span>{}</span></span></a>"#,
             esc(&self.read_url(i)),
-            esc(&img),
             esc(&self.short_title(i)),
             esc(&manual::plain(&about))
         )
@@ -1036,6 +1082,9 @@ impl Site<'_> {
         let mut o = format!("<h1>{}</h1>", esc(&section.name));
         for p in &paragraphs(&section.description) {
             let _ = write!(o, "<p class=\"lede\">{}</p>", self.prose(p));
+        }
+        if section.parent.is_none() {
+            o.push_str(&self.platform_note());
         }
 
         if let Some(before) = manual::before(self.d, id) {
@@ -1096,11 +1145,13 @@ impl Site<'_> {
         }
 
         // Tutorials anywhere beneath it, in reading order.
+        // The section's own first, then those of its subsections.
         let under = s.subtree(id);
-        let tutorials: Vec<usize> = manual::tutorials(self.d)
+        let (own, rest): (Vec<usize>, Vec<usize>) = manual::tutorials(self.d)
             .into_iter()
             .filter(|&i| under.contains(&self.d.plans[i].section))
-            .collect();
+            .partition(|&i| self.d.plans[i].section == id);
+        let tutorials: Vec<usize> = own.into_iter().chain(rest).collect();
         if !tutorials.is_empty() {
             o.push_str(r#"<h2>Tutorials</h2><div class="cards stories">"#);
             for i in tutorials {
@@ -1282,7 +1333,7 @@ impl Site<'_> {
             o.push_str(&self.exception_notes(e));
             match self.f.shot_of(self.d, e) {
                 Some((_, _, shot)) => {
-                    o.push_str(&self.figure(Some(&shot), Status::Passed, false, &how))
+                    o.push_str(&self.figure(Some(&shot), Status::Passed, false, false, &how))
                 }
                 None => {
                     let status = self
@@ -1290,7 +1341,7 @@ impl Site<'_> {
                         .tested_by(e)
                         .first()
                         .map_or(Status::NotRun, |&p| self.f.status[p]);
-                    o.push_str(&self.figure(None, status, false, ""));
+                    o.push_str(&self.figure(None, status, false, false, ""));
                 }
             }
             let tutorials: Vec<String> = manual::shown_in(self.d, self.f, e)
@@ -1304,16 +1355,19 @@ impl Site<'_> {
                     tutorials.join(", ")
                 );
             }
-            let _ = write!(
-                o,
-                r#"<details class="tested"><summary>How this is tested {}</summary>{}<dl class="meta">"#,
-                self.verdict_badge(e),
-                self.gherkin(&x.steps)
-            );
-            for (k, v) in self.relations(e) {
-                let _ = write!(o, "<dt>{k}</dt><dd>{v}</dd>");
+            if !self.d.reader() {
+                let _ = write!(
+                    o,
+                    r#"<details class="tested"><summary>How this is tested {}</summary>{}<dl class="meta">"#,
+                    self.verdict_badge(e),
+                    self.gherkin(&x.steps)
+                );
+                for (k, v) in self.relations(e) {
+                    let _ = write!(o, "<dt>{k}</dt><dd>{v}</dd>");
+                }
+                o.push_str("</dl></details>");
             }
-            o.push_str("</dl></details></section>");
+            o.push_str("</section>");
         }
         self.page(Here::Feature(id), &feature.name, &o)
     }
@@ -1355,7 +1409,7 @@ impl Site<'_> {
             } else {
                 &step.seen
             };
-            o.push_str(&self.figure(step.shot.as_deref(), step.status, false, alt));
+            o.push_str(&self.figure(step.shot.as_deref(), step.status, step.stale, false, alt));
             o.push_str("</li>");
         }
         o.push_str("</ol>");
@@ -1370,6 +1424,12 @@ impl Site<'_> {
                 );
             }
             o.push_str("</ul>");
+        }
+        if self.d.reader() {
+            if let Some(n) = &t.narrative {
+                let _ = write!(o, "<p>The user story: {}</p>", esc(n));
+            }
+            return self.page(Here::Tutorial(i), &t.title, &o);
         }
         let _ = write!(
             o,
@@ -1992,6 +2052,7 @@ impl Site<'_> {
         let mut o = self.figure(
             result.and_then(|r| r.screenshot.as_deref()),
             status,
+            result.is_some_and(|r| r.stale),
             true,
             "",
         );
@@ -2221,6 +2282,29 @@ impl Site<'_> {
 
 impl Site<'_> {
     /// The front page of a manual with an outline: what the product is, then the parts.
+    /// What the versions of this manual are, on the first page: a suite with several platforms
+    /// and a description of at least one.
+    fn platform_note(&self) -> String {
+        let s = self.suite();
+        if s.platforms.len() < 2 || s.platform_about.is_empty() {
+            return String::new();
+        }
+        let mut o = String::from(
+            r#"<aside class="setup" id="versions"><h2>Versions of this manual</h2><p>The menu at the top picks the version you read. Each says how to do things on one platform.</p><ul>"#,
+        );
+        for p in &s.platforms {
+            let about = s.platform_about.iter().find(|(n, _)| n == p);
+            let _ = write!(
+                o,
+                "<li><strong>{}</strong>{}</li>",
+                esc(p),
+                about.map_or(String::new(), |(_, t)| format!(": {}", esc(t)))
+            );
+        }
+        o.push_str("</ul></aside>");
+        o
+    }
+
     fn home_page(&self) -> String {
         let s = self.suite();
         let outline = self.outline();
@@ -2229,6 +2313,7 @@ impl Site<'_> {
         for p in &paragraphs(&root.description) {
             let _ = write!(o, "<p class=\"lede\">{}</p>", self.prose(p));
         }
+        o.push_str(&self.platform_note());
         for part in &outline.parts {
             let _ = write!(o, "<h2>{}</h2><div class=\"cards\">", esc(&part.name));
             for item in &part.items {

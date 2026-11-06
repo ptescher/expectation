@@ -125,6 +125,39 @@ fn results_save_and_load() {
     assert_eq!(stale.results[1].status, report.results[1].status);
 }
 
+#[test]
+fn results_for_an_older_plan_are_stale_not_unsupported_and_keep_their_pictures() {
+    use expectation_story::PlanResult;
+    let a = suite();
+    let mut report = a.run(&mut world::driver(true), &RunOptions::default());
+    report.results[0].start.screenshot = Some("shots/start.png".into());
+    report.results[0].steps[0].screenshot = Some("shots/one.png".into());
+    // The test's wording changes, but its steps are the same ones.
+    let mut changed = a.plans.clone();
+    changed[0].steps[0].checks.clear();
+    let stale = expectation_story::Report::load(&report.save(&a.plans), &changed);
+    let r = &stale.results[0];
+    assert!(r.stale && r.status == Status::NotRun);
+    assert_eq!(r.steps[0].screenshot.as_deref(), Some("shots/one.png"));
+    assert!(r.steps[0].stale && r.start.stale);
+    assert_eq!(r.start.screenshot.as_deref(), Some("shots/start.png"));
+    // Another runner that can't do the test says nothing about whether this one did.
+    let gap = expectation_story::Report {
+        results: changed
+            .iter()
+            .map(|p| PlanResult::with(Status::Unsupported, p))
+            .collect(),
+    };
+    let merged = gap.merge(stale.clone());
+    assert!(merged.results[0].stale && merged.results[0].status == Status::NotRun);
+    // A fresh result still beats it, and a plan that never ran is not stale.
+    let fresh = a.run(&mut world::driver(true), &RunOptions::default());
+    let merged = stale.merge(fresh);
+    assert!(!merged.results[0].stale && merged.results[0].status.ran());
+    let never = expectation_story::Report::load("", &changed);
+    assert!(never.results.iter().all(|r| !r.stale));
+}
+
 /// A driver that does everything the toy world does, except start with the preset WARM.
 struct NoWarmStart(Bindings<world::World>);
 

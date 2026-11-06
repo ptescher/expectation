@@ -18,6 +18,7 @@
 //! got there) shows a placeholder instead.
 
 mod html;
+mod links;
 mod manual;
 mod map;
 mod markdown;
@@ -30,6 +31,7 @@ mod voice;
 use expectation_graph::Analysis;
 use expectation_model::{ExpId, Feature, StepText, Suite, VarKind, Variable};
 use expectation_story::{Because, Plan, Report, Status, Verdict, coverage};
+pub use links::broken_links;
 use std::path::{Path, PathBuf};
 
 pub struct Docs<'a> {
@@ -70,6 +72,10 @@ pub struct Look<'a> {
     pub shot_ratio: Option<f32>,
     /// Where the screenshots the results name (`screenshots/…`) are.
     pub screenshots: Screenshots<'a>,
+    /// The reader edition: no "How this is tested" blocks, no "Tested by" lists and no
+    /// placeholders for missing screenshots on the tutorials and topic pages, and the test
+    /// report is linked from one place. The outline can ask for it too (`Edition: reader`).
+    pub reader: bool,
 }
 
 /// Where the screenshots are that the results name as `screenshots/<rest>`.
@@ -253,6 +259,11 @@ fn prune(dir: &Path, written: &std::collections::HashSet<&Path>) -> std::io::Res
 }
 
 impl Docs<'_> {
+    /// Is this the reader edition?
+    pub fn reader(&self) -> bool {
+        self.look.reader || self.outline.is_some_and(|o| o.reader)
+    }
+
     /// The controls the last run found and the tests that used them; none if the tests haven't
     /// run, or the driver can't list them.
     pub fn control_rows(&self) -> Vec<expectation_story::ControlRow> {
@@ -472,6 +483,14 @@ struct Facts {
 }
 
 impl Facts {
+    /// A test that exercises `e`, if any does.
+    fn first_test(&self, e: ExpId) -> Option<usize> {
+        self.coverage
+            .get(e.0 as usize)?
+            .first()
+            .map(|&(plan, _)| plan)
+    }
+
     fn new(d: &Docs) -> Self {
         let status = (0..d.plans.len())
             .map(|i| {
@@ -630,7 +649,10 @@ fn status_label(s: Status) -> &'static str {
 }
 
 /// Why a step has no screenshot, for the placeholder's caption.
-fn missing_shot(status: Status) -> &'static str {
+fn missing_shot(status: Status, stale: bool) -> &'static str {
+    if stale && status == Status::NotRun {
+        return "Not run since this page changed.";
+    }
     match status {
         Status::Unsupported => "Screenshot to come: the tests can't run this step yet.",
         Status::Pending => "No screenshot: this behaviour is pending, so the test isn't run.",
@@ -1100,5 +1122,277 @@ Feature: Paying
                 .any(|p| p.path.starts_with("site/tests-") || p.path.starts_with("site/map-"))
         );
         links_resolve(&pages);
+    }
+
+    const HIDDEN: &str = "
+Vocabulary:
+  State: the turnstile is locked | unlocked
+  Event: a visitor inserts a coin
+  Event: a visitor pushes the arm
+Background:
+  Given the turnstile is locked
+Feature: Paying
+  What a coin does.
+  Expectation: A coin unlocks it
+    Given the turnstile is locked
+    When a visitor inserts a coin
+    Then the turnstile is unlocked
+  Expectation: Pushing locks it
+    Docs: hidden
+    Given the turnstile is unlocked
+    When a visitor pushes the arm
+    Then the turnstile is locked
+";
+
+    #[test]
+    fn a_hidden_expectation_is_linked_to_its_test_not_to_a_missing_anchor() {
+        let loaded = expectation_language::load_sources("S", &[("s.expect", HIDDEN)]);
+        assert!(!loaded.has_errors(), "{}", loaded.render_diagnostics());
+        let suite = loaded.suite;
+        let analysis = expectation_graph::analyze(&suite);
+        let mut plans = expectation_story::plan_stories(&suite, &analysis).plans;
+        let extra = expectation_story::coverage_plans(&suite, &analysis, &plans);
+        plans.extend(extra);
+        let docs = Docs {
+            suite: &suite,
+            analysis: &analysis,
+            plans: &plans,
+            report: None,
+            suite_dir: None,
+            siblings: &[],
+            outline: None,
+            inventory: &[],
+            contracts: &[],
+            partial: None,
+            look: Look::default(),
+        };
+        let out = temp("hidden");
+        docs.write(&out).unwrap();
+        let map = std::fs::read_to_string(out.join("site/map.html")).unwrap();
+        assert!(
+            !map.contains("#pushing-locks-it"),
+            "linked to a missing anchor"
+        );
+        assert!(
+            map.contains("test-coverage--pushing-locks-it.html"),
+            "no link to its test"
+        );
+        assert_eq!(broken_links(&out), Vec::<String>::new());
+        // A link to nothing is found, and so is a link to an anchor that isn't there.
+        std::fs::write(
+            out.join("site/extra.html"),
+            r##"<a href="gone.html">x</a> <a href="index.html#nope">y</a> <a href="index.html">z</a> <a href="https://example.com/">w</a> <a href="#top" id="top">v</a>"##,
+        )
+        .unwrap();
+        assert_eq!(
+            broken_links(&out),
+            vec!["extra.html: gone.html", "extra.html: index.html#nope"]
+        );
+    }
+
+    #[test]
+    fn platforms_are_explained_in_the_menu_and_on_the_first_page() {
+        let src = "Vocabulary:\n  Platform: desktop | iOS\n    About: desktop: the app on a computer\n    About: iOS: the app on an iPad\n  State: the lamp is on | off\nBackground:\n  Given the lamp is on\n";
+        let loaded = expectation_language::load_sources("S", &[("s.expect", src)]);
+        assert!(!loaded.has_errors(), "{}", loaded.render_diagnostics());
+        let suite = loaded.suite;
+        let analysis = expectation_graph::analyze(&suite);
+        let pages = Docs {
+            suite: &suite,
+            analysis: &analysis,
+            plans: &[],
+            report: None,
+            suite_dir: None,
+            siblings: &[],
+            outline: None,
+            inventory: &[],
+            contracts: &[],
+            partial: None,
+            look: Look::default(),
+        }
+        .pages();
+        let home = page(&pages, "site/index.html");
+        assert!(home.contains("Version of this manual"));
+        assert!(home.contains(r#"title="the app on an iPad""#));
+        assert!(home.contains("Versions of this manual</h2>"));
+        assert!(home.contains("<strong>iOS</strong>: the app on an iPad"));
+        assert!(page(&pages, "README.md").contains("- **desktop**: the app on a computer"));
+    }
+
+    #[test]
+    fn next_can_follow_the_tutorials_and_ends_at_the_glossary() {
+        let dir = temp("tutorial-chain");
+        let area = |name: &str| {
+            format!(
+                "Section: {name}\n  About {name}.\nVocabulary:\n  State: the {name} lamp is on | off\n  Event: the user flips the {name} switch\nBackground:\n  Given the {name} lamp is off\nFeature: {name} lamp\n  Expectation: Flip {name}\n    Given the {name} lamp is off\n    When the user flips the {name} switch\n    Then the {name} lamp is on\nStory: Using {name}\n  As a user\n  I want light\n  So that I see\n  Scenario: x\n    When the user flips the {name} switch\n    Then the {name} lamp is on\n"
+            )
+        };
+        for name in ["Alpha", "Beta"] {
+            std::fs::create_dir_all(dir.join(name)).unwrap();
+            std::fs::write(dir.join(name).join("s.expect"), area(name)).unwrap();
+        }
+        std::fs::write(
+            dir.join("outline.txt"),
+            "Part: Start\n  Section: Alpha\n  Section: Beta\nNext: tutorials\n",
+        )
+        .unwrap();
+        let loaded = expectation_language::load_dir(&dir).unwrap();
+        assert!(!loaded.has_errors(), "{}", loaded.render_diagnostics());
+        let suite = loaded.suite;
+        let analysis = expectation_graph::analyze(&suite);
+        let plans = expectation_story::plan_stories(&suite, &analysis).plans;
+        let pages = Docs {
+            suite: &suite,
+            analysis: &analysis,
+            plans: &plans,
+            report: None,
+            suite_dir: Some(&dir),
+            siblings: &[],
+            outline: None,
+            inventory: &[],
+            contracts: &[],
+            partial: None,
+            look: Look::default(),
+        }
+        .pages();
+        let next = |path: &str| {
+            let html = page(&pages, path);
+            let i = html.find(r#"class="next" href=""#)?;
+            let rest = &html[i + r#"class="next" href=""#.len()..];
+            Some(rest[..rest.find('"').unwrap()].to_string())
+        };
+        // Alpha's page, its tutorial, then Beta's page: the topic page is skipped.
+        assert_eq!(
+            next("site/section-alpha.html").as_deref(),
+            Some("tutorial-alpha--using-alpha--x.html")
+        );
+        assert_eq!(
+            next("site/tutorial-alpha--using-alpha--x.html").as_deref(),
+            Some("section-beta.html")
+        );
+        // The last tutorial leads to the glossary, which has a way back.
+        assert_eq!(
+            next("site/tutorial-beta--using-beta--x.html").as_deref(),
+            Some("glossary.html")
+        );
+        assert!(page(&pages, "site/glossary.html").contains(r#"class="prev""#));
+        // A topic page is not in the chain.
+        assert_eq!(next("site/feature-alpha--alpha-lamp.html"), None);
+    }
+
+    #[test]
+    fn a_section_page_lists_its_own_tutorials_before_its_subsections() {
+        let dir = temp("own-first");
+        let area = |name: &str, vocab: bool| {
+            let v = if vocab {
+                "Vocabulary:\n  State: the lamp is on | off\n  Event: the user flips the switch\nBackground:\n  Given the lamp is off\n"
+            } else {
+                ""
+            };
+            format!(
+                "Section: {name}\n  About {name}.\n{v}Feature: {name} feature\n  Expectation: Flip {name}\n    Given the lamp is off\n    When the user flips the switch\n    Then the lamp is on\nStory: Using {name}\n  As a user\n  I want light\n  So that I see\n  Scenario: x\n    When the user flips the switch\n    Then the lamp is on\n"
+            )
+        };
+        std::fs::create_dir_all(dir.join("Parent/Child")).unwrap();
+        std::fs::write(dir.join("Parent/p.expect"), area("Parent", true)).unwrap();
+        std::fs::write(dir.join("Parent/Child/c.expect"), area("Child", false)).unwrap();
+        // The outline reads the subsection before the section that holds it.
+        std::fs::write(
+            dir.join("outline.txt"),
+            "Part: Start\n  Section: Child\n  Section: Parent\n",
+        )
+        .unwrap();
+        let loaded = expectation_language::load_dir(&dir).unwrap();
+        assert!(!loaded.has_errors(), "{}", loaded.render_diagnostics());
+        let suite = loaded.suite;
+        let analysis = expectation_graph::analyze(&suite);
+        let plans = expectation_story::plan_stories(&suite, &analysis).plans;
+        let pages = Docs {
+            suite: &suite,
+            analysis: &analysis,
+            plans: &plans,
+            report: None,
+            suite_dir: Some(&dir),
+            siblings: &[],
+            outline: None,
+            inventory: &[],
+            contracts: &[],
+            partial: None,
+            look: Look::default(),
+        }
+        .pages();
+        let parent = page(&pages, "site/section-parent.html");
+        let own = parent
+            .find("tutorial-parent--using-parent--x.html")
+            .unwrap();
+        let child = parent
+            .find("tutorial-parent--child--using-child--x.html")
+            .unwrap();
+        assert!(own < child, "the section's own tutorial comes first");
+    }
+
+    #[test]
+    fn the_reader_edition_leaves_out_the_test_machinery() {
+        let src = "Vocabulary:\n  State: the lamp is on | off\n  Event: the user flips the switch\nBackground:\n  Given the lamp is off\nFeature: Lamp\n  What it does.\n  Expectation: Flip\n    Given the lamp is off\n    When the user flips the switch\n    Then the lamp is on\nStory: Using the lamp\n  As a user\n  I want light\n  So that I see\n  Scenario: x\n    When the user flips the switch\n    Then the lamp is on\n";
+        let loaded = expectation_language::load_sources("S", &[("s.expect", src)]);
+        assert!(!loaded.has_errors(), "{}", loaded.render_diagnostics());
+        let suite = loaded.suite;
+        let analysis = expectation_graph::analyze(&suite);
+        let plans = expectation_story::plan_stories(&suite, &analysis).plans;
+        let pages = |reader: bool| {
+            Docs {
+                suite: &suite,
+                analysis: &analysis,
+                plans: &plans,
+                report: None,
+                suite_dir: None,
+                siblings: &[],
+                outline: None,
+                inventory: &[],
+                contracts: &[],
+                partial: None,
+                look: Look {
+                    reader,
+                    ..Look::default()
+                },
+            }
+            .pages()
+        };
+        let (full, reader) = (pages(false), pages(true));
+        for path in [
+            "site/tutorial-using-the-lamp--x.html",
+            "site/feature-lamp.html",
+            "tutorials/using-the-lamp--x.md",
+            "features/lamp.md",
+        ] {
+            let (f, r) = (page(&full, path), page(&reader, path));
+            assert!(f.contains("How this is tested"), "{path}");
+            assert!(!r.contains("How this is tested"), "{path}");
+            assert!(
+                !r.contains("Tested by") && !r.contains("Its report"),
+                "{path}"
+            );
+            assert!(
+                !r.contains("Screenshot to come") && !r.contains("No screenshot"),
+                "{path}"
+            );
+            assert!(
+                !r.contains("placeholder") && !r.contains("no-screenshot.svg"),
+                "{path}"
+            );
+        }
+        // The user story stays, and the report is one entry in the sidebar.
+        assert!(page(&reader, "site/tutorial-using-the-lamp--x.html").contains("The user story"));
+        assert!(page(&reader, "site/feature-lamp.html").contains("For developers"));
+        assert!(!page(&full, "site/feature-lamp.html").contains("For developers"));
+        // The report, the map and the vocabulary are still written.
+        for path in [
+            "site/tests.html",
+            "site/map.html",
+            "site/states.html",
+            "site/vocabulary.html",
+        ] {
+            assert!(reader.iter().any(|p| p.path == path), "{path}");
+        }
     }
 }

@@ -177,6 +177,8 @@ pub struct Step {
     pub seen: String,
     pub shot: Option<String>,
     pub status: Status,
+    /// The picture, if any, is from before the page changed.
+    pub stale: bool,
 }
 
 /// A story as a tutorial.
@@ -277,6 +279,7 @@ pub fn tutorial(d: &Docs, f: &Facts, i: usize) -> Option<Tutorial> {
             seen: outcome(s, plan, &group),
             shot: last.and_then(|r| r.screenshot.clone()),
             status: last.map_or(f.status[i], |r| r.status),
+            stale: last.is_some_and(|r| r.stale),
         });
         for &n in &group {
             for e in plan.steps[n].exercises() {
@@ -516,7 +519,10 @@ pub fn tutorials(d: &Docs) -> Vec<usize> {
 }
 
 /// Why a reading page has no screenshot, in one wording.
-pub fn missing(status: Status) -> &'static str {
+pub fn missing(status: Status, stale: bool) -> &'static str {
+    if stale && status == Status::NotRun {
+        return "Not run since this page changed.";
+    }
     match status {
         Status::Unsupported => "Screenshot to come: the tests cannot do this step yet.",
         _ => "Screenshot to come.",
