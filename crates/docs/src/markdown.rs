@@ -218,6 +218,7 @@ fn image(
     shot: Option<&str>,
     status: Status,
     stale: bool,
+    reader: bool,
     alt: &str,
 ) {
     let alt = manual::plain(alt).replace('"', "'");
@@ -237,6 +238,7 @@ fn image(
                 let _ = writeln!(o, "*From before this page changed.*\n");
             }
         }
+        None if reader => {}
         None => {
             let placeholder = if status == Status::Unsupported {
                 NOT_SUPPORTED
@@ -499,6 +501,7 @@ fn tutorial_page(d: &Docs, f: &Facts, i: usize, t: &manual::Tutorial) -> String 
             step.shot.as_deref(),
             step.status,
             step.stale,
+            d.reader(),
             if step.seen.is_empty() {
                 &step.doing
             } else {
@@ -521,6 +524,12 @@ fn tutorial_page(d: &Docs, f: &Facts, i: usize, t: &manual::Tutorial) -> String 
             );
         }
         o.push('\n');
+    }
+    if d.reader() {
+        if let Some(n) = &t.narrative {
+            let _ = writeln!(o, "The user story: {n}\n");
+        }
+        return o;
     }
     let _ = writeln!(
         o,
@@ -578,6 +587,7 @@ fn feature_page(d: &Docs, f: &Facts, fi: usize) -> String {
                 Some(&shot),
                 Status::Passed,
                 false,
+                d.reader(),
                 &voice::how(s, &x.steps),
             ),
             None => image(
@@ -588,6 +598,7 @@ fn feature_page(d: &Docs, f: &Facts, fi: usize) -> String {
                     .first()
                     .map_or(Status::NotRun, |&p| f.status[p]),
                 false,
+                d.reader(),
                 "",
             ),
         }
@@ -598,6 +609,7 @@ fn feature_page(d: &Docs, f: &Facts, fi: usize) -> String {
         if !shown.is_empty() {
             let _ = writeln!(o, "See it in {}.\n", shown.join(", "));
         }
+        let tested_from = o.len();
         let _ = writeln!(
             o,
             "<details><summary>How this is tested: {}</summary>\n\n```gherkin\n{}```\n",
@@ -653,6 +665,9 @@ fn feature_page(d: &Docs, f: &Facts, fi: usize) -> String {
                 links.join(", ")
             }
         );
+        if d.reader() {
+            o.truncate(tested_from);
+        }
     }
     o
 }
@@ -1346,6 +1361,7 @@ fn step_body(
         result.and_then(|r| r.screenshot.as_deref()),
         status,
         stale,
+        false,
         "",
     );
     if result.and_then(|r| r.screenshot.as_ref()).is_none() {

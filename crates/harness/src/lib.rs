@@ -49,6 +49,8 @@ pub struct Acceptance {
     pub shot_ratio: Option<f32>,
     /// Where the docs find the screenshots (see [`Acceptance::with_screenshots`]).
     pub screenshots: Option<String>,
+    /// Write the reader edition of the manual (see [`Acceptance::with_reader`]).
+    pub reader: bool,
 }
 
 impl Acceptance {
@@ -118,6 +120,7 @@ impl Acceptance {
             stylesheet: None,
             shot_ratio: None,
             screenshots: None,
+            reader: false,
         })
     }
 
@@ -145,6 +148,13 @@ impl Acceptance {
     pub fn with_stylesheet(mut self, path: impl AsRef<Path>) -> Result<Self, String> {
         self.stylesheet = Some(expectation_docs::read_stylesheet(path.as_ref())?);
         Ok(self)
+    }
+
+    /// The reader edition of the manual: no "How this is tested" blocks, "Tested by" lists or
+    /// placeholders for missing screenshots, and the test report linked from one place.
+    pub fn with_reader(mut self) -> Self {
+        self.reader = true;
+        self
     }
 
     /// Draw the state map's screenshots at `ratio` (width over height; see
@@ -208,6 +218,7 @@ impl Acceptance {
                     .screenshots
                     .as_deref()
                     .map_or_else(Default::default, expectation_docs::Screenshots::parse),
+                reader: self.reader,
             },
         }
     }

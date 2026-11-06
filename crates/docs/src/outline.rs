@@ -29,6 +29,8 @@ pub struct Outline {
     /// `Next: tutorials`: Next and Previous go through the pages, the sections and the
     /// tutorials only; the topic pages are reached from the sidebar and each tutorial's links.
     pub next_tutorials: bool,
+    /// `Edition: reader`: the reader edition (see [`crate::Look::reader`]).
+    pub reader: bool,
 }
 
 pub struct Part {
@@ -92,6 +94,7 @@ impl Outline {
             parts: vec![],
             pages: vec![],
             next_tutorials: false,
+            reader: false,
         };
         for (n, raw) in text.lines().enumerate() {
             let line = raw.split('#').next().unwrap_or("").trim();
@@ -125,6 +128,13 @@ impl Outline {
                             .push(format!("outline.txt:{}: a section before any part", n + 1)),
                     }
                 }
+                "Edition" => match value {
+                    "reader" => out.reader = true,
+                    other => warnings.push(format!(
+                        "outline.txt:{}: `Edition:` can only say `reader`, not «{other}»",
+                        n + 1
+                    )),
+                },
                 "Next" => match value {
                     "tutorials" => out.next_tutorials = true,
                     other => warnings.push(format!(

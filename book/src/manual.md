@@ -257,6 +257,22 @@ site/            the HTML version
 Pages read in order: each section, then its tutorials, its topics and its subsections. Each
 page's footer names the spec file to edit to change it.
 
+## The reader edition
+
+The manual is read by people who want to learn the product, not test it. The default edition
+keeps every gap in view for the authors; for readers, build the reader edition:
+
+```bash
+expectation docs expectations docs --reader
+```
+
+(`Edition: reader` in `outline.txt`, `--reader` on `expectation-run`, or `Acceptance::with_reader`
+do the same.) Tutorials and topic pages then have no "How this is tested" block, no "Tested by"
+list and no "Its report" link, and a step with no screenshot shows just the step and what you
+see, with no placeholder or caption. The test report, the map, the state map and the vocabulary
+are still written, linked from one "For developers" entry in the sidebar. Nothing about the
+tests or their results changes.
+
 ## The outline
 
 By default the manual follows the sections. A suite can have an `outline.txt` beside its

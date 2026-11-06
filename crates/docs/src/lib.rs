@@ -72,6 +72,10 @@ pub struct Look<'a> {
     pub shot_ratio: Option<f32>,
     /// Where the screenshots the results name (`screenshots/…`) are.
     pub screenshots: Screenshots<'a>,
+    /// The reader edition: no "How this is tested" blocks, no "Tested by" lists and no
+    /// placeholders for missing screenshots on the tutorials and topic pages, and the test
+    /// report is linked from one place. The outline can ask for it too (`Edition: reader`).
+    pub reader: bool,
 }
 
 /// Where the screenshots are that the results name as `screenshots/<rest>`.
@@ -255,6 +259,11 @@ fn prune(dir: &Path, written: &std::collections::HashSet<&Path>) -> std::io::Res
 }
 
 impl Docs<'_> {
+    /// Is this the reader edition?
+    pub fn reader(&self) -> bool {
+        self.look.reader || self.outline.is_some_and(|o| o.reader)
+    }
+
     /// The controls the last run found and the tests that used them; none if the tests haven't
     /// run, or the driver can't list them.
     pub fn control_rows(&self) -> Vec<expectation_story::ControlRow> {
@@ -1320,5 +1329,70 @@ Feature: Paying
             .find("tutorial-parent--child--using-child--x.html")
             .unwrap();
         assert!(own < child, "the section's own tutorial comes first");
+    }
+
+    #[test]
+    fn the_reader_edition_leaves_out_the_test_machinery() {
+        let src = "Vocabulary:\n  State: the lamp is on | off\n  Event: the user flips the switch\nBackground:\n  Given the lamp is off\nFeature: Lamp\n  What it does.\n  Expectation: Flip\n    Given the lamp is off\n    When the user flips the switch\n    Then the lamp is on\nStory: Using the lamp\n  As a user\n  I want light\n  So that I see\n  Scenario: x\n    When the user flips the switch\n    Then the lamp is on\n";
+        let loaded = expectation_language::load_sources("S", &[("s.expect", src)]);
+        assert!(!loaded.has_errors(), "{}", loaded.render_diagnostics());
+        let suite = loaded.suite;
+        let analysis = expectation_graph::analyze(&suite);
+        let plans = expectation_story::plan_stories(&suite, &analysis).plans;
+        let pages = |reader: bool| {
+            Docs {
+                suite: &suite,
+                analysis: &analysis,
+                plans: &plans,
+                report: None,
+                suite_dir: None,
+                siblings: &[],
+                outline: None,
+                inventory: &[],
+                contracts: &[],
+                partial: None,
+                look: Look {
+                    reader,
+                    ..Look::default()
+                },
+            }
+            .pages()
+        };
+        let (full, reader) = (pages(false), pages(true));
+        for path in [
+            "site/tutorial-using-the-lamp--x.html",
+            "site/feature-lamp.html",
+            "tutorials/using-the-lamp--x.md",
+            "features/lamp.md",
+        ] {
+            let (f, r) = (page(&full, path), page(&reader, path));
+            assert!(f.contains("How this is tested"), "{path}");
+            assert!(!r.contains("How this is tested"), "{path}");
+            assert!(
+                !r.contains("Tested by") && !r.contains("Its report"),
+                "{path}"
+            );
+            assert!(
+                !r.contains("Screenshot to come") && !r.contains("No screenshot"),
+                "{path}"
+            );
+            assert!(
+                !r.contains("placeholder") && !r.contains("no-screenshot.svg"),
+                "{path}"
+            );
+        }
+        // The user story stays, and the report is one entry in the sidebar.
+        assert!(page(&reader, "site/tutorial-using-the-lamp--x.html").contains("The user story"));
+        assert!(page(&reader, "site/feature-lamp.html").contains("For developers"));
+        assert!(!page(&full, "site/feature-lamp.html").contains("For developers"));
+        // The report, the map and the vocabulary are still written.
+        for path in [
+            "site/tests.html",
+            "site/map.html",
+            "site/states.html",
+            "site/vocabulary.html",
+        ] {
+            assert!(reader.iter().any(|p| p.path == path), "{path}");
+        }
     }
 }

@@ -520,6 +520,13 @@ impl Site<'_> {
             o.push_str(&self.glossary_link(here));
             o.push_str("</ul>");
         }
+        if self.d.reader() {
+            // The test report, with the map and the vocabulary behind it, is for developers: one entry.
+            o.push_str(&format!(
+                "<ul class=\"tree extra\"><li class=\"label\">For developers</li><li><a href=\"tests.html\"{}>Test report</a></li></ul>",
+                if here == Here::Tests { r#" class="current""# } else { "" }
+            ));
+        }
         o.push_str("</nav>");
         o
     }
@@ -956,6 +963,8 @@ impl Site<'_> {
                     ""
                 }
             ),
+            // A reader doesn't need to be told a picture is missing.
+            None if self.d.reader() && !detail => String::new(),
             None => {
                 let img = if status == Status::Unsupported {
                     NOT_SUPPORTED
@@ -1019,6 +1028,7 @@ impl Site<'_> {
         let (shot, status) = self.thumbnail(i);
         let img = match &shot {
             Some(s) => self.d.look.screenshots.thumb(&self.f.thumbs, s),
+            None if self.d.reader() => String::new(),
             None if status == Status::Unsupported => format!("../{NOT_SUPPORTED}"),
             None => format!("../{NO_SCREENSHOT}"),
         };
@@ -1040,10 +1050,14 @@ impl Site<'_> {
             ),
         };
         let _ = status;
+        let img = if img.is_empty() {
+            String::new()
+        } else {
+            format!(r#"<img src="{}" alt="" loading="lazy">"#, esc(&img))
+        };
         format!(
-            r#"<a class="card story" href="{}"><img src="{}" alt="" loading="lazy"><span class="body"><strong>{}</strong><span>{}</span></span></a>"#,
+            r#"<a class="card story" href="{}">{img}<span class="body"><strong>{}</strong><span>{}</span></span></a>"#,
             esc(&self.read_url(i)),
-            esc(&img),
             esc(&self.short_title(i)),
             esc(&manual::plain(&about))
         )
@@ -1341,16 +1355,19 @@ impl Site<'_> {
                     tutorials.join(", ")
                 );
             }
-            let _ = write!(
-                o,
-                r#"<details class="tested"><summary>How this is tested {}</summary>{}<dl class="meta">"#,
-                self.verdict_badge(e),
-                self.gherkin(&x.steps)
-            );
-            for (k, v) in self.relations(e) {
-                let _ = write!(o, "<dt>{k}</dt><dd>{v}</dd>");
+            if !self.d.reader() {
+                let _ = write!(
+                    o,
+                    r#"<details class="tested"><summary>How this is tested {}</summary>{}<dl class="meta">"#,
+                    self.verdict_badge(e),
+                    self.gherkin(&x.steps)
+                );
+                for (k, v) in self.relations(e) {
+                    let _ = write!(o, "<dt>{k}</dt><dd>{v}</dd>");
+                }
+                o.push_str("</dl></details>");
             }
-            o.push_str("</dl></details></section>");
+            o.push_str("</section>");
         }
         self.page(Here::Feature(id), &feature.name, &o)
     }
@@ -1407,6 +1424,12 @@ impl Site<'_> {
                 );
             }
             o.push_str("</ul>");
+        }
+        if self.d.reader() {
+            if let Some(n) = &t.narrative {
+                let _ = write!(o, "<p>The user story: {}</p>", esc(n));
+            }
+            return self.page(Here::Tutorial(i), &t.title, &o);
         }
         let _ = write!(
             o,

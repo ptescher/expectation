@@ -26,7 +26,7 @@ use std::time::Duration;
 
 const USAGE: &str = "usage: expectation-run <suite-dir> [--platform NAME] [--addr HOST:PORT] [--wait SECONDS] \
                      [--command-timeout SECONDS] \
-                     [--stylesheet CSS] [--state-shot-ratio W:H] [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd COMMAND] [--attachments DIR] [--screenshot-store DIR]";
+                     [--stylesheet CSS] [--reader] [--state-shot-ratio W:H] [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd COMMAND] [--attachments DIR] [--screenshot-store DIR]";
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -52,6 +52,7 @@ fn main() {
         None,
     );
     let (mut stylesheet, mut ratio, mut attachments, mut store) = (None, None, None, None);
+    let mut reader = false;
     while let Some(a) = args.next() {
         let mut value = || {
             args.next()
@@ -85,6 +86,7 @@ fn main() {
                 ratio =
                     Some(expectation_harness::parse_ratio(&value()).unwrap_or_else(|e| fail(&e)))
             }
+            "--reader" => reader = true,
             "--docs" => docs = Some(PathBuf::from(value())),
             "--runner" => runner = Some(value()),
             "--settle" => {
@@ -119,6 +121,9 @@ fn main() {
     }
     if let Some(r) = ratio {
         acceptance = acceptance.with_shot_ratio(r);
+    }
+    if reader {
+        acceptance = acceptance.with_reader();
     }
     if let Some(s) = &store {
         acceptance = acceptance.with_screenshots(s.clone());

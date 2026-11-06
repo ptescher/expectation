@@ -22,11 +22,13 @@ commands:
                             tell them apart, comma separated (default: every enumerated one)
   plan  <dir> [--coverage]  print the acceptance tests the stories compile to
                             (--coverage adds generated tests for untested expectations)
-  docs  <dir> <out-dir> [--approved-only] [--results <dir>] [--stylesheet <css>] [--state-shot-ratio <w:h>]
+  docs  <dir> <out-dir> [--approved-only] [--reader] [--results <dir>] [--stylesheet <css>] [--state-shot-ratio <w:h>]
         [--screenshots <dir|url>] [--section <name|dir>]... [--base-url <url>]
                             write the docs (Markdown and an HTML site), with the results runs
                             have saved in <out-dir>/results; --stylesheet restyles the site
                             with a CSS file, --state-shot-ratio shapes the state map's pictures;
+                            --reader leaves out the test blocks and screenshot
+                            placeholders for people who read the manual, not test it;
                             --approved-only writes just what is marked `Approval: approved`
                             (--results <dir> reads results from there, not <out-dir>/results);
                             --screenshots says where the screenshots are: a store directory
@@ -128,6 +130,7 @@ pub fn main() {
     }
     let base_url = take("--base-url");
     let approved_only = args.iter().any(|a| a == "--approved-only");
+    let reader = args.iter().any(|a| a == "--reader");
     let flag = |f: &str| args.iter().any(|a| a == f);
     let pos: Vec<&str> = args
         .iter()
@@ -188,7 +191,14 @@ pub fn main() {
                 print_plan(&c.suite, p);
             }
         }
-        ["docs", dir, out] => docs(dir, out, look, approved_only, results, (sections, base_url)),
+        ["docs", dir, out] => docs(
+            dir,
+            out,
+            look,
+            (approved_only, reader),
+            results,
+            (sections, base_url),
+        ),
         ["screenshots", "prune", store, dirs @ ..] if !dirs.is_empty() => {
             prune_screenshots(store, dirs, flag("--dry-run"))
         }
@@ -212,7 +222,7 @@ fn docs(
     dir: &str,
     out: &str,
     (stylesheet, ratio, shots): (Option<String>, Option<String>, Option<String>),
-    approved_only: bool,
+    (approved_only, reader): (bool, bool),
     results: Option<String>,
     (sections, base_url): (Vec<String>, Option<String>),
 ) {
@@ -229,6 +239,7 @@ fn docs(
         screenshots: shots
             .as_deref()
             .map_or_else(Default::default, expectation_docs::Screenshots::parse),
+        reader,
     };
     if let Some(expectation_docs::Screenshots::Dir(d)) =
         shots.as_deref().map(expectation_docs::Screenshots::parse)
