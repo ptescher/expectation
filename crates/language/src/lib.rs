@@ -95,6 +95,17 @@ pub fn load_sources_with(
         suite.sources.insert((*file).into(), text.to_string());
     }
     (suite.platforms, suite.platform) = lens::apply(&mut files, platform, &mut diags);
+    for (name, text, span) in files.iter().flat_map(|f| &f.platform_about) {
+        if suite.platforms.contains(name) {
+            suite.platform_about.push((name.clone(), text.clone()));
+        } else {
+            diags.push(
+                Diagnostic::error("unknown-platform", format!("no platform called `{name}`"))
+                    .at(span, "")
+                    .help(format!("the platforms are {}", suite.platforms.join(", "))),
+            );
+        }
+    }
     if approved_only {
         approval::only_approved(&mut files, &mut diags);
     }
@@ -1225,5 +1236,23 @@ Story: Draft
             "{}",
             l.render_diagnostics()
         );
+    }
+
+    #[test]
+    fn platforms_can_say_what_they_are() {
+        let src = "Vocabulary:\n  Platform: desktop | iOS\n    About: desktop: the app on a computer\n    About: iOS: the app on an iPad\n";
+        let l = load_sources("S", &[("s.expect", src)]);
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        assert_eq!(
+            l.suite.platform_about,
+            vec![
+                ("desktop".to_string(), "the app on a computer".to_string()),
+                ("iOS".to_string(), "the app on an iPad".to_string())
+            ]
+        );
+        let bad = src.replace("About: iOS:", "About: Android:");
+        assert!(codes(&load_sources("S", &[("s.expect", &bad)])).contains(&"unknown-platform"));
+        let bad = src.replace("About: iOS: the app on an iPad", "About: iOS");
+        assert!(load_sources("S", &[("s.expect", &bad)]).has_errors());
     }
 }

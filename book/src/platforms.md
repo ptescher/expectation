@@ -53,3 +53,18 @@ and merges them with what other runners saved.
 `expectation docs` writes one manual per platform: the default at the root and the others
 under `platforms/<name>/`. Every HTML page has a Platform menu that opens the same page in the
 other manual.
+
+## Saying what each platform is
+
+The docs have a menu that picks the version of the manual. Say what each platform is with
+`About:` lines under the `Platform:` line, and the menu is labelled "Version of this manual", each
+choice gets a tooltip, and the first page lists the versions:
+
+```gherkin
+Vocabulary:
+  Platform: desktop | iOS
+    About: desktop: the app on a Mac, Linux or Windows computer
+    About: iOS: the ground station on an iPad or iPhone
+```
+
+An `About:` for a platform the suite doesn't declare is an error.

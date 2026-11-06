@@ -1180,4 +1180,33 @@ Feature: Paying
             vec!["extra.html: gone.html", "extra.html: index.html#nope"]
         );
     }
+
+    #[test]
+    fn platforms_are_explained_in_the_menu_and_on_the_first_page() {
+        let src = "Vocabulary:\n  Platform: desktop | iOS\n    About: desktop: the app on a computer\n    About: iOS: the app on an iPad\n  State: the lamp is on | off\nBackground:\n  Given the lamp is on\n";
+        let loaded = expectation_language::load_sources("S", &[("s.expect", src)]);
+        assert!(!loaded.has_errors(), "{}", loaded.render_diagnostics());
+        let suite = loaded.suite;
+        let analysis = expectation_graph::analyze(&suite);
+        let pages = Docs {
+            suite: &suite,
+            analysis: &analysis,
+            plans: &[],
+            report: None,
+            suite_dir: None,
+            siblings: &[],
+            outline: None,
+            inventory: &[],
+            contracts: &[],
+            partial: None,
+            look: Look::default(),
+        }
+        .pages();
+        let home = page(&pages, "site/index.html");
+        assert!(home.contains("Version of this manual"));
+        assert!(home.contains(r#"title="the app on an iPad""#));
+        assert!(home.contains("Versions of this manual</h2>"));
+        assert!(home.contains("<strong>iOS</strong>: the app on an iPad"));
+        assert!(page(&pages, "README.md").contains("- **desktop**: the app on a computer"));
+    }
 }

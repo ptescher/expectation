@@ -786,7 +786,7 @@ impl Site<'_> {
         // From site/ up to the docs directory.
         let up = "../".repeat(root(current).matches('/').count() + 1);
         let mut o = String::from(
-            r#"<label class="platform">Platform <select aria-label="Platform" onchange="location.href=this.value">"#,
+            r#"<label class="platform">Version of this manual <select aria-label="Version of this manual" onchange="location.href=this.value">"#,
         );
         for p in &s.platforms {
             let target = format!("site/{file}");
@@ -807,9 +807,16 @@ impl Site<'_> {
             } else {
                 format!("{up}{}site/{page}", root(p))
             };
+            let title = s
+                .platform_about
+                .iter()
+                .find(|(name, _)| name == p)
+                .map_or(String::new(), |(_, text)| {
+                    format!(r#" title="{}""#, esc(text))
+                });
             let _ = write!(
                 o,
-                r#"<option value="{}"{}>{}</option>"#,
+                r#"<option value="{}"{title}{}>{}</option>"#,
                 esc(&href),
                 if p == current { " selected" } else { "" },
                 esc(p)
@@ -1055,6 +1062,9 @@ impl Site<'_> {
         let mut o = format!("<h1>{}</h1>", esc(&section.name));
         for p in &paragraphs(&section.description) {
             let _ = write!(o, "<p class=\"lede\">{}</p>", self.prose(p));
+        }
+        if section.parent.is_none() {
+            o.push_str(&self.platform_note());
         }
 
         if let Some(before) = manual::before(self.d, id) {
@@ -2241,6 +2251,29 @@ impl Site<'_> {
 
 impl Site<'_> {
     /// The front page of a manual with an outline: what the product is, then the parts.
+    /// What the versions of this manual are, on the first page: a suite with several platforms
+    /// and a description of at least one.
+    fn platform_note(&self) -> String {
+        let s = self.suite();
+        if s.platforms.len() < 2 || s.platform_about.is_empty() {
+            return String::new();
+        }
+        let mut o = String::from(
+            r#"<aside class="setup" id="versions"><h2>Versions of this manual</h2><p>The menu at the top picks the version you read. Each says how to do things on one platform.</p><ul>"#,
+        );
+        for p in &s.platforms {
+            let about = s.platform_about.iter().find(|(n, _)| n == p);
+            let _ = write!(
+                o,
+                "<li><strong>{}</strong>{}</li>",
+                esc(p),
+                about.map_or(String::new(), |(_, t)| format!(": {}", esc(t)))
+            );
+        }
+        o.push_str("</ul></aside>");
+        o
+    }
+
     fn home_page(&self) -> String {
         let s = self.suite();
         let outline = self.outline();
@@ -2249,6 +2282,7 @@ impl Site<'_> {
         for p in &paragraphs(&root.description) {
             let _ = write!(o, "<p class=\"lede\">{}</p>", self.prose(p));
         }
+        o.push_str(&self.platform_note());
         for part in &outline.parts {
             let _ = write!(o, "<h2>{}</h2><div class=\"cards\">", esc(&part.name));
             for item in &part.items {

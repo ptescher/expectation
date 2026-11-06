@@ -261,6 +261,20 @@ fn index(d: &Docs) -> String {
             let _ = writeln!(o, "{}\n", prose(d, &p, false));
         }
     }
+    if s.platforms.len() > 1 && !s.platform_about.is_empty() {
+        let _ = writeln!(o, "## Versions of this manual\n");
+        for p in &s.platforms {
+            match s.platform_about.iter().find(|(n, _)| n == p) {
+                Some((_, text)) => {
+                    let _ = writeln!(o, "- **{p}**: {text}");
+                }
+                None => {
+                    let _ = writeln!(o, "- **{p}**");
+                }
+            }
+        }
+        o.push('\n');
+    }
     let _ = writeln!(
         o,
         "There is also an [HTML version](site/index.html) of this manual. The [glossary](glossary.md) explains \

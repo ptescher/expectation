@@ -20,6 +20,8 @@ pub struct RawFile {
     pub features: Vec<RawFeature>,
     pub stories: Vec<RawStory>,
     pub terms: Vec<RawTerm>,
+    /// `About: iOS: the ground station on an iPad` lines in a Vocabulary block: what a platform is.
+    pub platform_about: Vec<(String, String, Span)>,
     /// `Scopes: sections` in a Vocabulary block: words declared in a top-level section belong
     /// to it. Only meaningful in the suite's top directory.
     pub scopes: Option<Span>,
@@ -367,6 +369,23 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                         .at(&span, "")
                         .help("`Scopes: sections` makes the words of a top-level section its own"),
                 );
+            }
+            continue;
+        }
+        if let (Some(rest), Block::Vocabulary) = (line.strip_prefix("About:"), block) {
+            match rest.split_once(':') {
+                Some((name, text)) if !name.trim().is_empty() && !text.trim().is_empty() => {
+                    out.platform_about.push((
+                        name.trim().to_string(),
+                        text.trim().to_string(),
+                        span.clone(),
+                    ))
+                }
+                _ => diags.push(
+                    Diagnostic::error("syntax", "`About:` needs a platform and what it is")
+                        .at(&span, "")
+                        .help("write `About: iOS: the ground station on an iPad or iPhone`"),
+                ),
             }
             continue;
         }
