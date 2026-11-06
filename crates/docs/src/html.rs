@@ -268,6 +268,13 @@ impl Site<'_> {
 
     fn exp_url(&self, e: ExpId) -> String {
         let x = self.suite().exp(e);
+        if x.hidden {
+            // It has no entry on its topic page: the report of a test that covers it is where it is read.
+            return match self.f.first_test(e) {
+                Some(i) => self.test_url(i),
+                None => "tests.html".into(),
+            };
+        }
         format!("{}#{}", self.feature_url(x.feature), x.slug)
     }
 

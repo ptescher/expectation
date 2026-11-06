@@ -350,7 +350,17 @@ fn docs(
                 .join(expectation_model::text::slug(n)),
             _ => Path::new(out).to_path_buf(),
         };
-        docs.write(&tree)
+        let written = docs.write(&tree);
+        if written.is_ok() {
+            let broken = expectation_docs::broken_links(&tree);
+            for b in broken.iter().take(10) {
+                eprintln!("warning: broken link in {b}");
+            }
+            if broken.len() > 10 {
+                eprintln!("warning: and {} more broken links", broken.len() - 10);
+            }
+        }
+        written
     };
     // Only a suite with several platforms offers the same page on the others, so only then are
     // all the pages worked out ahead of writing them.

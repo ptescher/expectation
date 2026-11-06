@@ -14,6 +14,9 @@ or, from results that runs have saved in `docs/results/`:
 expectation docs expectations docs
 ```
 
+`expectation docs` checks the links in the HTML it wrote and warns about any that go to a file
+or an anchor that isn't there.
+
 ## Navigation and size
 
 Each page lists only the sections on the way to it, with the others as links. Opening one fills

@@ -163,6 +163,10 @@ fn ref_path(d: &Docs, r: manual::Ref) -> String {
 
 fn exp_link(d: &Docs, e: ExpId, from_subdir: bool) -> String {
     let x = d.suite.exp(e);
+    // A hidden expectation has no entry on its topic page to link to.
+    if x.hidden {
+        return x.name.clone();
+    }
     let feature = feature_slug(d.suite, d.suite.feature(x.feature));
     format!(
         "[{}]({}features/{feature}.md#{})",

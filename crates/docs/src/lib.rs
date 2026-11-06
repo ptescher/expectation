@@ -18,6 +18,7 @@
 //! got there) shows a placeholder instead.
 
 mod html;
+mod links;
 mod manual;
 mod map;
 mod markdown;
@@ -30,6 +31,7 @@ mod voice;
 use expectation_graph::Analysis;
 use expectation_model::{ExpId, Feature, StepText, Suite, VarKind, Variable};
 use expectation_story::{Because, Plan, Report, Status, Verdict, coverage};
+pub use links::broken_links;
 use std::path::{Path, PathBuf};
 
 pub struct Docs<'a> {
@@ -472,6 +474,14 @@ struct Facts {
 }
 
 impl Facts {
+    /// A test that exercises `e`, if any does.
+    fn first_test(&self, e: ExpId) -> Option<usize> {
+        self.coverage
+            .get(e.0 as usize)?
+            .first()
+            .map(|&(plan, _)| plan)
+    }
+
     fn new(d: &Docs) -> Self {
         let status = (0..d.plans.len())
             .map(|i| {
@@ -1100,5 +1110,71 @@ Feature: Paying
                 .any(|p| p.path.starts_with("site/tests-") || p.path.starts_with("site/map-"))
         );
         links_resolve(&pages);
+    }
+
+    const HIDDEN: &str = "
+Vocabulary:
+  State: the turnstile is locked | unlocked
+  Event: a visitor inserts a coin
+  Event: a visitor pushes the arm
+Background:
+  Given the turnstile is locked
+Feature: Paying
+  What a coin does.
+  Expectation: A coin unlocks it
+    Given the turnstile is locked
+    When a visitor inserts a coin
+    Then the turnstile is unlocked
+  Expectation: Pushing locks it
+    Docs: hidden
+    Given the turnstile is unlocked
+    When a visitor pushes the arm
+    Then the turnstile is locked
+";
+
+    #[test]
+    fn a_hidden_expectation_is_linked_to_its_test_not_to_a_missing_anchor() {
+        let loaded = expectation_language::load_sources("S", &[("s.expect", HIDDEN)]);
+        assert!(!loaded.has_errors(), "{}", loaded.render_diagnostics());
+        let suite = loaded.suite;
+        let analysis = expectation_graph::analyze(&suite);
+        let mut plans = expectation_story::plan_stories(&suite, &analysis).plans;
+        let extra = expectation_story::coverage_plans(&suite, &analysis, &plans);
+        plans.extend(extra);
+        let docs = Docs {
+            suite: &suite,
+            analysis: &analysis,
+            plans: &plans,
+            report: None,
+            suite_dir: None,
+            siblings: &[],
+            outline: None,
+            inventory: &[],
+            contracts: &[],
+            partial: None,
+            look: Look::default(),
+        };
+        let out = temp("hidden");
+        docs.write(&out).unwrap();
+        let map = std::fs::read_to_string(out.join("site/map.html")).unwrap();
+        assert!(
+            !map.contains("#pushing-locks-it"),
+            "linked to a missing anchor"
+        );
+        assert!(
+            map.contains("test-coverage--pushing-locks-it.html"),
+            "no link to its test"
+        );
+        assert_eq!(broken_links(&out), Vec::<String>::new());
+        // A link to nothing is found, and so is a link to an anchor that isn't there.
+        std::fs::write(
+            out.join("site/extra.html"),
+            r##"<a href="gone.html">x</a> <a href="index.html#nope">y</a> <a href="index.html">z</a> <a href="https://example.com/">w</a> <a href="#top" id="top">v</a>"##,
+        )
+        .unwrap();
+        assert_eq!(
+            broken_links(&out),
+            vec!["extra.html: gone.html", "extra.html: index.html#nope"]
+        );
     }
 }
