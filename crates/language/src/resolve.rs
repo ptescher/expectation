@@ -510,8 +510,12 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
                     if !scoped && collides(&prev.span, &d.span) {
                         diags.push(collision(&var.subject, &d.span, &prev.span));
                     }
-                    if prev.set.is_none() {
-                        prev.set = var.set;
+                    match (&prev.set, &var.set) {
+                        (None, _) => prev.set = var.set,
+                        (Some(first), Some(second)) if first.trim() != second.trim() => {
+                            diags.push(clashing_say(&var.subject, &d.span, &prev.span));
+                        }
+                        _ => {}
                     }
                     prev.sets.extend(var.sets);
                     prev.shows.extend(var.shows);
@@ -556,8 +560,12 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
                 if !scoped && collides(&prev.span, &d.span) {
                     diags.push(collision(&d.text, &d.span, &prev.span));
                 }
-                if prev.say.is_none() {
-                    prev.say = d.say.as_ref().map(|(s, _)| s.clone());
+                match (&prev.say, &d.say) {
+                    (None, _) => prev.say = d.say.as_ref().map(|(s, _)| s.clone()),
+                    (Some(first), Some((second, at))) if first.trim() != second.trim() => {
+                        diags.push(clashing_say(&d.text, at, &prev.span));
+                    }
+                    _ => {}
                 }
             } else {
                 let id = EventId(vocab.events.len() as u32);
@@ -610,6 +618,17 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
         }
     }
     vocab
+}
+
+/// The same word declared twice with different `Say:`/`Set:` lines: only the first is used.
+fn clashing_say(word: &str, second: &Span, first: &Span) -> Diagnostic {
+    Diagnostic::warning(
+        "conflicting-say",
+        format!("«{word}» has two different Says; only the first is used"),
+    )
+    .at(second, "this one is ignored")
+    .at(first, "first declared here")
+    .help("write one that covers both, or give each section its own word with `Scopes: sections`")
 }
 
 /// Two declarations in different top-level sections: the suite doesn't scope its words, so

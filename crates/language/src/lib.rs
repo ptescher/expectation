@@ -1192,4 +1192,38 @@ Story: Draft
         let l = load_sources("S", &[("a.expect", "Vocabulary:\n  Scopes: teams\n")]);
         assert!(l.render_diagnostics().contains("can only say `sections`"));
     }
+
+    #[test]
+    fn two_different_says_for_one_word_warn_and_the_first_wins() {
+        let decl = |say: &str| {
+            format!(
+                "Vocabulary:\n  State: the lamp is on | off\n    Set: {say}\n  Event: the user flips the switch\n    Say: {say}\n"
+            )
+        };
+        let (a, b) = (decl("press the button"), decl("press N"));
+        let l = load_sources("S", &[("a/a.expect", &a), ("b/b.expect", &b)]);
+        let says = l
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "conflicting-say")
+            .count();
+        assert_eq!(says, 2, "{}", l.render_diagnostics());
+        assert_eq!(
+            l.suite.vocabulary.events[0].say.as_deref(),
+            Some("press the button")
+        );
+        // The same Say twice is fine, and scoped words don't meet.
+        let l = load_sources("S", &[("a/a.expect", &a), ("b/b.expect", &a)]);
+        assert!(!codes(&l).contains(&"conflicting-say"));
+        let root = "Vocabulary:\n  Scopes: sections\n";
+        let l = load_sources(
+            "S",
+            &[("v.expect", root), ("a/a.expect", &a), ("b/b.expect", &b)],
+        );
+        assert!(
+            !codes(&l).contains(&"conflicting-say"),
+            "{}",
+            l.render_diagnostics()
+        );
+    }
 }
