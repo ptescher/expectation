@@ -31,6 +31,9 @@ pub enum VarKind {
 /// A state of the system: "the kettle is off | heating | dry".
 #[derive(Clone, Debug)]
 pub struct Variable {
+    /// The top-level section whose words this is one of (see `Scopes: sections`); `None` for a
+    /// word everyone can use.
+    pub scope: Option<String>,
     pub id: VarId,
     /// As declared, e.g. "the kettle".
     pub subject: String,
@@ -56,6 +59,8 @@ pub struct Variable {
 /// Something that happens to the system: "the user presses reset".
 #[derive(Clone, Debug)]
 pub struct Event {
+    /// As [`Variable::scope`].
+    pub scope: Option<String>,
     pub id: EventId,
     pub text: String,
     pub key: String,
@@ -338,6 +343,7 @@ mod tests {
     #[test]
     fn numbers_are_compared_with_a_little_tolerance() {
         let thr = Variable {
+            scope: None,
             id: VarId(0),
             subject: "the dial".into(),
             key: "dial".into(),
@@ -372,6 +378,30 @@ impl Vocabulary {
 
     pub fn event(&self, id: EventId) -> &Event {
         &self.events[id.0 as usize]
+    }
+
+    /// The words a step in `scope` can use: the shared ones and that scope's own. A word of
+    /// another scope is kept (so ids stay the same) but can't be found. Without scoped words
+    /// this is the vocabulary itself.
+    pub fn seen_from(&self, scope: Option<&str>) -> std::borrow::Cow<'_, Vocabulary> {
+        let hidden = |w: &Option<String>| w.is_some() && w.as_deref() != scope;
+        if !self.variables.iter().any(|v| hidden(&v.scope))
+            && !self.events.iter().any(|e| hidden(&e.scope))
+            && !self.phrases.iter().any(|p| hidden(&p.scope))
+        {
+            return std::borrow::Cow::Borrowed(self);
+        }
+        let mut view = self.clone();
+        for v in view.variables.iter_mut().filter(|v| hidden(&v.scope)) {
+            v.key = "\u{0}".into();
+        }
+        for e in view.events.iter_mut().filter(|e| hidden(&e.scope)) {
+            e.key = "\u{0}".into();
+        }
+        for p in view.phrases.iter_mut().filter(|p| hidden(&p.scope)) {
+            p.key = "\u{0}".into();
+        }
+        std::borrow::Cow::Owned(view)
     }
 
     pub fn find_var(&self, subject: &str) -> Option<&Variable> {

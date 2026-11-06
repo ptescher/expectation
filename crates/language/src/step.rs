@@ -367,6 +367,7 @@ pub fn declare_state(decl: &str, span: &Span, id: VarId) -> Result<Variable, Dia
     };
     let verb = decl[at + 1..at + len - 1].to_string();
     Ok(Variable {
+        scope: None,
         id,
         key: text::key(&subject),
         subject,
@@ -393,6 +394,7 @@ mod tests {
             .ok()
             .unwrap();
         let reset = Event {
+            scope: None,
             id: EventId(0),
             text: "the user presses reset".into(),
             key: text::key("the user presses reset"),

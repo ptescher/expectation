@@ -91,6 +91,8 @@ pub struct PhraseId(pub u32);
 /// Specs read better and stay put when the details change; docs say it with `say`.
 #[derive(Clone, Debug)]
 pub struct Phrase {
+    /// As [`crate::Variable::scope`].
+    pub scope: Option<String>,
     pub id: PhraseId,
     pub name: String,
     pub key: String,

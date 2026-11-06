@@ -272,6 +272,7 @@ mod tests {
 
     fn var(id: u32, kind: VarKind) -> Variable {
         Variable {
+            scope: None,
             id: VarId(id),
             subject: format!("v{id}"),
             key: format!("v{id}"),

@@ -20,6 +20,9 @@ pub struct RawFile {
     pub features: Vec<RawFeature>,
     pub stories: Vec<RawStory>,
     pub terms: Vec<RawTerm>,
+    /// `Scopes: sections` in a Vocabulary block: words declared in a top-level section belong
+    /// to it. Only meaningful in the suite's top directory.
+    pub scopes: Option<Span>,
     /// `Platform: desktop | iOS`: the platforms the suite is run on, the first the default.
     pub platforms: Vec<(String, Span)>,
     /// `On:` under a `Section:`: the platforms the whole file is about.
@@ -350,6 +353,23 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
             continue;
         }
 
+        if let Some(rest) = line.strip_prefix("Scopes:") {
+            if block != Block::Vocabulary {
+                diags.push(
+                    Diagnostic::error("syntax", "`Scopes:` belongs in a Vocabulary block")
+                        .at(&span, ""),
+                );
+            } else if rest.trim() == "sections" {
+                out.scopes = Some(span.clone());
+            } else {
+                diags.push(
+                    Diagnostic::error("syntax", "`Scopes:` can only say `sections`")
+                        .at(&span, "")
+                        .help("`Scopes: sections` makes the words of a top-level section its own"),
+                );
+            }
+            continue;
+        }
         if let Some(rest) = line.strip_prefix("Platform:") {
             if block != Block::Vocabulary {
                 diags.push(

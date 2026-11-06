@@ -24,6 +24,8 @@ error[bad-value]: `boiling` isn't a value of the kettle
 | `bad-override` | error | `Overrides:` names an expectation that doesn't exist. |
 | `approval-conflict` | error | An expectation is `Approval: approved` inside a feature that is `proposed`. |
 | `approval-dependency` | error | With `--approved-only`: an approved expectation overrides one that isn't approved. |
+| `vocabulary-collision` | warning | The same state or event is declared in two top-level sections, so it is one word for both. Declare it once in the top directory, rename one, or turn on `Scopes: sections`. |
+| `vocabulary-shadow` | error | With `Scopes: sections`: a section declares a word that is also declared in the top directory. |
 | `duplicate` | error | Two expectations, terms or other named things with the same name. |
 | `two-names` | error / warning | A section named twice (error), or the suite named twice (warning). |
 | `no-then` | error | An expectation with no Then. |

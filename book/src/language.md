@@ -96,6 +96,31 @@ A state can use `are`, `has` or `have` instead of `is` ("the drawing has 0..650 
 and steps about it read the same way. Vocabularies from all files merge into one, so a
 section can declare the words only it uses.
 
+### Scoping the words of a large suite
+
+Vocabularies from all files merge into one, by name. In a big suite with several teams that
+means two sections that each declare "the user is signed in" quietly get one state, and
+`expectation check` warns about it (`vocabulary-collision`). To give each top-level section
+its own words, say so once in a Vocabulary block in the suite's top directory:
+
+```gherkin
+Vocabulary:
+  Scopes: sections
+  State: the user is signed in | out       # shared: declared in the top directory
+```
+
+Then:
+
+- Words declared in a file under a top-level section (`billing/`, `search/`, …) belong to that
+  section and the sections inside it. Two sections can declare "the invoice is open | paid" and
+  "the invoice is 0..5" without meeting.
+- Words declared in the top directory are shared, and every section can use them.
+- A section can't declare a word that is also shared (`vocabulary-shadow`), and a step can't use
+  another section's word (it is an unknown step).
+- Stories and the flow graph already stay within a top-level section, so nothing else changes.
+
+A suite without `Scopes:` behaves as before.
+
 ### How the docs say things
 
 Name events for what the user means, not the button they press: "the user starts the
