@@ -278,6 +278,13 @@ Part: Brewing
   They can use `[[links]]` into the generated pages. `[desktop]` keeps a page out of another
   platform's manual.
 
+- `Next: tutorials` (a line of its own) makes Next and Previous follow the pages, the section
+  pages and the tutorials only. The topic pages stay in the sidebar and in each tutorial's
+  "Learn more", so a beginner pressing Next goes from tutorial to tutorial. With an outline,
+  the glossary is the last page of the chain.
+- A section page lists its own tutorials first, then those of its subsections, even where the
+  outline reads a subsection earlier than the section that holds it.
+
 The sections themselves stay where they are, because their setups inherit from their parents.
 A top-level section that no part names goes into a last part, "More", with a warning.
 

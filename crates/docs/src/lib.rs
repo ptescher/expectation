@@ -1209,4 +1209,116 @@ Feature: Paying
         assert!(home.contains("<strong>iOS</strong>: the app on an iPad"));
         assert!(page(&pages, "README.md").contains("- **desktop**: the app on a computer"));
     }
+
+    #[test]
+    fn next_can_follow_the_tutorials_and_ends_at_the_glossary() {
+        let dir = temp("tutorial-chain");
+        let area = |name: &str| {
+            format!(
+                "Section: {name}\n  About {name}.\nVocabulary:\n  State: the {name} lamp is on | off\n  Event: the user flips the {name} switch\nBackground:\n  Given the {name} lamp is off\nFeature: {name} lamp\n  Expectation: Flip {name}\n    Given the {name} lamp is off\n    When the user flips the {name} switch\n    Then the {name} lamp is on\nStory: Using {name}\n  As a user\n  I want light\n  So that I see\n  Scenario: x\n    When the user flips the {name} switch\n    Then the {name} lamp is on\n"
+            )
+        };
+        for name in ["Alpha", "Beta"] {
+            std::fs::create_dir_all(dir.join(name)).unwrap();
+            std::fs::write(dir.join(name).join("s.expect"), area(name)).unwrap();
+        }
+        std::fs::write(
+            dir.join("outline.txt"),
+            "Part: Start\n  Section: Alpha\n  Section: Beta\nNext: tutorials\n",
+        )
+        .unwrap();
+        let loaded = expectation_language::load_dir(&dir).unwrap();
+        assert!(!loaded.has_errors(), "{}", loaded.render_diagnostics());
+        let suite = loaded.suite;
+        let analysis = expectation_graph::analyze(&suite);
+        let plans = expectation_story::plan_stories(&suite, &analysis).plans;
+        let pages = Docs {
+            suite: &suite,
+            analysis: &analysis,
+            plans: &plans,
+            report: None,
+            suite_dir: Some(&dir),
+            siblings: &[],
+            outline: None,
+            inventory: &[],
+            contracts: &[],
+            partial: None,
+            look: Look::default(),
+        }
+        .pages();
+        let next = |path: &str| {
+            let html = page(&pages, path);
+            let i = html.find(r#"class="next" href=""#)?;
+            let rest = &html[i + r#"class="next" href=""#.len()..];
+            Some(rest[..rest.find('"').unwrap()].to_string())
+        };
+        // Alpha's page, its tutorial, then Beta's page: the topic page is skipped.
+        assert_eq!(
+            next("site/section-alpha.html").as_deref(),
+            Some("tutorial-alpha--using-alpha--x.html")
+        );
+        assert_eq!(
+            next("site/tutorial-alpha--using-alpha--x.html").as_deref(),
+            Some("section-beta.html")
+        );
+        // The last tutorial leads to the glossary, which has a way back.
+        assert_eq!(
+            next("site/tutorial-beta--using-beta--x.html").as_deref(),
+            Some("glossary.html")
+        );
+        assert!(page(&pages, "site/glossary.html").contains(r#"class="prev""#));
+        // A topic page is not in the chain.
+        assert_eq!(next("site/feature-alpha--alpha-lamp.html"), None);
+    }
+
+    #[test]
+    fn a_section_page_lists_its_own_tutorials_before_its_subsections() {
+        let dir = temp("own-first");
+        let area = |name: &str, vocab: bool| {
+            let v = if vocab {
+                "Vocabulary:\n  State: the lamp is on | off\n  Event: the user flips the switch\nBackground:\n  Given the lamp is off\n"
+            } else {
+                ""
+            };
+            format!(
+                "Section: {name}\n  About {name}.\n{v}Feature: {name} feature\n  Expectation: Flip {name}\n    Given the lamp is off\n    When the user flips the switch\n    Then the lamp is on\nStory: Using {name}\n  As a user\n  I want light\n  So that I see\n  Scenario: x\n    When the user flips the switch\n    Then the lamp is on\n"
+            )
+        };
+        std::fs::create_dir_all(dir.join("Parent/Child")).unwrap();
+        std::fs::write(dir.join("Parent/p.expect"), area("Parent", true)).unwrap();
+        std::fs::write(dir.join("Parent/Child/c.expect"), area("Child", false)).unwrap();
+        // The outline reads the subsection before the section that holds it.
+        std::fs::write(
+            dir.join("outline.txt"),
+            "Part: Start\n  Section: Child\n  Section: Parent\n",
+        )
+        .unwrap();
+        let loaded = expectation_language::load_dir(&dir).unwrap();
+        assert!(!loaded.has_errors(), "{}", loaded.render_diagnostics());
+        let suite = loaded.suite;
+        let analysis = expectation_graph::analyze(&suite);
+        let plans = expectation_story::plan_stories(&suite, &analysis).plans;
+        let pages = Docs {
+            suite: &suite,
+            analysis: &analysis,
+            plans: &plans,
+            report: None,
+            suite_dir: Some(&dir),
+            siblings: &[],
+            outline: None,
+            inventory: &[],
+            contracts: &[],
+            partial: None,
+            look: Look::default(),
+        }
+        .pages();
+        let parent = page(&pages, "site/section-parent.html");
+        let own = parent
+            .find("tutorial-parent--using-parent--x.html")
+            .unwrap();
+        let child = parent
+            .find("tutorial-parent--child--using-child--x.html")
+            .unwrap();
+        assert!(own < child, "the section's own tutorial comes first");
+    }
 }

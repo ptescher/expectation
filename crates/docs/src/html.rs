@@ -75,8 +75,10 @@ struct Site<'a> {
 
 impl<'a> Site<'a> {
     fn new(d: &'a Docs<'a>, f: &'a Facts) -> Self {
-        let order: Vec<Here> = manual::reading_order(d)
+        let tutorials_only = d.outline.is_some_and(|o| o.next_tutorials);
+        let mut order: Vec<Here> = manual::reading_order(d)
             .into_iter()
+            .filter(|r| !(tutorials_only && matches!(r, manual::Reading::Feature(_))))
             .map(|r| match r {
                 manual::Reading::Section(id) => Here::Section(id),
                 manual::Reading::Tutorial(i) => Here::Tutorial(i),
@@ -84,6 +86,10 @@ impl<'a> Site<'a> {
                 manual::Reading::Page(i) => Here::Page(i),
             })
             .collect();
+        // With an outline the glossary is the last page of the chain, so Next reaches it.
+        if d.outline.is_some() {
+            order.push(Here::Glossary);
+        }
         let position = order.iter().enumerate().map(|(i, h)| (*h, i)).collect();
         let mut stories = vec![vec![]; d.suite.sections.len()];
         for (i, plan) in d.plans.iter().enumerate() {
@@ -1125,11 +1131,13 @@ impl Site<'_> {
         }
 
         // Tutorials anywhere beneath it, in reading order.
+        // The section's own first, then those of its subsections.
         let under = s.subtree(id);
-        let tutorials: Vec<usize> = manual::tutorials(self.d)
+        let (own, rest): (Vec<usize>, Vec<usize>) = manual::tutorials(self.d)
             .into_iter()
             .filter(|&i| under.contains(&self.d.plans[i].section))
-            .collect();
+            .partition(|&i| self.d.plans[i].section == id);
+        let tutorials: Vec<usize> = own.into_iter().chain(rest).collect();
         if !tutorials.is_empty() {
             o.push_str(r#"<h2>Tutorials</h2><div class="cards stories">"#);
             for i in tutorials {
