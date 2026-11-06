@@ -149,7 +149,7 @@ A phrase is a step of your own, for saying more with less.
   per action). An expectation can use one that's a single action; a story step can use any.
   It becomes several test steps, but stays one numbered step in the docs.
 
-A phrase's `Say:` is how the docs put it. Phrases can use the phrases declared before them.
+A phrase's `Say:` is how the docs put it. A phrase can use any other phrase, whichever is written first; two that use each other are an error.
 
 ## Steps
 

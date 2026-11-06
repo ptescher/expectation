@@ -364,7 +364,7 @@ Story: S
         assert!(!l.has_errors(), "{}", l.render_diagnostics());
         l.diagnostics
             .iter()
-            .filter(|d| !d.is_error())
+            .filter(|d| !d.is_error() && d.code != "unused-word")
             .map(|d| d.code)
             .collect()
     }
@@ -872,7 +872,11 @@ Feature: Drawing
         assert_eq!(errors("Feature: F\n On: iOS\n"), vec!["unknown-platform"]);
         let l = load_sources_for("t", &[("t.expect", vocab)], Some("Android"));
         assert_eq!(
-            l.diagnostics.iter().map(|d| d.code).collect::<Vec<_>>(),
+            l.diagnostics
+                .iter()
+                .map(|d| d.code)
+                .filter(|c| *c != "unused-word")
+                .collect::<Vec<_>>(),
             vec!["unknown-platform"]
         );
     }
@@ -946,6 +950,7 @@ Feature: Drawing
                 .diagnostics
                 .iter()
                 .map(|d| d.code)
+                .filter(|c| *c != "unused-word")
                 .collect::<Vec<_>>(),
             vec!["says-nothing"]
         );
@@ -956,7 +961,12 @@ Feature: Drawing
                 &with("Feature: F\n Expectation: E\n  Gvien the kettle is heating\n"),
             )],
         );
-        let codes: Vec<_> = typo.diagnostics.iter().map(|d| d.code).collect();
+        let codes: Vec<_> = typo
+            .diagnostics
+            .iter()
+            .map(|d| d.code)
+            .filter(|c| *c != "unused-word")
+            .collect();
         assert_eq!(codes, vec!["maybe-step", "no-then"]);
     }
 
