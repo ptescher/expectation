@@ -76,6 +76,10 @@ pub struct Look<'a> {
     /// placeholders for missing screenshots on the tutorials and topic pages, and the test
     /// report is linked from one place. The outline can ask for it too (`Edition: reader`).
     pub reader: bool,
+    /// For a platform's manual written under another's (`platforms/<name>/`): the docs
+    /// directory that holds the shared `screenshots/`, and how many folders up it is from this
+    /// manual. `None` is a manual that has its own.
+    pub shared: Option<(&'a Path, usize)>,
 }
 
 /// Where the screenshots are that the results name as `screenshots/<rest>`.
@@ -92,6 +96,13 @@ pub enum Screenshots<'a> {
     Url(&'a str),
 }
 
+impl Look<'_> {
+    /// What a page's link to the docs' `screenshots/` goes up through first.
+    pub(crate) fn up(&self) -> String {
+        "../".repeat(self.shared.map_or(0, |(_, n)| n))
+    }
+}
+
 impl<'a> Screenshots<'a> {
     /// A `--screenshots` value: a URL if it starts with `http://` or `https://`, else a directory.
     pub fn parse(s: &'a str) -> Self {
@@ -103,20 +114,25 @@ impl<'a> Screenshots<'a> {
     }
 
     /// Where a page one directory down links to the screenshot the results name `p`.
-    pub(crate) fn src(&self, p: &str) -> String {
+    pub(crate) fn src(&self, up: &str, p: &str) -> String {
         match (self, p.strip_prefix("screenshots/")) {
             (Screenshots::Url(prefix), Some(rest)) => {
                 format!("{}/{rest}", prefix.trim_end_matches('/'))
             }
-            _ => format!("../{p}"),
+            _ => format!("../{up}{p}"),
         }
     }
 
     /// The same for a small picture: its thumbnail if one was made, else the screenshot.
-    pub(crate) fn thumb(&self, thumbs: &std::collections::HashSet<String>, p: &str) -> String {
+    pub(crate) fn thumb(
+        &self,
+        up: &str,
+        thumbs: &std::collections::HashSet<String>,
+        p: &str,
+    ) -> String {
         match p.strip_prefix("screenshots/") {
-            Some(rest) if thumbs.contains(rest) => format!("../{}{rest}", thumbs::DIR),
-            _ => self.src(p),
+            Some(rest) if thumbs.contains(rest) => format!("../{up}{}{rest}", thumbs::DIR),
+            _ => self.src(up, p),
         }
     }
 }
@@ -319,12 +335,13 @@ impl Docs<'_> {
     pub fn write(&self, dir: &Path) -> std::io::Result<Vec<PathBuf>> {
         // A screenshot the results name but nobody has (an interrupted run cleared it) is a
         // placeholder, not a broken image. From a store, the ones the pages show are copied in.
+        let shots = self.look.shared.map_or(dir, |(root, _)| root);
         let checked = self.report.map(|r| {
             let mut r = r.clone();
             for result in &mut r.results {
                 for step in std::iter::once(&mut result.start).chain(&mut result.steps) {
                     if let Some(p) = &step.screenshot
-                        && !self.have_shot(dir, p)
+                        && !self.have_shot(shots, p)
                     {
                         step.screenshot = None;
                     }
@@ -341,7 +358,7 @@ impl Docs<'_> {
             .collect();
         let thumbs = match self.look.screenshots {
             Screenshots::Url(_) => Default::default(),
-            _ => thumbs::make(dir, &shown),
+            _ => thumbs::make(shots, &shown),
         };
         // The given stylesheet, else the suite's own `theme.css`, so regenerating keeps the theme.
         let found = match (self.look.stylesheet, self.suite_dir) {

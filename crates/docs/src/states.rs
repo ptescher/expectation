@@ -248,8 +248,8 @@ pub fn html(
             Some(sh) => (
                 paths.id(format!(
                     "[{},{}]",
-                    js(&d.look.screenshots.src(&sh.path)),
-                    js(&d.look.screenshots.thumb(&f.thumbs, &sh.path))
+                    js(&d.look.screenshots.src(&d.look.up(), &sh.path)),
+                    js(&d.look.screenshots.thumb(&d.look.up(), &f.thumbs, &sh.path))
                 )) as i64,
                 tests.id(js(&test_link(sh.plan))) as i64,
             ),

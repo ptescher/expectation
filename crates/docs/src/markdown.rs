@@ -232,7 +232,7 @@ fn image(
             let _ = writeln!(
                 o,
                 "<img src=\"{}\" width=\"720\" alt=\"{alt}\">\n",
-                look.screenshots.src(shot)
+                look.screenshots.src(&look.up(), shot)
             );
             if stale {
                 let _ = writeln!(o, "*From before this page changed.*\n");

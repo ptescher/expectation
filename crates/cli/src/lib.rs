@@ -240,6 +240,7 @@ fn docs(
             .as_deref()
             .map_or_else(Default::default, expectation_docs::Screenshots::parse),
         reader,
+        shared: None,
     };
     if let Some(expectation_docs::Screenshots::Dir(d)) =
         shots.as_deref().map(expectation_docs::Screenshots::parse)
@@ -353,7 +354,10 @@ fn docs(
             inventory: &[],
             contracts,
             partial: partial.as_ref(),
-            look,
+            look: expectation_docs::Look {
+                shared: (i > 0 && names[i].is_some()).then_some((Path::new(out), 2)),
+                ..look
+            },
         };
         let tree = match &names[i] {
             Some(n) if i > 0 => Path::new(out)
