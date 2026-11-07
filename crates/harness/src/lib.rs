@@ -219,6 +219,7 @@ impl Acceptance {
                     .as_deref()
                     .map_or_else(Default::default, expectation_docs::Screenshots::parse),
                 reader: self.reader,
+                shared: None,
             },
         }
     }
@@ -245,6 +246,9 @@ impl Acceptance {
             .collect();
         let mut docs = self.docs(Some(&merged));
         docs.contracts = &judged;
+        if self.tree(dir) != dir {
+            docs.look.shared = Some((dir, 2));
+        }
         docs.write(&self.tree(dir))?;
         Ok(merged)
     }

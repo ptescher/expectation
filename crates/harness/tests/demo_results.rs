@@ -40,3 +40,48 @@ fn the_demos_saved_results_still_match_its_tests() {
         }
     }
 }
+
+/// A platform other than the first is written under `platforms/<name>/`, but its screenshots
+/// are the run's, in the docs' own `screenshots/`: its pages show them from there.
+#[test]
+fn a_later_platforms_manual_shows_the_shared_screenshots() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../demos/kettle");
+    let out = Path::new(env!("CARGO_TARGET_TMPDIR")).join("shared-shots");
+    let _ = std::fs::remove_dir_all(&out);
+    let a = Acceptance::load_for(root.join("expectations"), "SwiftUI")
+        .unwrap_or_else(|e| panic!("{e}"))
+        .with_coverage();
+    let report =
+        expectation_story::load_results_for(&root.join("docs/results"), &a.plans, Some("SwiftUI"));
+    let named: Vec<String> = report
+        .results
+        .iter()
+        .flat_map(|r| std::iter::once(&r.start).chain(&r.steps))
+        .filter_map(|s| s.screenshot.clone())
+        .collect();
+    assert!(
+        !named.is_empty(),
+        "the demo's SwiftUI results name no screenshots"
+    );
+    // Only the shared folder has them, as a run writes them.
+    for p in &named {
+        let path = out.join(p);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>").unwrap();
+    }
+    a.publish(&out, "app", &report).unwrap();
+
+    let tree = out.join("platforms/swiftui");
+    let mut shown = 0;
+    for entry in std::fs::read_dir(tree.join("site")).unwrap().flatten() {
+        let page = std::fs::read_to_string(entry.path()).unwrap_or_default();
+        shown += page.matches("../../../screenshots/").count();
+        assert!(
+            !page.contains(r#"src="../screenshots/"#),
+            "{}",
+            entry.path().display()
+        );
+    }
+    assert!(shown > 0, "no page links the shared screenshots");
+    assert!(expectation_docs::broken_links(&tree).is_empty());
+}

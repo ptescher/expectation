@@ -955,7 +955,7 @@ impl Site<'_> {
         match shot {
             Some(shot) => format!(
                 r#"<figure><a href="{0}"><img src="{0}" alt="{1}" loading="lazy"></a>{2}</figure>"#,
-                esc(&self.d.look.screenshots.src(shot)),
+                esc(&self.d.look.screenshots.src(&self.d.look.up(), shot)),
                 esc(&alt),
                 if stale {
                     "<figcaption>From before this page changed.</figcaption>"
@@ -1027,7 +1027,11 @@ impl Site<'_> {
         let plan = &self.d.plans[i];
         let (shot, status) = self.thumbnail(i);
         let img = match &shot {
-            Some(s) => self.d.look.screenshots.thumb(&self.f.thumbs, s),
+            Some(s) => self
+                .d
+                .look
+                .screenshots
+                .thumb(&self.d.look.up(), &self.f.thumbs, s),
             None if self.d.reader() => String::new(),
             None if status == Status::Unsupported => format!("../{NOT_SUPPORTED}"),
             None => format!("../{NO_SCREENSHOT}"),
