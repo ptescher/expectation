@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLcov, parseIstanbul, coverageKind, totals } from '../src/formats.js';
+import { parseLcov, parseIstanbul, coverageKind, merge, totals } from '../src/formats.js';
 import { rowsFor } from '../src/analyze.js';
 
 const lcov = (hits) =>
@@ -13,7 +13,7 @@ test('LCOV: lines, branches (a dash is not taken) and functions', () => {
   assert.deepEqual(t.B, { hit: 1, found: 1 });
   assert.deepEqual(t.F, { hit: 1, found: 1 });
   assert.deepEqual(totals(snap([0, 0])).B, { hit: 0, found: 1 });
-  assert.throws(() => parseLcov('nothing here'), /not an LCOV/);
+  assert.throws(() => parseLcov('nothing here'), /not LCOV data/);
 });
 
 test('Istanbul: a line ran as often as its most-run statement', () => {
@@ -36,9 +36,11 @@ test('Istanbul: a line ran as often as its most-run statement', () => {
 });
 
 test('attachments are recognised by name or media type', () => {
-  assert.equal(coverageKind('r/t/00/lcov.info'), 'lcov');
-  assert.equal(coverageKind('r/t/00/x', 'text/x-lcov'), 'lcov');
-  assert.equal(coverageKind('r/t/00/coverage-final.json'), 'istanbul');
+  assert.deepEqual(coverageKind('r/t/00/x.lcov'), { kind: 'lcov', sure: true });
+  assert.deepEqual(coverageKind('r/t/00/x', 'text/x-lcov'), { kind: 'lcov', sure: true });
+  // Names other tools use too: coverage only if the content is.
+  assert.deepEqual(coverageKind('r/t/00/lcov.info'), { kind: 'lcov', sure: false });
+  assert.deepEqual(coverageKind('r/t/00/coverage-final.json'), { kind: 'istanbul', sure: false });
   assert.equal(coverageKind('r/t/00/network.har', 'application/json'), null);
 });
 
@@ -62,11 +64,11 @@ test('a counter that goes down means the program restarted: nothing is attribute
   assert.deepEqual(rows[2].new, [1, 0, 0]);
 });
 
-test('a missing capture is missing, not zero, and the next difference says it spans steps', () => {
+test('a missing capture is missing, not zero, and the next difference says what step it is since', () => {
   const rows = rowsFor(test3([[0, snap([1, 0, 0])], [2, snap([1, 1, 1])]]));
   assert.equal(rows[1].state, 'missing');
   assert.equal(rows[1].totals, undefined);
-  assert.equal(rows[2].basis, 'spans:0');
+  assert.equal(rows[2].basis, 'since:0');
   assert.deepEqual(rows[2].new, [2, 0, 0]);
 });
 
@@ -84,4 +86,26 @@ test('per-step counters: each capture is that step\'s own, and totals run on', (
   assert.deepEqual(rows[1].new, [1, 0, 0]);
   assert.deepEqual(rows[2].new, [0, 0, 0]);
   assert.deepEqual(rows[2].totals.L, { hit: 2, found: 3 });
+});
+
+test('something that had run and is no longer counted is a restart too', () => {
+  const was = parseLcov('SF:a.js\nDA:1,3\nend_of_record\nSF:b.js\nDA:1,3\nend_of_record\n');
+  const now = parseLcov('SF:a.js\nDA:1,9\nend_of_record\n');
+  const rows = rowsFor(test3([[0, was], [1, now]], 1));
+  assert.equal(rows[1].basis, 'restart');
+});
+
+test('the same thing in two files at one step is one thing, not two', () => {
+  const a = parseLcov('SF:a.js\nDA:1,2\nend_of_record\n');
+  const joined = merge(a, a);
+  assert.equal(joined.counts.get('L|a.js|1'), 2);
+  const other = merge(a, parseLcov('SF:b.js\nDA:1,1\nend_of_record\n'));
+  assert.deepEqual(totals(other).L, { hit: 2, found: 2 });
+});
+
+test('Istanbul functions are told apart by id, not name', () => {
+  const s = parseIstanbul({
+    'a.js': { path: 'a.js', statementMap: { 0: { start: { line: 1 } } }, s: { 0: 1 }, fnMap: { 0: { name: 'render' }, 1: { name: 'render' } }, f: { 0: 1, 1: 0 } },
+  });
+  assert.deepEqual(totals(s).F, { hit: 1, found: 2 });
 });

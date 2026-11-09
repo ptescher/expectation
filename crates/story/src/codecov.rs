@@ -33,16 +33,13 @@
 //! `missing` (nothing was captured there) or `incomplete` (something was, but it can't be
 //! used). `<basis>` says what the `<new …>` numbers are: `baseline` (the first capture of the
 //! test: the program's state before it), `step` (since the capture of the step before),
-//! `spans:<n>` (since the capture of step `n`, which is earlier than the one before), `restart`
+//! `since:<n>` (since the capture of step `n`, which is earlier than the one before), `restart`
 //! (the counters went down, so the program restarted and nothing is attributed) or `none`.
 
+use crate::coverage::Credit;
 use crate::plan::Plan;
-use crate::report::{Report, fingerprint};
-
-/// The largest file read.
-pub const MAX_BYTES: u64 = 16 * 1024 * 1024;
-const MAX_TEXT: usize = 300;
-const MAX_ID: usize = 128;
+use crate::report::Report;
+use crate::sidecar::{MAX_ID, MAX_TEXT, clean};
 
 /// Hit and found counts of one kind of thing in the source.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -89,7 +86,7 @@ pub enum Basis {
     /// Since the capture of the step before.
     Step,
     /// Since the capture of an earlier step, as captures in between are missing.
-    Spans(usize),
+    Since(usize),
     /// The counters went down: the program restarted, so nothing is attributed.
     Restart,
     None,
@@ -103,9 +100,9 @@ impl Basis {
             "restart" => Some(Basis::Restart),
             "none" => Some(Basis::None),
             _ => s
-                .strip_prefix("spans:")
+                .strip_prefix("since:")
                 .and_then(|n| n.parse().ok())
-                .map(Basis::Spans),
+                .map(Basis::Since),
         }
     }
 }
@@ -146,11 +143,6 @@ pub struct CodeCoverage {
     pub captures: Vec<Capture>,
     /// Lines that couldn't be read.
     pub problems: Vec<String>,
-}
-
-fn clean(s: &str, max: usize) -> String {
-    let s: String = s.chars().filter(|c| !c.is_control()).take(max).collect();
-    if s == "-" { String::new() } else { s }
 }
 
 impl CodeCoverage {
@@ -222,17 +214,20 @@ impl CodeCoverage {
     /// The captures that count for test `plan` (index `i` in `plans`), whose result is `report`'s:
     /// from the run its result came from, of the test as it is now. In step order.
     pub fn for_plan(&self, plans: &[Plan], report: &Report, i: usize) -> Vec<&Capture> {
-        let (Some(plan), Some(result)) = (plans.get(i), report.results.get(i)) else {
+        let Some(plan) = plans.get(i) else {
             return vec![];
         };
-        let Some(run) = result.run.as_ref().filter(|_| result.status.ran()) else {
-            return vec![];
-        };
-        let print = fingerprint(plan);
         let mut found: Vec<&Capture> = self
             .captures
             .iter()
-            .filter(|c| c.plan == plan.slug && c.fingerprint == print && c.run == run.id)
+            .filter(|c| c.plan == plan.slug)
+            .filter(|c| {
+                crate::sidecar::credit(plans, report, &c.plan, &c.fingerprint, &c.run, c.step)
+                    == Credit::Counts {
+                        plan: i,
+                        step: c.step,
+                    }
+            })
             .collect();
         found.sort_by_key(|c| c.step);
         found
@@ -280,9 +275,7 @@ pub fn code_coverage_file(name: &str, platform: Option<&str>) -> String {
 
 /// Is this file in a results directory a code coverage file?
 pub fn is_code_coverage_file(path: &std::path::Path) -> bool {
-    path.file_name()
-        .and_then(|n| n.to_str())
-        .is_some_and(|n| n.ends_with(".code.tsv"))
+    crate::sidecar::is_sidecar(path, Some("code"))
 }
 
 /// Every code coverage file in `dir` for `platform` (and those for every platform), read, with an
@@ -291,41 +284,7 @@ pub fn load_code_coverage_for(
     dir: &std::path::Path,
     platform: Option<&str>,
 ) -> (Vec<CodeCoverage>, Vec<String>) {
-    let mut files: Vec<_> = std::fs::read_dir(dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| is_code_coverage_file(p))
-        .filter(|p| {
-            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            match name.trim_end_matches(".code.tsv").split_once('@') {
-                Some((_, on)) => Some(on) == platform,
-                None => true,
-            }
-        })
-        .collect();
-    files.sort();
-    let (mut found, mut errors) = (vec![], vec![]);
-    for f in files {
-        let name = f
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("")
-            .to_string();
-        if std::fs::metadata(&f).is_ok_and(|m| m.len() > MAX_BYTES) {
-            errors.push(format!("{name}: over {} MiB, so not read", MAX_BYTES >> 20));
-            continue;
-        }
-        match std::fs::read_to_string(&f) {
-            Ok(text) => match CodeCoverage::parse(&name, &text) {
-                Ok(c) => found.push(c),
-                Err(e) => errors.push(e),
-            },
-            Err(e) => errors.push(format!("{name}: {e}")),
-        }
-    }
-    (found, errors)
+    crate::sidecar::load(dir, "code", platform, CodeCoverage::parse)
 }
 
 #[cfg(test)]
@@ -377,8 +336,8 @@ mod tests {
 
     #[test]
     fn spans_and_restarts_are_read() {
-        assert_eq!(Basis::parse("spans:2"), Some(Basis::Spans(2)));
+        assert_eq!(Basis::parse("since:2"), Some(Basis::Since(2)));
         assert_eq!(Basis::parse("restart"), Some(Basis::Restart));
-        assert_eq!(Basis::parse("spans:x"), None);
+        assert_eq!(Basis::parse("since:x"), None);
     }
 }

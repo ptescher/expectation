@@ -97,7 +97,8 @@ separate section on the test's page, because it means something different.
 The application collects it (Istanbul, or anything that writes LCOV) and hands it over as step
 attachments, in JavaScript with `onAttachments`. Then
 [`extensions/code-coverage`](https://github.com/ptescher/expectation/tree/main/extensions/code-coverage)
-reads LCOV or Istanbul's `coverage-final.json` and writes `results/code[@platform].code.tsv`:
+reads LCOV or Istanbul's `coverage-final.json` and writes `results/<runner>[@platform].code.tsv`
+(`app.code.tsv` for the default runner):
 
 ```bash
 expectation-run expectations --docs docs --attachments captures
@@ -122,7 +123,7 @@ What the section claims is limited on purpose:
 - **A step's part is only claimed when it can be.** Counters count from when the app started, so
   a step's part is the difference from the capture before. If a counter goes down, the app
   restarted, and nothing is attributed to that step. If a step's capture is missing, the next
-  difference is labelled as spanning the steps between. Anything else that ran in the same
+  difference is labelled as since the earlier step it is compared with. Anything else that ran in the same
   window, such as background work, is in the numbers, and the page says so. With
   `--counters per-step` the app empties its counters each time it hands them over.
 - **It counts for its own run and test.** Like contract evidence, a capture is shown only with
@@ -135,6 +136,14 @@ described at the top of
 Expectation doesn't instrument the app: collecting coverage is the app's and the driver's job.
 
 ## Writing an extension
+
+Extensions in JavaScript can start from
+[`extensions/kit`](https://github.com/ptescher/expectation/tree/main/extensions/kit): it reads the
+results file, finds the attached files (refusing any path that leaves the attachments directory,
+links included) and writes records that can't break the format. Expectation reads every
+extension's file the same way, whatever kind it is: the file for another platform is left out, a
+file over 16 MiB isn't read, fields are cut, and evidence counts only for its own run and test as
+it was.
 
 An extension reads:
 

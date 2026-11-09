@@ -9,6 +9,12 @@
 
 const add = (m, key, n) => m.set(key, (m.get(key) ?? 0) + n);
 
+/**
+ * A problem with a capture, in words that are safe to print in the manual. The manual shows
+ * these, so they never quote the file: a parser's own message can repeat its first characters.
+ */
+export class CoverageError extends Error {}
+
 /** An LCOV tracefile's text. Throws if it holds nothing of the kind. */
 export function parseLcov(text) {
   const counts = new Map();
@@ -34,14 +40,14 @@ export function parseLcov(text) {
       if (/^\d+$/.test(hits) && name.length) add(counts, `F|${file}|${name.join(',')}`, Number(hits));
     }
   }
-  if (!counts.size) throw new Error('no SF/DA records: not an LCOV file, or nothing was instrumented');
+  if (!counts.size) throw new CoverageError('not LCOV data, or nothing was instrumented');
   return { counts };
 }
 
 /** Istanbul's coverage map (`coverage-final.json`) as parsed JSON. */
 export function parseIstanbul(json) {
   const counts = new Map();
-  if (!json || typeof json !== 'object' || Array.isArray(json)) throw new Error('not an Istanbul coverage map');
+  if (!json || typeof json !== 'object' || Array.isArray(json)) throw new CoverageError('not an Istanbul coverage map');
   for (const [key, f] of Object.entries(json)) {
     if (!f || typeof f !== 'object' || !f.statementMap) continue;
     const file = f.path ?? key;
@@ -58,32 +64,48 @@ export function parseIstanbul(json) {
       (Array.isArray(taken) ? taken : []).forEach((n, i) => add(counts, `B|${file}|${line}|${id}|${i}`, Number(n) || 0));
     }
     for (const [id, n] of Object.entries(f.f ?? {})) {
-      add(counts, `F|${file}|${f.fnMap?.[id]?.name ?? id}`, Number(n) || 0);
+      // By id: two functions can share a name.
+      add(counts, `F|${file}|${id}:${f.fnMap?.[id]?.name ?? ''}`, Number(n) || 0);
     }
   }
-  if (!counts.size) throw new Error('no statements in the Istanbul coverage map');
+  if (!counts.size) throw new CoverageError('no statements in the Istanbul coverage map');
   return { counts };
 }
 
-/** Is this attachment coverage data, going by its name and media type? */
+/**
+ * Is this attachment coverage data, going by its name and media type? `sure` is whether the name
+ * or type says so for certain: `.info` and `coverage.json` are also what other tools write, so
+ * a file like that which isn't coverage is just something else, not a broken capture.
+ * @returns {{ kind: 'lcov' | 'istanbul', sure: boolean } | null}
+ */
 export function coverageKind(path, mediaType = '') {
   const name = path.toLowerCase();
-  if (name.endsWith('.lcov') || name.endsWith('.info') || /lcov/.test(mediaType)) return 'lcov';
-  if (/istanbul/.test(mediaType) || /(^|[/-])coverage(-final)?\.json$/.test(name) || name.endsWith('.istanbul.json')) {
-    return 'istanbul';
-  }
+  if (name.endsWith('.lcov') || /lcov/.test(mediaType)) return { kind: 'lcov', sure: true };
+  if (name.endsWith('.info')) return { kind: 'lcov', sure: false };
+  if (/istanbul/.test(mediaType) || name.endsWith('.istanbul.json')) return { kind: 'istanbul', sure: true };
+  if (/(^|[/-])coverage(-final)?\.json$/.test(name)) return { kind: 'istanbul', sure: false };
   return null;
 }
 
 /** The snapshot in `text`, whichever format `kind` says it is. */
 export function parseCoverage(kind, text) {
-  return kind === 'lcov' ? parseLcov(text) : parseIstanbul(JSON.parse(text));
+  if (kind === 'lcov') return parseLcov(text);
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new CoverageError('not valid JSON');
+  }
+  return parseIstanbul(json);
 }
 
-/** Add `b`'s counts into `a`, for two files captured at the same step. */
+/**
+ * Join two files captured at the same step. Counts are cumulative, so the same thing in two files
+ * is one thing seen twice (a duplicate), not two: the larger count stands.
+ */
 export function merge(a, b) {
   const counts = new Map(a.counts);
-  for (const [k, n] of b.counts) add(counts, k, n);
+  for (const [k, n] of b.counts) counts.set(k, Math.max(counts.get(k) ?? 0, n));
   return { counts };
 }
 

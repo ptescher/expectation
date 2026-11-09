@@ -8,7 +8,7 @@ import { basename } from 'node:path';
  * @typedef {{ start: number, end: number }} Window
  * @typedef {{ step: number, mediaType: string, path: string }} Attachment
  * @typedef {{ slug: string, status: string, fingerprint: string, run: string | null,
- *             windows: Map<number, Window>, attachments: Attachment[] }} PlanResult
+ *             steps: number, windows: Map<number, Window>, attachments: Attachment[] }} PlanResult
  * @typedef {{ file: string, runner: string, platform: string | null,
  *             runs: Map<string, number>, plans: PlanResult[] }} Results
  */
@@ -43,10 +43,15 @@ export function parseResults(text, file) {
           status: f[2],
           fingerprint: f[3] ?? '',
           run,
+          steps: 0,
           windows: new Map(),
           attachments: [],
         };
         out.plans.push(plan);
+        break;
+      case 'step':
+        // `step 0` is the test's start, so the last row's number is how many steps it has.
+        if (plan && /^\d+$/.test(f[1])) plan.steps = Math.max(plan.steps, Number(f[1]));
         break;
       case 'window':
         if (plan && f.length === 4 && [1, 2, 3].every((i) => /^\d+$/.test(f[i]))) {

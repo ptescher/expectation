@@ -8,7 +8,7 @@ import { analyze, coverageFile } from '../src/analyze.js';
 import { main } from '../src/cli.js';
 import { parseHar } from '../src/har.js';
 import { parseSpec, readSpec } from '../src/openapi.js';
-import { parseResults } from '../src/results.js';
+import { parseResults } from 'expectation-extension-kit';
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/quote.yaml', import.meta.url));
 const spec = readSpec(FIXTURE);

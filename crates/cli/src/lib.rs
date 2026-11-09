@@ -550,7 +550,7 @@ fn prune_screenshots(store: &str, dirs: &[&str], dry_run: bool) {
         for entry in std::fs::read_dir(d).into_iter().flatten().flatten() {
             let path = entry.path();
             if path.extension().is_none_or(|e| e != "tsv")
-                || expectation_story::is_coverage_file(&path)
+                || expectation_story::sidecar::is_sidecar(&path, None)
             {
                 continue;
             }

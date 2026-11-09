@@ -1096,7 +1096,7 @@ fn code_coverage(d: &Docs, o: &mut String, plan: usize) {
     for (cov, caps) in d.code_coverage_of(plan) {
         let _ = writeln!(
             o,
-            "## Code coverage\n\nWhich of the program's own source ran while this test did. It is observed execution: it doesn't change the result above, and it doesn't show that anything was checked. Counters are the program's totals since it started; \"new\" is what a step added, when that can be told, and can include activity the test didn't cause.\n"
+            "## Code coverage\n\nWhich of the program's own source ran while this test did. It is observed execution: it doesn't change the result above, and it doesn't show that anything was checked. Counts are running totals over the test; \"new\" is what a step added since the capture before it, when that can be told, and can include activity the test didn't cause.\n"
         );
         let about: Vec<String> = [
             ("Source", &cov.name),
@@ -1139,10 +1139,11 @@ fn code_coverage(d: &Docs, o: &mut String, plan: usize) {
             }
             let n = |k: expectation_story::Count| format!("{} of {}", k.hit, k.found);
             let new = match (c.new, c.basis) {
-                (Some([l, b, f]), Basis::Spans(from)) => format!(
-                    "{l} lines, {b} branches, {f} functions, since step {from} (the captures between are missing)"
+                (Some([l, b, f]), Basis::Since(from)) => format!(
+                    "{}, since step {from} (the captures between are missing)",
+                    crate::html::counted(l, b, f)
                 ),
-                (Some([l, b, f]), _) => format!("{l} lines, {b} branches, {f} functions"),
+                (Some([l, b, f]), _) => crate::html::counted(l, b, f),
                 (None, Basis::Baseline) => "the first capture: what ran before the test".into(),
                 (None, Basis::Restart) => "the program restarted, so nothing is attributed".into(),
                 (None, _) => "can't be told".into(),
@@ -1161,6 +1162,8 @@ fn code_coverage(d: &Docs, o: &mut String, plan: usize) {
                 o,
                 "[The full coverage report](<{}>), hosted separately.\n",
                 url.replace('>', "%3E")
+                    .replace('<', "%3C")
+                    .replace(' ', "%20")
             );
         }
     }

@@ -2,7 +2,7 @@
 // variants the tests' requests got, which they didn't, and which can't be told. The result is
 // an Expectation coverage file; Expectation then checks it against the results it is shown with.
 
-import { ran } from './results.js';
+import { line, ran } from 'expectation-extension-kit';
 import {
   matchRequest,
   mediaFor,
@@ -15,7 +15,6 @@ import {
   safePath,
   variants,
 } from './openapi.js';
-import { line } from './tsv.js';
 
 const SOURCES = new Set(['live', 'replay', 'stand-in', 'fault', 'unknown']);
 
@@ -58,7 +57,7 @@ function count(list) {
 /**
  * The coverage of `spec` by the traffic in `captures`, among `results`.
  *
- * @param {import('./results.js').Results} results
+ * @param {import('expectation-extension-kit').Results} results
  * @param {ReturnType<import('./openapi.js').parseSpec>} spec
  * @param {Array<{ entries: import('./har.js').Entry[], unusable: number,
  *   declared?: { run: string, plan: any, step: number } }>} captures

@@ -20,6 +20,17 @@ use expectation_story::{
 use std::collections::HashMap;
 use std::fmt::Write;
 
+/// "2 lines, 1 branch, 0 functions".
+pub(crate) fn counted(l: u64, b: u64, f: u64) -> String {
+    let pl = |n: u64, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
+    format!(
+        "{}, {}, {}",
+        pl(l, "line", "lines"),
+        pl(b, "branch", "branches"),
+        pl(f, "function", "functions")
+    )
+}
+
 /// What a capture's "new" numbers say, in words.
 fn new_since(c: &expectation_story::Capture) -> String {
     let Some([l, b, f]) = c.new else {
@@ -29,10 +40,10 @@ fn new_since(c: &expectation_story::Capture) -> String {
             _ => "can't be told".into(),
         };
     };
-    let what = format!("{l} lines, {b} branches, {f} functions");
+    let what = counted(l, b, f);
     match c.basis {
         Basis::Step => what,
-        Basis::Spans(from) => {
+        Basis::Since(from) => {
             format!("{what}, since step {from} (the captures between are missing)")
         }
         _ => what,
@@ -1885,10 +1896,15 @@ impl Site<'_> {
     /// Code coverage of the instrumented program while this test ran, apart from its result.
     fn code_coverage(&self, plan: usize) -> String {
         let mut o = String::new();
-        for (cov, caps) in self.d.code_coverage_of(plan) {
+        for (n, (cov, caps)) in self.d.code_coverage_of(plan).into_iter().enumerate() {
+            let id = if n == 0 {
+                "code-coverage".to_string()
+            } else {
+                format!("code-coverage-{}", n + 1)
+            };
             let _ = write!(
                 o,
-                r#"<section class="step code-coverage" id="code-coverage"><h2>Code coverage</h2><p class="muted">Which of the program's own source ran while this test did. It is observed execution: it doesn't change the result above, and it doesn't show that anything was checked. Counters are the program's totals since it started; "new" is what a step added, when that can be told, and can include activity the test didn't cause.</p>"#
+                r#"<section class="step code-coverage" id="{id}"><h2>Code coverage</h2><p class="muted">Which of the program's own source ran while this test did. It is observed execution: it doesn't change the result above, and it doesn't show that anything was checked. Counts are running totals over the test; "new" is what a step added since the capture before it, when that can be told, and can include activity the test didn't cause.</p>"#
             );
             let mut about = vec![];
             for (label, v) in [

@@ -47,15 +47,17 @@ export function rowsFor(test, options = {}) {
       counts = new Map(before);
       for (const [k, n] of s.counts) counts.set(k, (counts.get(k) ?? 0) + n);
       row = prev
-        ? { basis: prev.step === step - 1 ? 'step' : `spans:${prev.step}`, new: newByKind(counts, before), note: '' }
+        ? { basis: prev.step === step - 1 ? 'step' : `since:${prev.step}`, new: newByKind(counts, before), note: '' }
         : { basis: 'baseline', new: null, note: '' };
     } else if (!prev) {
       row = { basis: 'baseline', new: null, note: '' };
-    } else if ([...prev.counts].some(([k, n]) => s.counts.has(k) && s.counts.get(k) < n)) {
+    } else if ([...prev.counts].some(([k, n]) => n > 0 && (s.counts.get(k) ?? 0) < n)) {
+      // A counter went down, or something that had run isn't counted at all now (a module that
+      // hasn't loaded again): either way it is not the same run of the program.
       row = { basis: 'restart', new: null, note: 'a counter went down, so the program restarted' };
     } else {
       row = {
-        basis: prev.step === step - 1 ? 'step' : `spans:${prev.step}`,
+        basis: prev.step === step - 1 ? 'step' : `since:${prev.step}`,
         new: newByKind(counts, prev.counts),
         note: '',
       };

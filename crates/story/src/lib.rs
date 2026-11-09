@@ -8,6 +8,7 @@ pub mod coverage;
 pub mod plan;
 pub mod report;
 pub mod sha256;
+pub mod sidecar;
 
 pub use codecov::{
     Basis, Capture, CaptureState, CodeCoverage, Count, code_coverage_file, is_code_coverage_file,

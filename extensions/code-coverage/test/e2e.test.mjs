@@ -47,7 +47,7 @@ test('coverage handed over by an app shows on the test page, apart from its resu
 
   const results = path.join(docs, 'results/app.tsv');
   const written = main(['--results', results, '--attachments', keep, '--revision', 'abc1234', '--scope', 'src/**', '--report-url', 'https://cov.example/{run}/{slug}/'], () => {});
-  assert.equal(written, path.join(docs, 'results/code.code.tsv'));
+  assert.equal(written, path.join(docs, 'results/app.code.tsv'));
 
   const made = spawnSync(cli, ['docs', fixture, docs], { encoding: 'utf8' });
   assert.equal(made.status, 0, made.stderr);
@@ -59,7 +59,7 @@ test('coverage handed over by an app shows on the test page, apart from its resu
   assert.match(page, /1 of 5/);
   assert.match(page, /<a href="https:\/\/cov\.example\/[^"/]+\/a-day-at-the-zoo\/"/);
   // The step that ran a line more is credited with it; the run's result is unchanged.
-  assert.match(page, /1 lines, 0 branches, 0 functions/);
+  assert.match(page, /1 line, 0 branches, 0 functions/);
   assert.match(page, /passed/);
   // The attachments themselves are not in the manual.
   const all = fs.readdirSync(docs, { recursive: true }).map(String);

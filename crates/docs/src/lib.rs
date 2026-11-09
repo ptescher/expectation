@@ -333,7 +333,7 @@ impl Docs<'_> {
     }
 
     /// The code coverage that counts for test `plan`: per file, its captures of this run of the
-    /// test as it is now, and how many other captures it holds that were left out.
+    /// test as it is now. A file with none that count isn't listed.
     pub fn code_coverage_of(
         &self,
         plan: usize,
@@ -1507,7 +1507,7 @@ Feature: Paying
 
     #[test]
     fn code_coverage_is_shown_as_observed_execution_for_the_run_and_test_it_came_from() {
-        let src = "Vocabulary:\n  State: the lamp is on | off\n  Event: the user flips the switch\nBackground:\n  Given the lamp is off\nStory: Using the lamp\n  As a user\n  I want light\n  So that I see\n  Scenario: x\n    When the user flips the switch\n    Then the lamp is on\n";
+        let src = "Vocabulary:\n  State: the lamp is on | off\n  Event: the user flips the switch\n  Event: the user presses reset\nBackground:\n  Given the lamp is off\nFeature: Lamp\n  Expectation: Flip\n    Given the lamp is off\n    When the user flips the switch\n    Then the lamp is on\n  Expectation: Reset\n    Given the lamp is on\n    When the user presses reset\n    Then the lamp is off\nStory: Using the lamp\n  As a user\n  I want light\n  So that I see\n  Scenario: x\n    When the user flips the switch\n    Then the lamp is on\n    When the user presses reset\n    Then the lamp is off\n";
         let loaded = expectation_language::load_sources("S", &[("s.expect", src)]);
         assert!(!loaded.has_errors(), "{}", loaded.render_diagnostics());
         let suite = loaded.suite;
@@ -1567,13 +1567,32 @@ Feature: Paying
             assert!(page.contains("observed execution"));
             assert!(page.contains("abc123") && page.contains("src/"));
             assert!(page.contains("7 of 10"));
-            assert!(page.contains("2 lines, 1 branches, 0 functions"));
+            assert!(page.contains("2 lines, 1 branch, 0 functions"));
             assert!(page.contains("No capture at this step"));
             assert!(page.contains("isn't the same as nothing being covered"));
             assert!(page.contains("https://cov.example/r"));
         }
         // The result is what it was.
         assert!(html.contains("passed"));
+        // Text from the file can't become markup, in either kind of page.
+        let hostile = file("r1", &print)
+            .replace(
+                "source\tapp\tabc123\tsrc/**",
+                "source\t<b>app</b>\t\"><script>x</script>\t[a](http://evil)",
+            )
+            .replace("no snapshot", "<img src=x onerror=alert(1)>");
+        let bad = [expectation_story::CodeCoverage::parse("a.code.tsv", &hostile).unwrap()];
+        let shown = pages(&bad);
+        let html = find(&shown, &format!("site/test-{slug}.html"));
+        let md = find(&shown, &format!("tests/{slug}.md"));
+        for page in [&html, &md] {
+            assert!(
+                !page.contains("<script>x") && !page.contains("<img src=x"),
+                "{page}"
+            );
+            assert!(!page.contains("<b>app"));
+        }
+        assert!(!md.contains("[a](http://evil)"), "{md}");
         // Another run's captures, or a changed test's, are not shown.
         for other in [file("r2", &print), file("r1", "0000")] {
             let bad = [expectation_story::CodeCoverage::parse("app.code.tsv", &other).unwrap()];

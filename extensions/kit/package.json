@@ -1,0 +1,25 @@
+{
+  "name": "expectation-extension-kit",
+  "version": "0.1.0",
+  "description": "What Expectation extensions share: reading a results file, finding the files a driver attached, and writing the tab-separated files the manual reads",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ptescher/expectation",
+    "directory": "extensions/kit"
+  },
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}
