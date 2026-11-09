@@ -1,0 +1,28 @@
+{
+  "name": "expectation-code-coverage",
+  "version": "0.1.0",
+  "description": "An Expectation extension: associate LCOV or Istanbul coverage that an instrumented app handed over with the test run and step that produced it, and write the code coverage the manual shows",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ptescher/expectation",
+    "directory": "extensions/code-coverage"
+  },
+  "type": "module",
+  "bin": {
+    "expectation-code-coverage": "bin/expectation-code-coverage.js"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "expectation-extension-kit": "file:../kit"
+  }
+}

@@ -36,10 +36,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: npm test
+        working-directory: extensions/kit
       - run: npm ci
         working-directory: extensions/har-openapi
       # The unit tests, and the quote example end to end: a run, this extension, `expectation docs`.
       - run: npm test
         working-directory: extensions/har-openapi
+        env:
+          EXPECTATION_E2E: "1"
+      # Coverage an app hands over as attachments, the extension, and `expectation docs`, end to end.
+      - run: cargo build -p expectation_cli -p expectation_remote
+      - run: npm ci
+        working-directory: extensions/code-coverage
+      - run: npm test
+        working-directory: extensions/code-coverage
         env:
           EXPECTATION_E2E: "1"

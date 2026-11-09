@@ -14,6 +14,12 @@ export interface ExpectationControl {
   event?: string;
 }
 
+/** A file the app captured: text, or base64 for anything else. */
+export type ExpectationCapture = { name: string; type?: string } & (
+  | { text: string; base64?: never }
+  | { base64: string; text?: never }
+);
+
 export declare const DEFAULT_URL: string;
 
 export declare class ExpectationDriver {
@@ -29,6 +35,12 @@ export declare class ExpectationDriver {
   onControls(f: () => Maybe<ExpectationControl[]>): this;
   /** The `{view, id}` of controls `set` and `perform` acted on since the last call; empty it as you return. */
   onUsed(f: () => Maybe<{ view: string; id: string }[]>): this;
+  /**
+   * Hands over what the app captured since the last call (a coverage snapshot, a network log),
+   * and empties it. The runner asks after a test starts and after each step. `expectation-run
+   * --attachments DIR` keeps them outside the manual; without it they are dropped.
+   */
+  onAttachments(f: () => Maybe<ExpectationCapture[]>): this;
   /** Connects to the runner (http://127.0.0.1:4477 by default) and serves it. */
   start(url?: string): void;
   stop(): void;

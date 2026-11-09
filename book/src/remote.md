@@ -210,8 +210,9 @@ An app that says `"attachments": true` can hand over files it captured, such as 
 After a test's start and after each step, the runner sends `attachments`. The app answers with
 `attachments`, a list of `{"name", "type", "text"}` or `{"name", "type", "base64"}` for what it
 captured since it was last asked, and empties it. `expectation-run --attachments DIR` keeps
-them. In Rust that is `Handlers::on_attachments`. The JavaScript and Swift clients don't offer
-it yet, but any client can answer the command. See
+them. In Rust that is `Handlers::on_attachments`, in JavaScript `onAttachments`. The Swift client
+doesn't offer it yet, but any client can answer the command. An error from the handler, or a
+capture that is neither `text` nor `base64`, means no captures for that step; the test goes on. See
 [Evidence and contract coverage](evidence.md).
 
 ## Events: real taps or the app's actions?

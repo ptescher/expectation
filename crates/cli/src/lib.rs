@@ -241,6 +241,7 @@ fn docs(
             .map_or_else(Default::default, expectation_docs::Screenshots::parse),
         reader,
         shared: None,
+        code: &[],
     };
     if let Some(expectation_docs::Screenshots::Dir(d)) =
         shots.as_deref().map(expectation_docs::Screenshots::parse)
@@ -264,6 +265,7 @@ fn docs(
     };
     // Every platform's tests and results, then the pages: each one's dropdown knows the others' pages.
     let mut manuals = vec![];
+    let mut codes = vec![];
     for name in &names {
         let platform = name
             .as_deref()
@@ -316,6 +318,18 @@ fn docs(
                 expectation_story::Coverage::judge(contract, &c.plans, &report)
             })
             .collect();
+        // How much of the program's source ran, from files an extension wrote next to the results.
+        let (code, errors) =
+            expectation_story::load_code_coverage_for(&results_dir, name.as_deref());
+        for e in errors {
+            eprintln!("warning: code coverage file {e}");
+        }
+        for c in &code {
+            for p in &c.problems {
+                eprintln!("warning: {}: {p}", c.file);
+            }
+        }
+        codes.push(code);
         // Just some sections, for a preview: resolved in this platform's suite.
         let partial = (!sections.is_empty()).then(|| {
             let ids: Vec<_> = sections
@@ -370,6 +384,7 @@ fn docs(
             partial: partial.as_ref(),
             look: expectation_docs::Look {
                 shared: (i > 0 && names[i].is_some()).then_some((Path::new(out), 2)),
+                code: &codes[i],
                 ..look
             },
         };
@@ -535,7 +550,7 @@ fn prune_screenshots(store: &str, dirs: &[&str], dry_run: bool) {
         for entry in std::fs::read_dir(d).into_iter().flatten().flatten() {
             let path = entry.path();
             if path.extension().is_none_or(|e| e != "tsv")
-                || expectation_story::is_coverage_file(&path)
+                || expectation_story::sidecar::is_sidecar(&path, None)
             {
                 continue;
             }

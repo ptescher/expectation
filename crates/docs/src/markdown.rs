@@ -1086,7 +1086,87 @@ fn test_page(d: &Docs, f: &Facts, i: usize) -> String {
         );
         step_evidence(d, &mut o, i, n + 1);
     }
+    code_coverage(d, &mut o, i);
     o
+}
+
+/// Code coverage of the instrumented program while a test ran, apart from its result.
+fn code_coverage(d: &Docs, o: &mut String, plan: usize) {
+    use expectation_story::{Basis, CaptureState};
+    for (cov, caps) in d.code_coverage_of(plan) {
+        let _ = writeln!(
+            o,
+            "## Code coverage\n\nWhich of the program's own source ran while this test did. It is observed execution: it doesn't change the result above, and it doesn't show that anything was checked. Counts are running totals over the test; \"new\" is what a step added since the capture before it, when that can be told, and can include activity the test didn't cause.\n"
+        );
+        let about: Vec<String> = [
+            ("Source", &cov.name),
+            ("Revision", &cov.revision),
+            ("Scope", &cov.scope),
+        ]
+        .iter()
+        .filter(|(_, v)| !v.is_empty())
+        .map(|(k, v)| format!("{k}: {}", cell(v)))
+        .collect();
+        if !about.is_empty() {
+            let _ = writeln!(o, "{}\n", about.join(" · "));
+        }
+        let _ = writeln!(
+            o,
+            "| Capture | Lines | Branches | Functions | New since |\n| --- | --- | --- | --- | --- |"
+        );
+        for c in &caps {
+            let at = if c.step == 0 {
+                "Start".to_string()
+            } else {
+                format!("Step {}", c.step)
+            };
+            if c.state != CaptureState::Captured {
+                let what = if c.state == CaptureState::Missing {
+                    "No capture at this step"
+                } else {
+                    "A capture that can't be used"
+                };
+                let _ = writeln!(
+                    o,
+                    "| {at} | {what}{}. That isn't the same as nothing being covered. | | | |",
+                    if c.note.is_empty() {
+                        String::new()
+                    } else {
+                        format!(": {}", cell(&c.note))
+                    }
+                );
+                continue;
+            }
+            let n = |k: expectation_story::Count| format!("{} of {}", k.hit, k.found);
+            let new = match (c.new, c.basis) {
+                (Some([l, b, f]), Basis::Since(from)) => format!(
+                    "{}, since step {from} (the captures between are missing)",
+                    crate::html::counted(l, b, f)
+                ),
+                (Some([l, b, f]), _) => crate::html::counted(l, b, f),
+                (None, Basis::Baseline) => "the first capture: what ran before the test".into(),
+                (None, Basis::Restart) => "the program restarted, so nothing is attributed".into(),
+                (None, _) => "can't be told".into(),
+            };
+            let _ = writeln!(
+                o,
+                "| {at} | {} | {} | {} | {new} |",
+                n(c.lines),
+                n(c.branches),
+                n(c.functions)
+            );
+        }
+        o.push('\n');
+        if let Some(url) = caps.first().and_then(|c| cov.report_for(&c.plan, &c.run)) {
+            let _ = writeln!(
+                o,
+                "[The full coverage report](<{}>), hosted separately.\n",
+                url.replace('>', "%3E")
+                    .replace('<', "%3C")
+                    .replace(' ', "%20")
+            );
+        }
+    }
 }
 
 /// The contract evidence that counts for a step, if any: what the step did, as the extension

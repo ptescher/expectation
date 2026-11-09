@@ -40,14 +40,8 @@
 //! hundred characters with control characters removed, and a file over 16 MiB is refused.
 
 use crate::plan::Plan;
-use crate::report::{Report, fingerprint};
-
-/// The largest coverage file read.
-pub const MAX_BYTES: u64 = 16 * 1024 * 1024;
-/// The longest an id is kept.
-const MAX_ID: usize = 128;
-/// The longest a label, location, reason or note is kept.
-const MAX_TEXT: usize = 300;
+use crate::report::Report;
+use crate::sidecar::{MAX_ID, MAX_TEXT, clean};
 
 /// How a piece of evidence was tied to a test step.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -227,11 +221,6 @@ pub struct Contract {
 }
 
 /// Field text as it is kept: no control characters, at most `max` characters, `-` for none.
-fn clean(s: &str, max: usize) -> String {
-    let s: String = s.chars().filter(|c| !c.is_control()).take(max).collect();
-    if s == "-" { String::new() } else { s }
-}
-
 impl Contract {
     /// Its kind, or "Contract coverage" when the file doesn't say.
     pub fn kind_or_default(&self) -> String {
@@ -605,22 +594,7 @@ fn credit(e: &Evidence, plans: &[Plan], report: &Report) -> Credit {
     if e.attribution == Attribution::Unassigned {
         return Credit::Unassigned;
     }
-    let Some(i) = plans.iter().position(|p| p.slug == *slug) else {
-        return Credit::NoSuchTest;
-    };
-    if fingerprint(&plans[i]) != e.fingerprint {
-        return Credit::TestChanged;
-    }
-    if step > plans[i].steps.len() {
-        return Credit::NoSuchStep;
-    }
-    match report.results.get(i) {
-        Some(r) if !r.status.ran() => Credit::DidNotRun,
-        Some(r) if r.run.as_ref().is_some_and(|run| run.id == e.run) => {
-            Credit::Counts { plan: i, step }
-        }
-        _ => Credit::OtherRun,
-    }
+    crate::sidecar::credit(plans, report, slug, &e.fingerprint, &e.run, step)
 }
 
 impl Coverage {
@@ -741,11 +715,9 @@ pub fn coverage_file(name: &str, platform: Option<&str>) -> String {
     }
 }
 
-/// Is this file in a results directory a coverage file?
+/// Is this file in a results directory a contract coverage file?
 pub fn is_coverage_file(path: &std::path::Path) -> bool {
-    path.file_name()
-        .and_then(|n| n.to_str())
-        .is_some_and(|n| n.ends_with(".coverage.tsv"))
+    crate::sidecar::is_sidecar(path, Some("coverage"))
 }
 
 /// Every coverage file in `dir` for `platform` (and those for every platform), read, with an
@@ -754,55 +726,14 @@ pub fn load_contracts_for(
     dir: &std::path::Path,
     platform: Option<&str>,
 ) -> (Vec<Contract>, Vec<String>) {
-    let mut files: Vec<_> = std::fs::read_dir(dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| is_coverage_file(p))
-        .filter(|p| {
-            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            let stem = name.trim_end_matches(".coverage.tsv");
-            match stem.split_once('@') {
-                Some((_, on)) => Some(on) == platform,
-                None => true,
-            }
-        })
-        .collect();
-    files.sort();
-    let (mut contracts, mut errors) = (vec![], vec![]);
-    for f in files {
-        let name = f
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("")
-            .to_string();
-        match std::fs::metadata(&f) {
-            Ok(m) if m.len() > MAX_BYTES => {
-                errors.push(format!("{name}: over {} MiB, so not read", MAX_BYTES >> 20));
-                continue;
-            }
-            Err(e) => {
-                errors.push(format!("{name}: {e}"));
-                continue;
-            }
-            _ => {}
-        }
-        match std::fs::read_to_string(&f) {
-            Ok(text) => match Contract::parse(&name, &text) {
-                Ok(c) => contracts.push(c),
-                Err(e) => errors.push(e),
-            },
-            Err(e) => errors.push(format!("{name}: {e}")),
-        }
-    }
-    (contracts, errors)
+    crate::sidecar::load(dir, "coverage", platform, Contract::parse)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::plan::plan_stories;
+    use crate::report::fingerprint;
     use crate::report::{PlanResult, Run, Status};
 
     const SUITE: &str = "

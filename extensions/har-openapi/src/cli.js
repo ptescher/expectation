@@ -1,11 +1,11 @@
 // expectation-har-openapi: the command.
 
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve, sep } from 'node:path';
+import { dirname, join } from 'node:path';
 import { analyze, coverageFile } from './analyze.js';
 import { readHar } from './har.js';
 import { readSpec } from './openapi.js';
-import { readResults } from './results.js';
+import { attachedFiles, readResults } from 'expectation-extension-kit';
 
 export const USAGE = `usage: expectation-har-openapi --results <results.tsv> --openapi <api.yaml|json>
          [--har <capture.har>]... [--attachments <dir>]
@@ -78,19 +78,10 @@ export function parseArgs(argv) {
 
 /** The HAR files the driver attached, each placed in its test step. */
 function attached(results, dir) {
-  const root = resolve(dir);
-  const out = [];
-  for (const plan of results.plans) {
-    if (!plan.run) continue;
-    for (const a of plan.attachments) {
-      if (!/har/i.test(a.mediaType) && !a.path.endsWith('.har')) continue;
-      const path = resolve(root, a.path);
-      // A results file is input too: an attachment can't point outside the directory.
-      if (!path.startsWith(root + sep)) throw new Error(`${a.path}: outside ${dir}`);
-      out.push({ ...readHar(path), declared: { run: plan.run, plan, step: a.step } });
-    }
-  }
-  return out;
+  return attachedFiles(results, dir, (a) => /har/i.test(a.mediaType) || a.path.endsWith('.har')).map((f) => ({
+    ...readHar(f.path),
+    declared: { run: f.plan.run, plan: f.plan, step: f.step },
+  }));
 }
 
 export function main(argv, log = (s) => process.stderr.write(s + '\n')) {
