@@ -338,6 +338,20 @@ fn docs(
         });
         manuals.push((c, report, contracts, partial));
     }
+    // The default manual shows a section that doesn't run on the default platform with the
+    // results of its own first platform.
+    if manuals.len() > 1 {
+        let (first, rest) = manuals.split_first_mut().unwrap();
+        for (name, other) in names.iter().skip(1).zip(rest.iter()) {
+            let Some(name) = name else { continue };
+            let suite = &first.0.suite;
+            first
+                .1
+                .borrow_from(&first.0.plans, &other.1, &other.0.plans, |p| {
+                    suite.shown_platform(p.section) == Some(name.as_str())
+                });
+        }
+    }
     if sections.is_empty() && base_url.is_some() {
         fail("--base-url is for a partial manual: give it with --section".into());
     }

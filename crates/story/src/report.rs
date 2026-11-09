@@ -229,6 +229,34 @@ pub enum Verdict {
 }
 
 impl Report {
+    /// For the tests `wanted` (of `plans`), take the results another platform's manual has
+    /// for the same tests (`from`, of `from_plans`, matched by slug): a section that doesn't
+    /// run on this platform shows its own. A test whose steps differ keeps what it has.
+    pub fn borrow_from(
+        &mut self,
+        plans: &[Plan],
+        from: &Report,
+        from_plans: &[Plan],
+        wanted: impl Fn(&Plan) -> bool,
+    ) {
+        for (i, plan) in plans.iter().enumerate() {
+            if !wanted(plan) {
+                continue;
+            }
+            let Some(j) = from_plans.iter().position(|p| p.slug == plan.slug) else {
+                continue;
+            };
+            let Some(theirs) = from.results.get(j) else {
+                continue;
+            };
+            if theirs.steps.len() == plan.steps.len()
+                && let Some(mine) = self.results.get_mut(i)
+            {
+                *mine = theirs.clone();
+            }
+        }
+    }
+
     /// Nothing failed. Tests that aren't supported yet, are pending, or weren't run, don't count
     /// against it, and none of them counts as verified either.
     pub fn passed(&self) -> bool {

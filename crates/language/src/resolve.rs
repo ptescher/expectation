@@ -399,6 +399,19 @@ fn sections(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
             follows,
             follows_steps,
             launch: header.and_then(|h| h.launch.as_ref().map(|(l, _)| l.clone())),
+            platforms: {
+                let mut own: Vec<String> = vec![];
+                for (p, _) in files
+                    .iter()
+                    .filter(|f| f.dir == dir)
+                    .flat_map(|f| &f.platforms)
+                {
+                    if !own.contains(p) {
+                        own.push(p.clone());
+                    }
+                }
+                own
+            },
             start,
             span: header.map(|h| h.span.clone()),
             children: vec![],

@@ -1412,4 +1412,73 @@ Feature: Paying
             assert!(reader.iter().any(|p| p.path == path), "{path}");
         }
     }
+
+    #[test]
+    fn a_section_that_skips_the_default_platform_shows_its_first_platforms_results() {
+        let root = "Vocabulary:\n  Platform: desktop | iOS\n    About: sim: the game with simulated drones\n  State: the lamp is on | off\n  Event: the user flips the switch\nBackground:\n  Given the lamp is off\n";
+        let story = |name: &str| {
+            format!(
+                "Story: {name}\n  As a user\n  I want light\n  So that I see\n  Scenario: x\n    When the user flips the switch\n    Then the lamp is on\n"
+            )
+        };
+        let ground = format!("Section: Ground\n\n{}", story("Lighting the ground"));
+        let towers = format!(
+            "Section: Towers\n\nVocabulary:\n  Platform: sim | field\n\n{}",
+            story("Lighting a tower")
+        );
+        let loaded = expectation_language::load_sources(
+            "S",
+            &[
+                ("s.expect", root),
+                ("01-ground/g.expect", &ground),
+                ("02-towers/t.expect", &towers),
+            ],
+        );
+        assert!(!loaded.has_errors(), "{}", loaded.render_diagnostics());
+        let suite = loaded.suite;
+        let analysis = expectation_graph::analyze(&suite);
+        let plans = expectation_story::plan_stories(&suite, &analysis).plans;
+        let sim_ran = Report {
+            results: plans
+                .iter()
+                .map(|p| expectation_story::report::PlanResult::with(Status::Passed, p))
+                .collect(),
+        };
+        let mut report = Report::not_run(&plans);
+        report.borrow_from(&plans, &sim_ran, &plans, |p| {
+            suite.shown_platform(p.section) == Some("sim")
+        });
+        let pages = Docs {
+            suite: &suite,
+            analysis: &analysis,
+            plans: &plans,
+            report: Some(&report),
+            suite_dir: None,
+            siblings: &[],
+            outline: None,
+            inventory: &[],
+            contracts: &[],
+            partial: None,
+            look: Look::default(),
+        }
+        .pages();
+        let page = |name: &str| {
+            pages
+                .iter()
+                .find(|p| p.path == format!("site/{name}.html"))
+                .unwrap_or_else(|| panic!("{name}"))
+                .content
+                .clone()
+        };
+        let towers = page("tutorial-towers--lighting-a-tower--x");
+        assert!(
+            towers.contains("Shown for <strong>sim</strong>: the game with simulated drones"),
+            "{towers}"
+        );
+        assert!(towers.contains("selected>sim"), "{towers}");
+        assert!(towers.contains("passed"));
+        let ground = page("tutorial-ground--lighting-the-ground--x");
+        assert!(!ground.contains("Shown for"));
+        assert!(ground.contains("selected>desktop"));
+    }
 }
