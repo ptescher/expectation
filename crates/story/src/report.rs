@@ -701,7 +701,9 @@ pub fn load_results_for(dir: &std::path::Path, plans: &[Plan], platform: Option<
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "tsv"))
         // Coverage files sit next to the results; they aren't results.
-        .filter(|p| !crate::coverage::is_coverage_file(p))
+        .filter(|p| {
+            !crate::coverage::is_coverage_file(p) && !crate::codecov::is_code_coverage_file(p)
+        })
         .filter(|p| {
             match p
                 .file_stem()

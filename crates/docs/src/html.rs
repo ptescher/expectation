@@ -14,11 +14,30 @@ use expectation_graph::Node;
 use expectation_model::text::paragraphs;
 use expectation_model::{ExpId, FeatureId, Keyword, PhraseBody, SectionId, StepText, Suite};
 use expectation_story::{
-    Attribution, Because, Check, CheckResult, Completeness, Credit, Origin, Source, State, Status,
-    StepResult, Verdict,
+    Attribution, Basis, Because, CaptureState, Check, CheckResult, Completeness, Credit, Origin,
+    Source, State, Status, StepResult, Verdict,
 };
 use std::collections::HashMap;
 use std::fmt::Write;
+
+/// What a capture's "new" numbers say, in words.
+fn new_since(c: &expectation_story::Capture) -> String {
+    let Some([l, b, f]) = c.new else {
+        return match c.basis {
+            Basis::Baseline => "the first capture: what ran before the test".into(),
+            Basis::Restart => "the program restarted, so nothing is attributed".into(),
+            _ => "can't be told".into(),
+        };
+    };
+    let what = format!("{l} lines, {b} branches, {f} functions");
+    match c.basis {
+        Basis::Step => what,
+        Basis::Spans(from) => {
+            format!("{what}, since step {from} (the captures between are missing)")
+        }
+        _ => what,
+    }
+}
 
 pub fn esc(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -1859,7 +1878,79 @@ impl Site<'_> {
             o.push_str(&self.step_evidence(i, n + 1));
             o.push_str("</section>");
         }
+        o.push_str(&self.code_coverage(i));
         self.page(Here::Test(i), &plan.title, &o)
+    }
+
+    /// Code coverage of the instrumented program while this test ran, apart from its result.
+    fn code_coverage(&self, plan: usize) -> String {
+        let mut o = String::new();
+        for (cov, caps) in self.d.code_coverage_of(plan) {
+            let _ = write!(
+                o,
+                r#"<section class="step code-coverage" id="code-coverage"><h2>Code coverage</h2><p class="muted">Which of the program's own source ran while this test did. It is observed execution: it doesn't change the result above, and it doesn't show that anything was checked. Counters are the program's totals since it started; "new" is what a step added, when that can be told, and can include activity the test didn't cause.</p>"#
+            );
+            let mut about = vec![];
+            for (label, v) in [
+                ("Source", &cov.name),
+                ("Revision", &cov.revision),
+                ("Scope", &cov.scope),
+            ] {
+                if !v.is_empty() {
+                    about.push(format!("{label}: <code>{}</code>", esc(v)));
+                }
+            }
+            if !about.is_empty() {
+                let _ = write!(o, "<p>{}</p>", about.join(" · "));
+            }
+            o.push_str("<table><thead><tr><th>Capture</th><th>Lines</th><th>Branches</th><th>Functions</th><th>New since</th></tr></thead><tbody>");
+            for c in &caps {
+                let at = if c.step == 0 {
+                    r##"<a href="#step-0">Start</a>"##.to_string()
+                } else {
+                    format!(r##"<a href="#step-{0}">Step {0}</a>"##, c.step)
+                };
+                match c.state {
+                    CaptureState::Captured => {
+                        let n = |k: expectation_story::Count| format!("{} of {}", k.hit, k.found);
+                        let _ = write!(
+                            o,
+                            "<tr><td>{at}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                            n(c.lines),
+                            n(c.branches),
+                            n(c.functions),
+                            esc(&new_since(c))
+                        );
+                    }
+                    other => {
+                        let what = if other == CaptureState::Missing {
+                            "No capture at this step"
+                        } else {
+                            "A capture that can't be used"
+                        };
+                        let note = if c.note.is_empty() {
+                            String::new()
+                        } else {
+                            format!(": {}", esc(&c.note))
+                        };
+                        let _ = write!(
+                            o,
+                            r#"<tr><td>{at}</td><td colspan="4"><span class="badge warn">{what}</span>{note}. That isn't the same as nothing being covered.</td></tr>"#
+                        );
+                    }
+                }
+            }
+            o.push_str("</tbody></table>");
+            if let Some(url) = caps.first().and_then(|c| cov.report_for(&c.plan, &c.run)) {
+                let _ = write!(
+                    o,
+                    r#"<p><a href="{}" rel="noopener noreferrer">The full coverage report</a>, hosted separately.</p>"#,
+                    esc(&url)
+                );
+            }
+            o.push_str("</section>");
+        }
+        o
     }
 
     /// The contract evidence that counts for a step: what it did, and the contract it was held against.

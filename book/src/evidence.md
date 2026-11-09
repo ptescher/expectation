@@ -88,6 +88,52 @@ branch of a JSON response becomes an outcome. It also reads a HAR made by any ot
 it leaves unknown. `crates/harness/examples/quote` runs the whole pipeline, with a stand-in
 quote service.
 
+## Code coverage
+
+Contract coverage asks which documented outcomes were seen. Code coverage asks which of the
+program's own source ran, and links that to the test that ran it. It is a separate thing with a
+separate section on the test's page, because it means something different.
+
+The application collects it (Istanbul, or anything that writes LCOV) and hands it over as step
+attachments, in JavaScript with `onAttachments`. Then
+[`extensions/code-coverage`](https://github.com/ptescher/expectation/tree/main/extensions/code-coverage)
+reads LCOV or Istanbul's `coverage-final.json` and writes `results/code[@platform].code.tsv`:
+
+```bash
+expectation-run expectations --docs docs --attachments captures
+npx expectation-code-coverage --results docs/results/app.tsv --attachments captures \
+  --revision "$(git rev-parse HEAD)" --scope "src/**, without tests" \
+  --report-url "https://coverage.example.com/{run}/{slug}/"
+expectation docs expectations docs
+```
+
+Each test's page then has a "Code coverage" section: the source revision and scope that were
+instrumented, the lines, branches and functions hit at the start and after each step, what each
+step added, and a link to a full HTML report that is hosted somewhere else (`{run}` and `{slug}`
+are filled in for each test). Raw coverage files stay in the attachments directory, outside the
+manual.
+
+What the section claims is limited on purpose:
+
+- **It is observed execution.** It never changes a test's result or an expectation's verdict,
+  and it doesn't say anything was asserted. A line that ran in a failed test ran.
+- **Missing is not uncovered.** A step with no capture, or with one that can't be read, is shown
+  as that. Zero lines hit and "no data" are different.
+- **A step's part is only claimed when it can be.** Counters count from when the app started, so
+  a step's part is the difference from the capture before. If a counter goes down, the app
+  restarted, and nothing is attributed to that step. If a step's capture is missing, the next
+  difference is labelled as spanning the steps between. Anything else that ran in the same
+  window, such as background work, is in the numbers, and the page says so. With
+  `--counters per-step` the app empties its counters each time it hands them over.
+- **It counts for its own run and test.** Like contract evidence, a capture is shown only with
+  the run it came from and a test that hasn't changed since.
+
+Code coverage files are read the same way as the others: tab-separated, a few hundred characters
+a field, 16 MiB at most, and the report link must be an `http` or `https` address. The format is
+described at the top of
+[`crates/story/src/codecov.rs`](https://github.com/ptescher/expectation/blob/main/crates/story/src/codecov.rs).
+Expectation doesn't instrument the app: collecting coverage is the app's and the driver's job.
+
 ## Writing an extension
 
 An extension reads:

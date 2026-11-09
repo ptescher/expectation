@@ -2,12 +2,17 @@
 //! routes) into test plans, [`report`] holds what happened when they ran, and [`coverage`](mod@coverage)
 //! reads what extensions made of the evidence those runs left, held to the results.
 
+pub mod codecov;
 pub mod controls;
 pub mod coverage;
 pub mod plan;
 pub mod report;
 pub mod sha256;
 
+pub use codecov::{
+    Basis, Capture, CaptureState, CodeCoverage, Count, code_coverage_file, is_code_coverage_file,
+    load_code_coverage_for,
+};
 pub use controls::{Control, ControlRow, Gap, control_coverage, controls_json};
 pub use coverage::{
     Attribution, Completeness, Contract, Coverage, Credit, Evidence, Item, Judged, Note, Source,

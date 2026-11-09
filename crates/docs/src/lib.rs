@@ -80,6 +80,9 @@ pub struct Look<'a> {
     /// directory that holds the shared `screenshots/`, and how many folders up it is from this
     /// manual. `None` is a manual that has its own.
     pub shared: Option<(&'a Path, usize)>,
+    /// Code coverage files (see [`expectation_story::CodeCoverage`]): shown on the test pages
+    /// as observed execution, apart from the results.
+    pub code: &'a [expectation_story::CodeCoverage],
 }
 
 /// Where the screenshots are that the results name as `screenshots/<rest>`.
@@ -327,6 +330,26 @@ impl Docs<'_> {
             }
         }
         out
+    }
+
+    /// The code coverage that counts for test `plan`: per file, its captures of this run of the
+    /// test as it is now, and how many other captures it holds that were left out.
+    pub fn code_coverage_of(
+        &self,
+        plan: usize,
+    ) -> Vec<(
+        &expectation_story::CodeCoverage,
+        Vec<&expectation_story::Capture>,
+    )> {
+        let Some(report) = self.report else {
+            return vec![];
+        };
+        self.look
+            .code
+            .iter()
+            .map(|c| (c, c.for_plan(self.plans, report, plan)))
+            .filter(|(_, found)| !found.is_empty())
+            .collect()
     }
 
     /// Write the Markdown pages and the HTML site under `dir`. Pages of stories or features
@@ -1480,5 +1503,83 @@ Feature: Paying
         let ground = page("tutorial-ground--lighting-the-ground--x");
         assert!(!ground.contains("Shown for"));
         assert!(ground.contains("selected>desktop"));
+    }
+
+    #[test]
+    fn code_coverage_is_shown_as_observed_execution_for_the_run_and_test_it_came_from() {
+        let src = "Vocabulary:\n  State: the lamp is on | off\n  Event: the user flips the switch\nBackground:\n  Given the lamp is off\nStory: Using the lamp\n  As a user\n  I want light\n  So that I see\n  Scenario: x\n    When the user flips the switch\n    Then the lamp is on\n";
+        let loaded = expectation_language::load_sources("S", &[("s.expect", src)]);
+        assert!(!loaded.has_errors(), "{}", loaded.render_diagnostics());
+        let suite = loaded.suite;
+        let analysis = expectation_graph::analyze(&suite);
+        let plans = expectation_story::plan_stories(&suite, &analysis).plans;
+        let mut report = Report::not_run(&plans);
+        for (r, p) in report.results.iter_mut().zip(&plans) {
+            *r = expectation_story::PlanResult::with(Status::Passed, p);
+            r.run = Some(expectation_story::Run {
+                id: "r1".into(),
+                started_ms: 1,
+            });
+        }
+        let (slug, print) = (&plans[0].slug, expectation_story::fingerprint(&plans[0]));
+        let file = |run: &str, print: &str| {
+            format!(
+                "expectation-code-coverage 1\nsource\tapp\tabc123\tsrc/**\thttps://cov.example/r\ncapture\t{run}\t{slug}\t{print}\t0\tcaptured\tbaseline\t-\t5\t10\t1\t4\t2\t3\t-\t-\t-\ncapture\t{run}\t{slug}\t{print}\t1\tcaptured\tstep\t-\t7\t10\t2\t4\t2\t3\t2\t1\t0\ncapture\t{run}\t{slug}\t{print}\t2\tmissing\tnone\tno snapshot\t0\t0\t0\t0\t0\t0\t-\t-\t-\n"
+            )
+        };
+        let pages = |code: &[expectation_story::CodeCoverage]| {
+            Docs {
+                suite: &suite,
+                analysis: &analysis,
+                plans: &plans,
+                report: Some(&report),
+                suite_dir: None,
+                siblings: &[],
+                outline: None,
+                inventory: &[],
+                contracts: &[],
+                partial: None,
+                look: Look {
+                    code,
+                    ..Look::default()
+                },
+            }
+            .pages()
+        };
+        let find = |pages: &[Page], path: &str| {
+            pages
+                .iter()
+                .find(|p| p.path == path)
+                .unwrap_or_else(|| panic!("{path}"))
+                .content
+                .clone()
+        };
+        let good = [
+            expectation_story::CodeCoverage::parse("app.code.tsv", &file("r1", &print)).unwrap(),
+        ];
+        let shown = pages(&good);
+        let (html, md) = (
+            find(&shown, &format!("site/test-{slug}.html")),
+            find(&shown, &format!("tests/{slug}.md")),
+        );
+        for page in [&html, &md] {
+            assert!(page.contains("Code coverage"), "{page}");
+            assert!(page.contains("observed execution"));
+            assert!(page.contains("abc123") && page.contains("src/"));
+            assert!(page.contains("7 of 10"));
+            assert!(page.contains("2 lines, 1 branches, 0 functions"));
+            assert!(page.contains("No capture at this step"));
+            assert!(page.contains("isn't the same as nothing being covered"));
+            assert!(page.contains("https://cov.example/r"));
+        }
+        // The result is what it was.
+        assert!(html.contains("passed"));
+        // Another run's captures, or a changed test's, are not shown.
+        for other in [file("r2", &print), file("r1", "0000")] {
+            let bad = [expectation_story::CodeCoverage::parse("app.code.tsv", &other).unwrap()];
+            let hidden = pages(&bad);
+            assert!(!find(&hidden, &format!("site/test-{slug}.html")).contains("Code coverage"));
+            assert!(!find(&hidden, &format!("tests/{slug}.md")).contains("Code coverage"));
+        }
     }
 }

@@ -220,6 +220,7 @@ impl Acceptance {
                     .map_or_else(Default::default, expectation_docs::Screenshots::parse),
                 reader: self.reader,
                 shared: None,
+                code: &[],
             },
         }
     }
@@ -246,6 +247,9 @@ impl Acceptance {
             .collect();
         let mut docs = self.docs(Some(&merged));
         docs.contracts = &judged;
+        let (code, _) =
+            expectation_story::load_code_coverage_for(&results, self.suite.platform.as_deref());
+        docs.look.code = &code;
         if self.tree(dir) != dir {
             docs.look.shared = Some((dir, 2));
         }

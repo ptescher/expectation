@@ -43,3 +43,9 @@ jobs:
         working-directory: extensions/har-openapi
         env:
           EXPECTATION_E2E: "1"
+      # Coverage an app hands over as attachments, the extension, and `expectation docs`, end to end.
+      - run: cargo build -p expectation_cli -p expectation_remote
+      - run: npm test
+        working-directory: extensions/code-coverage
+        env:
+          EXPECTATION_E2E: "1"
