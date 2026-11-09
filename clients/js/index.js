@@ -27,6 +27,20 @@ async function request(url, options, timeoutMs) {
   }
 }
 
+/** What the protocol carries of each capture: a name, a media type, and `text` or `base64`. */
+function attachmentsOf(list) {
+  if (list == null) return [];
+  if (!Array.isArray(list)) throw new Error('onAttachments must return a list of captures');
+  return list.map((a, i) => {
+    if (!a || typeof a.name !== 'string' || !a.name) throw new Error(`capture ${i} has no name`);
+    const out = { name: a.name, type: a.type || 'application/octet-stream' };
+    if (typeof a.text === 'string') out.text = a.text;
+    else if (typeof a.base64 === 'string') out.base64 = a.base64;
+    else throw new Error(`capture ${a.name} has neither text nor base64`);
+    return out;
+  });
+}
+
 class ExpectationDriver {
   constructor({ platform, app }) {
     this.platform = platform;
@@ -39,6 +53,7 @@ class ExpectationDriver {
     this.screenshotHandler = null;
     this.controlsHandler = null;
     this.usedHandler = null;
+    this.attachmentsHandler = null;
     this.running = false;
   }
 
@@ -59,6 +74,15 @@ class ExpectationDriver {
   /** `f` returns `[{ view, id }]` for the controls `set` and `perform` acted on since the last call, and empties it. */
   onUsed(f) { this.usedHandler = f; return this; }
 
+  /**
+   * `f` returns the files the app captured since it was last asked (a coverage snapshot, a
+   * network log), as `[{ name, type?, text }]` or `[{ name, type?, base64 }]`, and empties them.
+   * The runner asks after a test starts and after each step, so each capture belongs to the
+   * step that produced it. It keeps them only with `expectation-run --attachments DIR`, outside
+   * the generated manual: a capture can hold private data.
+   */
+  onAttachments(f) { this.attachmentsHandler = f; return this; }
+
   hello() {
     return {
       platform: this.platform,
@@ -70,6 +94,7 @@ class ExpectationDriver {
       screenshot: !!this.screenshotHandler,
       reset: !!this.resetHandler,
       controls: !!this.controlsHandler,
+      attachments: !!this.attachmentsHandler,
     };
   }
 
@@ -147,6 +172,10 @@ class ExpectationDriver {
         case 'used': {
           if (!this.usedHandler) return { error: 'no used' };
           return { used: await this.usedHandler() };
+        }
+        case 'attachments': {
+          if (!this.attachmentsHandler) return { error: 'no attachments' };
+          return { attachments: attachmentsOf(await this.attachmentsHandler()) };
         }
         default:
           return { error: `unknown command ${c.op}` };
