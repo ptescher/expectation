@@ -506,6 +506,35 @@ impl Site<'_> {
         }
     }
 
+    /// The platform whose results a page shows, when it isn't the manual's own: the page is in a
+    /// section that runs on other platforms than the default, and this is the default's manual.
+    fn shown_for(&self, here: Here) -> Option<&str> {
+        let s = self.suite();
+        if s.platform.as_deref() != s.platforms.first().map(String::as_str) {
+            return None;
+        }
+        s.shown_platform(self.section_of(here)?)
+    }
+
+    /// "Shown for sim: …", on a page whose results are another platform's.
+    fn shown_note(&self, here: Here) -> String {
+        let Some(p) = self.shown_for(here) else {
+            return String::new();
+        };
+        let s = self.suite();
+        let default = s.platforms.first().map_or("", String::as_str);
+        let about = s
+            .platform_about
+            .iter()
+            .find(|(n, _)| n == p)
+            .map_or(String::new(), |(_, t)| format!(": {}", esc(t)));
+        format!(
+            r#"<p class="shown-for">Shown for <strong>{}</strong>{about}. This part isn't run on {}; the version menu has the others.</p>"#,
+            esc(p),
+            esc(default)
+        )
+    }
+
     fn nav(&self, here: Here) -> String {
         let open: Vec<SectionId> = self
             .section_of(here)
@@ -784,7 +813,7 @@ impl Site<'_> {
 
     /// The dropdown that moves to the same page of another platform's manual (or its first
     /// page, if it has none like it). Nothing when the suite has one platform.
-    fn platform_picker(&self, file: &str) -> String {
+    fn platform_picker(&self, file: &str, shown: Option<&str>) -> String {
         let s = self.suite();
         let Some(current) = s.platform.as_deref().filter(|_| s.platforms.len() > 1) else {
             return String::new();
@@ -831,7 +860,11 @@ impl Site<'_> {
                 o,
                 r#"<option value="{}"{title}{}>{}</option>"#,
                 esc(&href),
-                if p == current { " selected" } else { "" },
+                if p == shown.unwrap_or(current) {
+                    " selected"
+                } else {
+                    ""
+                },
                 esc(p)
             );
         }
@@ -871,7 +904,8 @@ impl Site<'_> {
         } else {
             ""
         };
-        let platforms = self.platform_picker(&self.here_link(here).0);
+        let platforms = self.platform_picker(&self.here_link(here).0, self.shown_for(here));
+        let shown_note = self.shown_note(here);
         let suite = esc(&self.suite().name);
         let full = if title == self.suite().name {
             suite.clone()
@@ -895,6 +929,7 @@ impl Site<'_> {
 {}
 <main>
 {}
+{shown_note}
 {body}
 {pager}
 {footer}

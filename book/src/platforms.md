@@ -68,3 +68,20 @@ Vocabulary:
 ```
 
 An `About:` for a platform the suite doesn't declare is an error.
+
+## A section that runs on other platforms
+
+A section can declare platforms of its own, in a `Vocabulary` block in its directory:
+
+```gherkin
+Section: Towers
+
+Vocabulary:
+  Platform: sim | field
+```
+
+Its tests don't run on the default platform, so the default manual would show them with no results.
+Instead, its pages show the results of the section's first platform (`sim` here), say so ("Shown for
+sim: …", with that platform's `About:` text), and the version menu has `sim` selected. The pages of
+sections that run on the default platform are unchanged, and the other platforms' manuals show their
+own results.

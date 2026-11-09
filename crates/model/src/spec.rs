@@ -247,6 +247,9 @@ pub struct Section {
     /// `Launch:`: how to start the program under test, if this section says (its sub-sections
     /// inherit it; see [`Suite::launch_of`]).
     pub launch: Option<String>,
+    /// The `Platform:`s declared in this section's own files, if it says: the platforms it runs
+    /// on, the first the one its results are shown for (see [`Suite::shown_platform`]).
+    pub platforms: Vec<String>,
     /// The state everything in it starts from: its parent's start with `setup` written over it.
     pub start: Condition,
     pub span: Option<Span>,
@@ -422,6 +425,20 @@ impl Suite {
             at = s.parent;
         }
         None
+    }
+
+    /// The platform whose results stand for section `id` in the default platform's manual: the
+    /// first platform of the nearest section (itself or an ancestor) that declares any, when
+    /// the default isn't among them. `None` if it runs on the default platform, or says nothing.
+    pub fn shown_platform(&self, id: SectionId) -> Option<&str> {
+        let default = self.platforms.first()?;
+        let own = self
+            .chain(id)
+            .into_iter()
+            .rev()
+            .map(|s| &s.platforms)
+            .find(|p| !p.is_empty())?;
+        (!own.contains(default)).then(|| own[0].as_str())
     }
 
     pub fn section(&self, id: SectionId) -> &Section {
