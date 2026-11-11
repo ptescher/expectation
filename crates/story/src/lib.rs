@@ -25,7 +25,8 @@ pub use plan::{
 };
 pub use report::{
     Attachment, CheckResult, PlanResult, Report, Run, Status, StepResult, Verdict, Window,
-    fingerprint, load_results, load_results_for, now_ms, results_file, screenshots_named,
+    fingerprint, load_results, load_results_for, now_ms, platform_shots, results_file,
+    screenshots_named,
 };
 
 #[cfg(test)]

@@ -89,6 +89,29 @@ impl Acceptance {
         }
     }
 
+    /// The folder under the docs' `screenshots/` for this platform's per-test screenshots
+    /// (`platforms/<name>`), so each platform's results name its own pictures. `None` for the
+    /// default platform and a suite without platforms: theirs are in `screenshots/` itself.
+    pub fn screenshots_under(&self) -> Option<String> {
+        match self.suite.platform.as_deref() {
+            Some(p) if self.suite.platforms.first().map(String::as_str) != Some(p) => {
+                Some(expectation_story::platform_shots(p))
+            }
+            _ => None,
+        }
+    }
+
+    /// What to run with so that [`Acceptance::publish`] to the docs directory `dir` finds the
+    /// screenshots: they are taken into `dir/screenshots/`, a later platform's in a folder of
+    /// its own there.
+    pub fn run_options(&self, dir: impl Into<std::path::PathBuf>) -> RunOptions {
+        RunOptions {
+            docs_dir: Some(dir.into()),
+            screenshots_under: self.screenshots_under(),
+            ..Default::default()
+        }
+    }
+
     pub fn from_loaded(loaded: Loaded) -> Result<Self, String> {
         let Loaded {
             suite,
@@ -233,11 +256,16 @@ impl Acceptance {
         std::fs::create_dir_all(&results)?;
         let file = expectation_story::results_file(runner, self.platform.as_deref());
         std::fs::write(results.join(file), report.save(&self.plans))?;
-        let merged = expectation_story::load_results_for(
+        let mut merged = expectation_story::load_results_for(
             &results,
             &self.plans,
             self.suite.platform.as_deref(),
         );
+        // A later platform's pictures are in its own folder of the shared screenshots; a
+        // per-test name outside it is another platform's picture, or nobody's.
+        if let Some(under) = self.screenshots_under() {
+            merged.only_shots_under(&under);
+        }
         // What extensions made of this platform's evidence, held to these results.
         let (found, _) =
             expectation_story::load_contracts_for(&results, self.suite.platform.as_deref());

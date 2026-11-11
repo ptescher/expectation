@@ -163,11 +163,13 @@ fn main() {
         .unwrap_or_else(|e| fail(&e));
     eprintln!("{} ({}) connected", app.name, app.platform);
 
-    let tree = docs.as_ref().map(|d| acceptance.tree(d));
     let report = acceptance.run(
         &mut driver,
         &RunOptions {
-            docs_dir: tree,
+            // Every platform's screenshots are in the docs' own screenshots/, a later
+            // platform's in a folder of its own there, so its results name its own pictures.
+            docs_dir: docs.clone(),
+            screenshots_under: acceptance.screenshots_under(),
             attachments_dir: attachments,
             screenshot_store: store.map(PathBuf::from),
             ..Default::default()

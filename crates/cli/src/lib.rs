@@ -303,7 +303,13 @@ fn docs(
             || Path::new(out).join("results"),
             |r| Path::new(r).to_path_buf(),
         );
-        let report = expectation_story::load_results_for(&results_dir, &c.plans, name.as_deref());
+        let mut report =
+            expectation_story::load_results_for(&results_dir, &c.plans, name.as_deref());
+        // A later platform's pictures are in its own folder of the shared screenshots; a
+        // per-test name outside it is another platform's picture, or nobody's.
+        if let Some(p) = platform {
+            report.only_shots_under(&expectation_story::platform_shots(p));
+        }
         // Coverage files that extensions wrote next to the results, held to these results.
         let (found, errors) = expectation_story::load_contracts_for(&results_dir, name.as_deref());
         for e in errors {

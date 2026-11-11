@@ -54,6 +54,23 @@ and merges them with what other runners saved.
 under `platforms/<name>/`. Every HTML page has a Platform menu that opens the same page in the
 other manual.
 
+The platforms share one docs directory, and so one `screenshots/`. The default platform's are in
+`screenshots/<test>/`, and each other platform's in a folder of its own,
+`screenshots/platforms/<name>/<test>/`, so the same test on two platforms never shows the other's
+picture. `expectation-run --docs` does this. A driver in Rust gets it from
+`acceptance.run_options("docs")`, or by setting `RunOptions::screenshots_under` to
+`acceptance.screenshots_under()`:
+
+```rust
+let acceptance = Acceptance::load_for("expectations", "iOS")?;
+let report = acceptance.run(&mut driver, &acceptance.run_options("docs"));
+acceptance.publish("docs".as_ref(), "app", &report)?;
+```
+
+Results saved before this name a later platform's screenshots as `screenshots/<test>/…`. Its
+manual shows a placeholder for those until the tests run again. Screenshots kept by content in
+a store are the same on every platform.
+
 ## Saying what each platform is
 
 The docs have a menu that picks the version of the manual. Say what each platform is with

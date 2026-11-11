@@ -257,6 +257,27 @@ impl Report {
         }
     }
 
+    /// For the results of a platform whose per-test screenshots are in `screenshots/<under>/`
+    /// (see [`platform_shots`]): forget the ones named anywhere else. Such a name is from
+    /// before platforms had folders of their own, and what is at it now may be another
+    /// platform's picture. Screenshots named by content (`screenshots/<hash>.png`) stay: the
+    /// same name is the same picture on every platform.
+    pub fn only_shots_under(&mut self, under: &str) {
+        let own = format!("screenshots/{}/", under.trim_matches('/'));
+        for r in &mut self.results {
+            for step in std::iter::once(&mut r.start).chain(&mut r.steps) {
+                let other = step.screenshot.as_deref().is_some_and(|p| {
+                    !p.starts_with(&own)
+                        && p.strip_prefix("screenshots/")
+                            .is_none_or(|rest| rest.contains('/'))
+                });
+                if other {
+                    step.screenshot = None;
+                }
+            }
+        }
+    }
+
     /// Nothing failed. Tests that aren't supported yet, are pending, or weren't run, don't count
     /// against it, and none of them counts as verified either.
     pub fn passed(&self) -> bool {
@@ -657,6 +678,12 @@ pub fn fingerprint(plan: &Plan) -> String {
         eat(&step.checks.len().to_string());
     }
     format!("{h:016x}")
+}
+
+/// The folder under `screenshots/` for the per-test screenshots of `platform`, when it isn't
+/// the suite's first: `platforms/<name>`. The first platform's are in `screenshots/` itself.
+pub fn platform_shots(platform: &str) -> String {
+    format!("platforms/{}", expectation_model::text::slug(platform))
 }
 
 /// The screenshots a results file names, by file name (`<hash>.png` for
