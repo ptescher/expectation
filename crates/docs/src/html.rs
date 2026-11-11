@@ -1024,6 +1024,9 @@ impl Site<'_> {
                 esc(&alt),
                 if stale {
                     "<figcaption>From before this page changed.</figcaption>"
+                } else if status == Status::Failed {
+                    // Evidence of what went wrong, not a picture of what should be there.
+                    "<figcaption>What it looked like when this failed.</figcaption>"
                 } else {
                     ""
                 }

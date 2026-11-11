@@ -357,6 +357,13 @@ fn run_steps(
                 start_ms: began,
                 end_ms: now_ms(),
             });
+            // What it looked like when it went wrong, if the driver can still say. The failure
+            // is the setup's whether or not there is a picture of it.
+            start.screenshot = shoot(driver, 0);
+            start.window = Some(Window {
+                start_ms: began,
+                end_ms: now_ms(),
+            });
             keep(driver, 0);
             start
         };
