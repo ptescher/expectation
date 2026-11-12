@@ -25,7 +25,7 @@ use expectation_graph::Analysis;
 use expectation_language::Loaded;
 use expectation_model::diagnostic::{has_errors, render_all};
 use expectation_model::{Diagnostic, Suite};
-pub use expectation_story::Control;
+pub use expectation_story::{Control, Policy};
 use expectation_story::{Plan, Report};
 use std::path::Path;
 
@@ -286,8 +286,22 @@ impl Acceptance {
     }
 
     /// Run every plan, write the docs to `opts.docs_dir` (if set) whatever happened, and panic
-    /// with what failed. For `#[test]`s.
+    /// with what failed. For `#[test]`s. Tests that aren't supported yet, are pending or weren't
+    /// run don't fail it: see [`Acceptance::assert_passes_with`] for a gate that wants them run.
     pub fn assert_passes(&self, driver: &mut dyn Driver, opts: &RunOptions) -> Report {
+        self.assert_passes_with(driver, opts, Policy::Lenient)
+    }
+
+    /// As [`Acceptance::assert_passes`], held to `policy`: with [`Policy::Required`] it also
+    /// panics when a test that isn't pending didn't run (the driver can't yet, a service is
+    /// missing), and with [`Policy::All`] when anything is pending too. It judges this run:
+    /// results saved by earlier ones don't stand in for a test that didn't run now.
+    pub fn assert_passes_with(
+        &self,
+        driver: &mut dyn Driver,
+        opts: &RunOptions,
+        policy: Policy,
+    ) -> Report {
         let report = self.run(driver, opts);
         if let Some(dir) = &opts.docs_dir {
             self.docs(Some(&report))
@@ -296,8 +310,15 @@ impl Acceptance {
         }
         if !report.passed() {
             panic!(
-                "acceptance tests failed:\n{}",
-                report.failures(&self.suite, &self.plans)
+                "acceptance tests failed:\n{}{}",
+                report.failures(&self.suite, &self.plans),
+                report.incomplete(&self.plans, policy)
+            );
+        }
+        if !report.meets(policy) {
+            panic!(
+                "acceptance tests didn't all run:\n{}",
+                report.incomplete(&self.plans, policy)
             );
         }
         report

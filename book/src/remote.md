@@ -166,7 +166,7 @@ screenshot "$1"'` takes screenshots from outside, for apps that don't take their
 (see [Screenshots in large projects](manual.md#screenshots-in-large-projects)).
 
 It exits 1 if a test failed and 0 otherwise, **including when every test was "not supported
-yet"**. A failed screenshot is only a warning on stderr. Read the per-plan lines it prints
+yet"**, unless the run is `--strict` (see [A run as a gate](drivers.md#a-run-as-a-gate)). A failed screenshot is only a warning on stderr. Read the per-plan lines it prints
 (`✓` passed, `✗` failed, `–` anything else) or the `plan` rows in
 `docs/results/<runner>@<platform>.tsv`, and check the ones you expect to pass, before calling
 anything verified.
