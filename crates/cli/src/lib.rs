@@ -24,6 +24,7 @@ commands:
                             (--coverage adds generated tests for untested expectations)
   docs  <dir> <out-dir> [--approved-only] [--reader] [--results <dir>] [--stylesheet <css>] [--state-shot-ratio <w:h>]
         [--screenshots <dir|url>] [--section <name|dir>]... [--base-url <url>]
+        [--expect-app-revision <rev>] [--expect-data-mode <mode>] [--expect-fixture <name>]
                             write the docs (Markdown and an HTML site), with the results runs
                             have saved in <out-dir>/results; --stylesheet restyles the site
                             with a CSS file, --state-shot-ratio shapes the state map's pictures;
@@ -35,7 +36,10 @@ commands:
                             (the ones shown are copied in) or a URL prefix the pages link to;
                             --section <name|dir> (repeatable) writes just those sections, for a
                             preview, with links elsewhere going to --base-url <full manual's URL>
-                            or, without one, as plain text
+                            or, without one, as plain text;
+                            --expect-app-revision, --expect-data-mode and --expect-fixture say
+                            what the manual is for: each test's page says whether its result
+                            was run against the same, something else, or didn't say
   screenshots prune <store> <results-dir>... [--dry-run]
                             remove the screenshots in a content-addressed store that no
                             results file in the given directories names, and their thumbnails
@@ -123,6 +127,11 @@ pub fn main() {
         take("--screenshots"),
     );
     let results = take("--results");
+    let expected = expectation_story::Provenance {
+        app_revision: take("--expect-app-revision"),
+        data_mode: take("--expect-data-mode"),
+        fixture: take("--expect-fixture"),
+    };
     // `--section` may be given more than once.
     let mut sections = vec![];
     while let Some(v) = take("--section") {
@@ -198,6 +207,7 @@ pub fn main() {
             (approved_only, reader),
             results,
             (sections, base_url),
+            &expected,
         ),
         ["screenshots", "prune", store, dirs @ ..] if !dirs.is_empty() => {
             prune_screenshots(store, dirs, flag("--dry-run"))
@@ -225,6 +235,7 @@ fn docs(
     (approved_only, reader): (bool, bool),
     results: Option<String>,
     (sections, base_url): (Vec<String>, Option<String>),
+    expected: &expectation_story::Provenance,
 ) {
     let fail = |e: String| -> ! {
         eprintln!("error: {e}");
@@ -242,6 +253,7 @@ fn docs(
         reader,
         shared: None,
         code: &[],
+        expected: (!expected.is_empty()).then_some(expected),
     };
     if let Some(expectation_docs::Screenshots::Dir(d)) =
         shots.as_deref().map(expectation_docs::Screenshots::parse)

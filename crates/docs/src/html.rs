@@ -1531,6 +1531,9 @@ impl Site<'_> {
             esc(&self.summary()),
             self.tally(&all)
         );
+        if let Some(text) = self.d.against_summary() {
+            let _ = write!(o, r#"<p class="note against">{}</p>"#, esc(&text));
+        }
         o.push_str(r#"<p>The tests use the states, actions and shorthand of the <a href="vocabulary.html">test vocabulary</a>. <a href="map.html">The map</a> shows which behaviour leads to which, <a href="states.html">the state map</a> shows the states the app gets into and how to get between them, and <a href="theme.html">the theme</a> shows the colours and type the docs are drawn in.</p>"#);
         let controls = self.d.control_rows();
         if !controls.is_empty() {
@@ -1833,6 +1836,25 @@ impl Site<'_> {
                     self.section_link(section)
                 );
             }
+        }
+        if let Some(a) = self.d.against(i) {
+            let said: Vec<String> = a
+                .said
+                .iter()
+                .map(|(label, v)| format!("{label} <code>{}</code>", esc(v)))
+                .collect();
+            let mut line = String::new();
+            if !said.is_empty() {
+                let _ = write!(line, "Run against {}. ", said.join(", "));
+            }
+            let class = match &a.verdict {
+                Some((expectation_story::Agreement::Matching, _)) | None => "note",
+                Some(_) => "note warn",
+            };
+            if let Some((_, text)) = &a.verdict {
+                line.push_str(&esc(text));
+            }
+            let _ = write!(o, r#"<p class="{class} against">{}</p>"#, line.trim_end());
         }
         if let Some(e) = result.and_then(|r| r.start.error.as_ref()) {
             let class = if status == Status::Unsupported {

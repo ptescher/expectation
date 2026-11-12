@@ -24,6 +24,7 @@ its screenshot. Both are saved in the results file, as lines that older readers 
 ```text
 expectation-results 1
 run         <run id>  <started ms>
+provenance  <part>  <value>
 plan        <slug>  <status>  <fingerprint>
 step        <n>  <status>  <polls>  <screenshot>  <error>
 window      <n>  <start ms>  <end ms>
@@ -34,6 +35,52 @@ check       ...
 A `run` line applies to the plans after it. Step `0` is the test's start; `1` is its first
 step. Results saved before runs had ids still load. Their tests have no run, so no evidence can
 count for them.
+
+## What a run was against
+
+A test's fingerprint says the test hasn't changed. It says nothing about the program: a pass
+saved for one build still stands when the manual is written for the next. So a run can say
+what it was against, and the results keep it:
+
+```rust
+let opts = RunOptions {
+    provenance: Provenance {
+        app_revision: Some("3f2a9c1".into()),   // a commit, a version, a build number
+        data_mode: Some("fixtures".into()),     // fixtures, live, recorded
+        fixture: Some("seed-7".into()),         // which one, by a name
+    },
+    ..Default::default()
+};
+```
+
+```bash
+expectation-run expectations --docs docs --app-revision 3f2a9c1 --data-mode fixtures --fixture seed-7
+```
+
+- Each part is optional. A part nobody gave is unknown, and is never guessed.
+- Nothing is read from the environment. The results and the manual publish what you give, so
+  give a name, not a credential or the data itself.
+- The results file has a `provenance` line for each part, after the run's line. Older files
+  have none, and still load.
+- A manual merged from several runs keeps each result's own run, so two tests on one page can
+  be about two builds. Each test's page says what its result was run against.
+
+Say what the manual is for, and each test's page says whether its result is about that:
+
+```bash
+expectation docs expectations docs --expect-app-revision 4b7d210
+```
+
+| The run | The page says |
+|---|---|
+| said the same | it is what this manual is for |
+| said something else | it is what another run saw, and not a failure of this build |
+| didn't say | it isn't known |
+
+The test report's first page counts the three. A result is never changed, hidden or failed
+because of what it was run against: the verdict is still the run's. `expectation-run --docs`
+writes the manual for what it was run against, and `Acceptance::with_expected` does the same
+from Rust.
 
 ## Attachments: what the driver captured
 

@@ -25,7 +25,7 @@ use expectation_graph::Analysis;
 use expectation_language::Loaded;
 use expectation_model::diagnostic::{has_errors, render_all};
 use expectation_model::{Diagnostic, Suite};
-pub use expectation_story::{Control, Policy};
+pub use expectation_story::{Control, Policy, Provenance};
 use expectation_story::{Plan, Report};
 use std::path::Path;
 
@@ -51,6 +51,8 @@ pub struct Acceptance {
     pub screenshots: Option<String>,
     /// Write the reader edition of the manual (see [`Acceptance::with_reader`]).
     pub reader: bool,
+    /// What the manual is for (see [`Acceptance::with_expected`]).
+    pub expected: Option<expectation_story::Provenance>,
 }
 
 impl Acceptance {
@@ -144,6 +146,7 @@ impl Acceptance {
             shot_ratio: None,
             screenshots: None,
             reader: false,
+            expected: None,
         })
     }
 
@@ -192,6 +195,14 @@ impl Acceptance {
     /// By default they are in the docs directory's own `screenshots/`.
     pub fn with_screenshots(mut self, at: impl Into<String>) -> Self {
         self.screenshots = Some(at.into());
+        self
+    }
+
+    /// Say what the manual is for (a build, its data), so each test's page says whether its
+    /// result was run against the same: results merged from earlier runs, or other runners,
+    /// may be about another build. A result that is isn't changed or hidden, only labelled.
+    pub fn with_expected(mut self, provenance: expectation_story::Provenance) -> Self {
+        self.expected = (!provenance.is_empty()).then_some(provenance);
         self
     }
 
@@ -244,6 +255,7 @@ impl Acceptance {
                 reader: self.reader,
                 shared: None,
                 code: &[],
+                expected: self.expected.as_ref(),
             },
         }
     }

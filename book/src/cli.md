@@ -98,6 +98,10 @@ error.
   (see [Screenshots in large projects](manual.md#screenshots-in-large-projects)). Give a
   directory and the ones the pages show are copied in. Give a URL prefix and the pages link
   there.
+- `--expect-app-revision <rev>`, `--expect-data-mode <mode>` and `--expect-fixture <name>` say
+  what the manual is for. Each test's page then says whether its result was run against the
+  same, something else, or didn't say (see
+  [What a run was against](evidence.md#what-a-run-was-against)). No verdict changes.
 
 ## screenshots prune
 

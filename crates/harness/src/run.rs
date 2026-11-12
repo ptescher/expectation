@@ -39,6 +39,10 @@ pub struct RunOptions {
     /// `<dir>/<run>/<plan>/<step>/<name>`; `None` keeps nothing. Keep it out of the docs
     /// directory: a capture can hold what a manual must not publish.
     pub attachments_dir: Option<PathBuf>,
+    /// What this run is against (the program's revision, its data), kept with every result so
+    /// a manual can say which build a saved pass was about. Say only what may be published;
+    /// nothing is filled in for you.
+    pub provenance: expectation_story::Provenance,
 }
 
 impl Default for RunOptions {
@@ -50,13 +54,14 @@ impl Default for RunOptions {
             patience: 100,
             controls: true,
             attachments_dir: None,
+            provenance: Default::default(),
         }
     }
 }
 
 pub fn run(suite: &Suite, plans: &[Plan], driver: &mut dyn Driver, opts: &RunOptions) -> Report {
     let mut launched = None;
-    let run = Run::start();
+    let run = Run::start().against(opts.provenance.clone());
     Report {
         results: plans
             .iter()
@@ -76,7 +81,7 @@ pub fn run_with(
     services: &mut Services,
 ) -> Report {
     let mut launched = None;
-    let run = Run::start();
+    let run = Run::start().against(opts.provenance.clone());
     Report {
         results: plans
             .iter()
@@ -123,7 +128,7 @@ where
 {
     let next = AtomicUsize::new(0);
     // One run, however many workers it has.
-    let run = Run::start();
+    let run = Run::start().against(opts.provenance.clone());
     let run = &run;
     let done: Mutex<Vec<(usize, PlanResult)>> = Mutex::new(Vec::with_capacity(plans.len()));
     std::thread::scope(|scope| {

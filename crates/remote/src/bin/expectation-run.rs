@@ -4,6 +4,7 @@
 //! expectation-run <suite-dir> [--platform NAME] [--addr 127.0.0.1:4477] [--wait SECONDS]
 //!                 [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd "COMMAND"]
 //!                 [--attachments DIR] [--screenshot-store DIR] [--strict[=all]]
+//!                 [--app-revision REV] [--data-mode MODE] [--fixture NAME]
 //! ```
 //!
 //! It listens, waits for the app to say hello, runs every story and a generated test for each
@@ -15,6 +16,10 @@
 //! `DIR/<run>/<plan>/<step>/<name>`; keep it outside `--docs`, which is for publishing.
 //! `--screenshot-store` keeps screenshots by content in `DIR` (`<sha256>.png`), so identical
 //! frames are stored once and unchanged tests write nothing new; the docs take them from there.
+//! `--app-revision`, `--data-mode` and `--fixture` say what the run is against (a commit, `fixtures`,
+//! the fixture's name): they are saved with the results and shown in the manual, which is
+//! written for the same, so results other runs saved for another build are labelled as such.
+//! Nothing is read from the environment; say only what may be published.
 //! Exits 1 if anything failed. Tests that aren't supported yet, are pending or didn't run don't
 //! fail it, unless it is `--strict`: then every test that isn't pending must have run and passed
 //! in this run (`--strict=all`: every test, pending or not), and there must be at least one.
@@ -29,7 +34,7 @@ use std::time::Duration;
 
 const USAGE: &str = "usage: expectation-run <suite-dir> [--platform NAME] [--addr HOST:PORT] [--wait SECONDS] \
                      [--command-timeout SECONDS] \
-                     [--stylesheet CSS] [--reader] [--state-shot-ratio W:H] [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd COMMAND] [--attachments DIR] [--screenshot-store DIR] [--strict[=all]]";
+                     [--stylesheet CSS] [--reader] [--state-shot-ratio W:H] [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd COMMAND] [--attachments DIR] [--screenshot-store DIR] [--strict[=all]] [--app-revision REV] [--data-mode MODE] [--fixture NAME]";
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -56,6 +61,7 @@ fn main() {
     );
     let (mut stylesheet, mut ratio, mut attachments, mut store) = (None, None, None, None);
     let mut reader = false;
+    let mut provenance = expectation_harness::Provenance::default();
     let mut policy = Policy::Lenient;
     while let Some(a) = args.next() {
         let mut value = || {
@@ -91,6 +97,9 @@ fn main() {
                     Some(expectation_harness::parse_ratio(&value()).unwrap_or_else(|e| fail(&e)))
             }
             "--reader" => reader = true,
+            "--app-revision" => provenance.app_revision = Some(value()),
+            "--data-mode" => provenance.data_mode = Some(value()),
+            "--fixture" => provenance.fixture = Some(value()),
             "--strict" => policy = Policy::Required,
             _ if a.starts_with("--strict=") => {
                 policy = Policy::parse(&a["--strict=".len()..]).unwrap_or_else(|| {
@@ -135,6 +144,7 @@ fn main() {
     if reader {
         acceptance = acceptance.with_reader();
     }
+    acceptance = acceptance.with_expected(provenance.clone());
     if let Some(s) = &store {
         acceptance = acceptance.with_screenshots(s.clone());
     }
@@ -181,6 +191,7 @@ fn main() {
             docs_dir: docs.clone(),
             screenshots_under: acceptance.screenshots_under(),
             attachments_dir: attachments,
+            provenance,
             screenshot_store: store.map(PathBuf::from),
             ..Default::default()
         },
