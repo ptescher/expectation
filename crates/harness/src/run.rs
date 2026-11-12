@@ -4,8 +4,8 @@ use crate::driver::{Driver, Need, Progress};
 use crate::service::Services;
 use expectation_model::{Suite, Trigger};
 use expectation_story::{
-    Attachment, Check, CheckResult, Control, Plan, PlanResult, Report, Run, Status, StepResult,
-    Window, now_ms,
+    Attachment, Began, Check, CheckResult, Control, Plan, PlanResult, Report, Run, Status,
+    StepResult, Window, now_ms,
 };
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -43,6 +43,13 @@ pub struct RunOptions {
     /// a manual can say which build a saved pass was about. Say only what may be published;
     /// nothing is filled in for you.
     pub provenance: expectation_story::Provenance,
+    /// Let a test start where the last one ended, when that test passed and everything this one
+    /// is given is observed to hold there already: no reset, nothing arranged. Tests are then
+    /// run in an order that makes the most of it (the results stay in the plans' order), and
+    /// each result says how it began ([`PlanResult::began`]). On by default; a driver can
+    /// refuse it for itself ([`Driver::may_continue`]), and one that wants services afresh
+    /// for each test ([`Driver::fresh`]) never continues.
+    pub share_starts: bool,
 }
 
 impl Default for RunOptions {
@@ -55,19 +62,92 @@ impl Default for RunOptions {
             controls: true,
             attachments_dir: None,
             provenance: Default::default(),
+            share_starts: true,
         }
     }
 }
 
-pub fn run(suite: &Suite, plans: &[Plan], driver: &mut dyn Driver, opts: &RunOptions) -> Report {
-    let mut launched = None;
-    let run = Run::start().against(opts.provenance.clone());
-    Report {
-        results: plans
-            .iter()
-            .map(|p| run_plan(suite, p, driver, opts, &mut launched, &run))
-            .collect(),
+/// What a driver has done so far in a run, as far as its next test is concerned.
+#[derive(Default)]
+struct Session {
+    /// How the program was last started (a section's `Launch:`), so it is started once for the
+    /// plans that share it and again when a section says to start it differently.
+    launched: Option<String>,
+    /// The last test it ran, if that test passed: the system is where that test ends.
+    last: Option<usize>,
+}
+
+impl Session {
+    /// Would `plan` be started the way the program is running now?
+    fn launched_for(&self, suite: &Suite, plan: &Plan) -> bool {
+        suite
+            .launch_of(plan.section)
+            .is_none_or(|how| self.launched.as_deref() == Some(how))
     }
+
+    /// After `plans[at]` gave `result`: a pass leaves the system where that test ends, a test
+    /// that wasn't run leaves it where it was, and after anything else it could be anywhere.
+    fn after(&mut self, at: usize, result: &PlanResult) {
+        match result.status {
+            Status::Passed => self.last = Some(at),
+            Status::Pending | Status::Unsupported => {}
+            _ => self.last = None,
+        }
+    }
+}
+
+/// The test to run next, taken out of `left`: one that starts where the last one ended, so it
+/// may need no reset, or else the first that is left.
+fn take(
+    suite: &Suite,
+    plans: &[Plan],
+    left: &mut Vec<usize>,
+    session: &Session,
+    share: bool,
+) -> Option<usize> {
+    let follows = session.last.filter(|_| share).and_then(|last| {
+        let last = &plans[last];
+        let end = last.steps.last().map_or(&last.start, |s| &s.state);
+        left.iter().position(|&i| {
+            let p = &plans[i];
+            !p.pending
+                && !p.start_checks.is_empty()
+                && session.launched_for(suite, p)
+                && end.implies(&p.start)
+        })
+    });
+    (!left.is_empty()).then(|| left.remove(follows.unwrap_or(0)))
+}
+
+/// Run every plan, each chosen by [`take`], and give the results in the plans' order.
+fn run_each(
+    suite: &Suite,
+    plans: &[Plan],
+    driver: &mut dyn Driver,
+    opts: &RunOptions,
+    mut one: impl FnMut(&Plan, &mut dyn Driver, &mut Session) -> PlanResult,
+) -> Report {
+    let mut session = Session::default();
+    let mut left: Vec<usize> = (0..plans.len()).collect();
+    let mut results: Vec<Option<PlanResult>> = plans.iter().map(|_| None).collect();
+    while let Some(i) = {
+        let share = opts.share_starts && driver.may_continue();
+        take(suite, plans, &mut left, &session, share)
+    } {
+        let result = one(&plans[i], driver, &mut session);
+        session.after(i, &result);
+        results[i] = Some(result);
+    }
+    Report {
+        results: results.into_iter().flatten().collect(),
+    }
+}
+
+pub fn run(suite: &Suite, plans: &[Plan], driver: &mut dyn Driver, opts: &RunOptions) -> Report {
+    let run = Run::start().against(opts.provenance.clone());
+    run_each(suite, plans, driver, opts, |plan, driver, session| {
+        run_plan(suite, plan, driver, opts, session, &run)
+    })
 }
 
 /// As [`run`], with what the driver needs from outside started before each plan: a service that
@@ -80,14 +160,10 @@ pub fn run_with(
     opts: &RunOptions,
     services: &mut Services,
 ) -> Report {
-    let mut launched = None;
     let run = Run::start().against(opts.provenance.clone());
-    Report {
-        results: plans
-            .iter()
-            .map(|plan| run_served(suite, plan, driver, opts, services, &mut launched, &run))
-            .collect(),
-    }
+    run_each(suite, plans, driver, opts, |plan, driver, session| {
+        run_served(suite, plan, driver, opts, services, session, &run)
+    })
 }
 
 /// What one worker of [`run_parallel`] runs with: a driver of its own, and the services that
@@ -114,7 +190,8 @@ impl Worker {
 /// As [`run_with`], on `workers` threads that take the next plan as they finish one. `make` is
 /// called once on each worker's thread, with the worker's number (from 0), to build its
 /// [`Worker`], so a driver need not be `Send` and two workers never share one: give each its own
-/// app, port, database and screen. Results are in the order of `plans`. `workers` is at least 1
+/// app, port, database and screen. A worker takes a plan that starts where its last one ended
+/// when there is one (see [`RunOptions::share_starts`]). Results are in the order of `plans`. `workers` is at least 1
 /// and at most the number of plans.
 pub fn run_parallel<F>(
     suite: &Suite,
@@ -126,20 +203,23 @@ pub fn run_parallel<F>(
 where
     F: Fn(usize) -> Worker + Sync,
 {
-    let next = AtomicUsize::new(0);
+    let left: Mutex<Vec<usize>> = Mutex::new((0..plans.len()).collect());
     // One run, however many workers it has.
     let run = Run::start().against(opts.provenance.clone());
     let run = &run;
     let done: Mutex<Vec<(usize, PlanResult)>> = Mutex::new(Vec::with_capacity(plans.len()));
     std::thread::scope(|scope| {
         for n in 0..workers.clamp(1, plans.len().max(1)) {
-            let (next, done, make) = (&next, &done, &make);
+            let (left, done, make) = (&left, &done, &make);
             scope.spawn(move || {
-                let mut worker = None;
-                let mut launched = None;
+                let mut worker: Option<Worker> = None;
+                let mut session = Session::default();
                 loop {
-                    let i = next.fetch_add(1, Ordering::SeqCst);
-                    let Some(plan) = plans.get(i) else { break };
+                    let share = opts.share_starts
+                        && worker.as_ref().is_some_and(|w| w.driver.may_continue());
+                    let taken = take(suite, plans, &mut left.lock().unwrap(), &session, share);
+                    let Some(i) = taken else { break };
+                    let plan = &plans[i];
                     // Built when there is a plan to run, so a worker with nothing to do starts nothing.
                     let w = worker.get_or_insert_with(|| make(n));
                     let result = run_served(
@@ -148,9 +228,10 @@ where
                         &mut *w.driver,
                         opts,
                         &mut w.services,
-                        &mut launched,
+                        &mut session,
                         run,
                     );
+                    session.after(i, &result);
                     done.lock().unwrap().push((i, result));
                 }
             });
@@ -169,7 +250,7 @@ fn run_served(
     driver: &mut dyn Driver,
     opts: &RunOptions,
     services: &mut Services,
-    launched: &mut Option<String>,
+    session: &mut Session,
     run: &Run,
 ) -> PlanResult {
     if let Some(r) = pending(suite, plan) {
@@ -187,8 +268,10 @@ fn run_served(
         },
         |_| Ok(()),
     ) {
-        Ok(()) => run_plan(suite, plan, driver, opts, launched, run),
+        Ok(()) => run_plan(suite, plan, driver, opts, session, run),
         Err(why) => {
+            // Whatever was started afresh before that has lost what the last test left.
+            session.last = None;
             let mut r = PlanResult::with(Status::Unsupported, plan);
             r.start.error = Some(format!("It needs {why}."));
             ran_in(r, run)
@@ -274,17 +357,15 @@ fn unsupported(suite: &Suite, plan: &Plan, driver: &dyn Driver) -> Option<PlanRe
     None
 }
 
-/// `launched` is how the program was last started (a section's `Launch:`), so it is started
-/// once for the plans that share it and again when a section says to start it differently.
 fn run_plan(
     suite: &Suite,
     plan: &Plan,
     driver: &mut dyn Driver,
     opts: &RunOptions,
-    launched: &mut Option<String>,
+    session: &mut Session,
     run: &Run,
 ) -> PlanResult {
-    ran_in(run_steps(suite, plan, driver, opts, launched, run), run)
+    ran_in(run_steps(suite, plan, driver, opts, session, run), run)
 }
 
 /// A result, marked with the run it came from.
@@ -298,7 +379,7 @@ fn run_steps(
     plan: &Plan,
     driver: &mut dyn Driver,
     opts: &RunOptions,
-    launched: &mut Option<String>,
+    session: &mut Session,
     run: &Run,
 ) -> PlanResult {
     let failed = |error: String| StepResult {
@@ -358,17 +439,20 @@ fn run_steps(
         controls: vec![],
         used: vec![],
         run: None,
+        began: None,
         attachments,
         stale: false,
     };
 
     if let Some(how) = suite.launch_of(plan.section)
-        && launched.as_deref() != Some(how)
+        && !session.launched_for(suite, plan)
     {
+        // Started again, it isn't where the last test left it.
+        session.last = None;
         if let Err(e) = driver.launch(how) {
             return skip_all(failed(format!("couldn't launch: {e}")), vec![]);
         }
-        *launched = Some(how.to_string());
+        session.launched = Some(how.to_string());
     }
     let began = now_ms();
     let setup_failed =
@@ -388,19 +472,30 @@ fn run_steps(
             keep(driver, 0);
             start
         };
-    if let Err(e) = driver.reset() {
-        let start = setup_failed(format!("couldn't reset: {e}"), driver, &mut keep);
-        return skip_all(start, attachments);
-    }
-    for (x, c) in plan.start.iter() {
-        let var = suite.vocabulary.var(x);
-        let value = var
-            .witness(c)
-            .expect("plans only arrange satisfiable states");
-        if let Err(e) = driver.arrange(var, &value) {
-            let error = format!("couldn't arrange {}: {e}", var.describe(c));
-            let start = setup_failed(error, driver, &mut keep);
+    // Where the last test ended, if that is where this one starts: looked at once, as it is,
+    // without waiting for it to become so. A test that is given nothing has nothing to tell
+    // it by, and one whose driver wants services afresh must not find what the last one left.
+    let continued = opts.share_starts
+        && session.last.is_some()
+        && !plan.start_checks.is_empty()
+        && driver.may_continue()
+        && driver.fresh().is_empty()
+        && observe(suite, driver, &plan.start_checks, 0).status == Status::Passed;
+    if !continued {
+        if let Err(e) = driver.reset() {
+            let start = setup_failed(format!("couldn't reset: {e}"), driver, &mut keep);
             return skip_all(start, attachments);
+        }
+        for (x, c) in plan.start.iter() {
+            let var = suite.vocabulary.var(x);
+            let value = var
+                .witness(c)
+                .expect("plans only arrange satisfiable states");
+            if let Err(e) = driver.arrange(var, &value) {
+                let error = format!("couldn't arrange {}: {e}", var.describe(c));
+                let start = setup_failed(error, driver, &mut keep);
+                return skip_all(start, attachments);
+            }
         }
     }
     driver.settle();
@@ -451,6 +546,11 @@ fn run_steps(
         controls: seen.controls,
         used: seen.used,
         run: None,
+        began: Some(if continued {
+            Began::Continued
+        } else {
+            Began::Arranged
+        }),
         attachments,
         stale: false,
     }

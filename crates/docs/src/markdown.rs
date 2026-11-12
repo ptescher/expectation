@@ -1067,6 +1067,9 @@ fn test_page(d: &Docs, f: &Facts, i: usize) -> String {
         }
         let _ = writeln!(o, "{}\n", line.trim_end());
     }
+    if result.and_then(|r| r.began) == Some(expectation_story::Began::Continued) {
+        let _ = writeln!(o, "{}\n", crate::CONTINUED);
+    }
     if let Some(e) = result.and_then(|r| r.start.error.as_ref()) {
         let _ = writeln!(o, "> {e}\n");
     }

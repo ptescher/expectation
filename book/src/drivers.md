@@ -125,6 +125,7 @@ pub trait Driver {
     fn needs(&self) -> Vec<String> { vec![] }
     fn fresh(&self) -> Vec<String> { vec![] }
     fn reset(&mut self) -> Result<(), String> { Ok(()) }
+    fn may_continue(&self) -> bool { true }
     fn arrange(&mut self, var: &Variable, value: &Value) -> Result<(), String> { self.set(var, value) }
     fn set(&mut self, var: &Variable, value: &Value) -> Result<(), String>;
     fn perform(&mut self, event: &Event) -> Result<(), String>;
@@ -161,6 +162,34 @@ With a `docs_dir`, screenshots go to `<docs_dir>/screenshots/<test>/<step>.<ext>
 A test whose start can't be set up (the reset or an arrangement fails) fails there, and its
 other steps are skipped. The runner still asks for a screenshot, so the report shows what the
 system looked like when it went wrong. If there is none, the failure stands as it is.
+
+### Starting where the last test ended
+
+Resetting and arranging a start can be the slow part of a test. So when a test has passed, and
+everything the next one is given already holds, the runner starts the next one there: no
+reset, nothing arranged. It decides by looking. It observes each thing the test is given,
+once, and only continues if all of them hold as they are. It never continues from a test that
+failed, into a test that is given nothing, or across a `Launch:` that starts the program
+again.
+
+To make the most of this, the runner picks the next test: one that starts where the last one
+ended if there is one, and otherwise the next in order. The report stays in the order of the
+tests. Each result says how the test began (`PlanResult::began`, a `began` line in the saved
+results), and the manual's page for a test that continued says so. If a share looks wrong,
+that is where to look first.
+
+The check only sees what the suite describes. Say no when a test leaves something behind that
+no state of the suite covers and that the next test could notice: a log, a clock, a cache, a
+counter.
+
+```rust,ignore
+fn may_continue(&self) -> bool { false }     // a Driver
+Bindings::new(world).always_reset()          // Bindings
+RunOptions { share_starts: false, ..Default::default() }   // one run
+```
+
+A driver that asks for services afresh before each test (`fresh`) never continues: those
+services must not keep what the last test left.
 
 ### A run as a gate
 
@@ -218,5 +247,6 @@ let report = acceptance.run_parallel(4, &RunOptions::default(), |n| {
 });
 ```
 
-Workers take the next test as they finish one, and the report is in the order of the tests.
+Workers take a test as they finish one (one that starts where their last one ended, if there
+is one), and the report is in the order of the tests.
 The closure runs on the worker's thread, so a driver need not be `Send`.

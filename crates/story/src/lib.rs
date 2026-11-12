@@ -24,7 +24,7 @@ pub use plan::{
     reaching_plans, untested, visit_plans,
 };
 pub use report::{
-    Agreement, Attachment, CheckResult, PlanResult, Policy, Provenance, Report, Run, Status,
+    Agreement, Attachment, Began, CheckResult, PlanResult, Policy, Provenance, Report, Run, Status,
     StepResult, Verdict, Window, fingerprint, load_results, load_results_for, now_ms,
     platform_shots, results_file, screenshots_named,
 };

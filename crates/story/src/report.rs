@@ -196,6 +196,31 @@ pub struct Attachment {
     pub path: String,
 }
 
+/// How a test got to its start.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Began {
+    /// The system was reset and the start arranged.
+    Arranged,
+    /// The test before it on the same driver had passed and left the system where this one
+    /// starts: everything it is given was observed to hold, so nothing was reset or arranged.
+    Continued,
+}
+
+impl Began {
+    pub fn name(self) -> &'static str {
+        match self {
+            Began::Arranged => "arranged",
+            Began::Continued => "continued",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Began> {
+        [Began::Arranged, Began::Continued]
+            .into_iter()
+            .find(|b| b.name() == s)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct StepResult {
     pub status: Status,
@@ -242,6 +267,8 @@ pub struct PlanResult {
     pub used: Vec<String>,
     /// The run this result came from, if it was saved by a version of Expectation that says.
     pub run: Option<Run>,
+    /// How it got to its start, if it got that far and the results say.
+    pub began: Option<Began>,
     /// What the driver handed over while it ran.
     pub attachments: Vec<Attachment>,
     /// Not run since the test changed: saved results exist, but for an older version of it.
@@ -263,6 +290,7 @@ impl PlanResult {
             controls: vec![],
             used: vec![],
             run: None,
+            began: None,
             attachments: vec![],
             stale: false,
         }
@@ -585,6 +613,9 @@ impl Report {
                 r.status.name(),
                 fingerprint(plan)
             );
+            if let Some(b) = r.began {
+                let _ = writeln!(out, "began\t{}", b.name());
+            }
             for c in &r.controls {
                 let _ = writeln!(
                     out,
@@ -707,6 +738,7 @@ impl Report {
                             controls: vec![],
                             used: vec![],
                             run: run.clone(),
+                            began: None,
                             attachments: vec![],
                             stale: false,
                         },
@@ -717,6 +749,11 @@ impl Report {
                         let mut c = Control::new(*view, *id, *kind, *label);
                         c.event = rest.first().and_then(|e| opt(e));
                         r.controls.push(c);
+                    }
+                }
+                ["began", how, ..] => {
+                    if let Some((_, r)) = current.as_mut() {
+                        r.began = Began::parse(how);
                     }
                 }
                 ["used", key] => {

@@ -1856,6 +1856,9 @@ impl Site<'_> {
             }
             let _ = write!(o, r#"<p class="{class} against">{}</p>"#, line.trim_end());
         }
+        if result.and_then(|r| r.began) == Some(expectation_story::Began::Continued) {
+            let _ = write!(o, r#"<p class="note began">{}</p>"#, esc(crate::CONTINUED));
+        }
         if let Some(e) = result.and_then(|r| r.start.error.as_ref()) {
             let class = if status == Status::Unsupported {
                 "note warn"
