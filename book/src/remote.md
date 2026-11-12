@@ -159,6 +159,8 @@ expectation-run expectations --platform SwiftUI --docs docs --runner app
 `--stylesheet CSS` and `--state-shot-ratio W:H` style the generated docs as they do for
 `expectation docs` (see [the manual](manual.md#your-own-theme)); bad values fail before the run.
 `--command-timeout SECONDS` sets that per-command deadline (`--wait` only covers connecting).
+`--no-state-pictures` leaves out the tests that only visit a state for the state map's picture
+of it: a quicker run with the same verdicts (see [Stories](stories.md)).
 It listens, waits for the app, runs the suite for that platform, prints the results, and
 with `--docs` saves them and writes the manual. `--screenshot-cmd 'xcrun simctl io booted
 screenshot "$1"'` takes screenshots from outside, for apps that don't take their own.

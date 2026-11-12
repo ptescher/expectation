@@ -64,11 +64,13 @@ expectations behind each move, and the ways in. It works without JavaScript too.
 ```bash
 expectation plan <dir>
 expectation plan <dir> --coverage
+expectation plan <dir> --coverage --state-pictures
 ```
 
 Prints the acceptance test each story compiles to: what's arranged, each step, which
 expectations fire and what's checked. `--coverage` adds the generated tests for expectations
-no story reaches.
+no story reaches. `--state-pictures` adds the ones that visit a state only so the state map has
+a picture of it (see [Stories](stories.md)).
 
 ## docs
 

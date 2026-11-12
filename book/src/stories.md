@@ -62,6 +62,22 @@ each section that `Follows:` a setup the expectations get from, taking that rout
 checking the section's setup at the end. Generated tests are
 named "Reaching «…»". They appear in the test report, but not as tutorials.
 
+`Acceptance::with_state_pictures()` (and `expectation plan --state-pictures`) adds another
+kind, named "Visiting the state after «…»": one for each state of the state map that is a move
+from a start and that no other test passes through. They add no verdicts. They are there so the
+state map has a screenshot of every state it shows at first. Each one arranges a start of its
+own, so on a system that is slow to set up they can be most of a run: leave them out of a
+quick run, and add them, after `with_coverage()`, when the run is for the manual.
+
+```rust
+let quick = Acceptance::load("expectations")?.with_coverage();
+let for_the_manual = Acceptance::load("expectations")?.with_coverage().with_state_pictures();
+```
+
+`expectation-run` has both, and `--no-state-pictures` leaves the second out. A runner's results
+file holds its last run, so give a quick run a `--runner` name of its own if a full run's
+pictures should stay in the manual.
+
 With coverage, every expectation gets a **verdict**:
 
 | Verdict | Means |

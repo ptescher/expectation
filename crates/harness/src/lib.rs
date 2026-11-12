@@ -150,12 +150,21 @@ impl Acceptance {
         })
     }
 
-    /// Add generated tests for the expectations no story exercises.
+    /// Add generated tests for the expectations no story exercises ("Reaching «…»"): with
+    /// them, every expectation has a verdict. For the state map's pictures as well, add
+    /// [`Acceptance::with_state_pictures`] after it.
     pub fn with_coverage(mut self) -> Self {
         let extra = expectation_story::coverage_plans(&self.suite, &self.analysis, &self.plans);
         self.plans.extend(extra);
-        // And a test for each state a move from a start that no test passes through, so the
-        // state map has a screenshot of every state it shows at first.
+        self
+    }
+
+    /// Add a test for each state a move from a start that no test passes through ("Visiting
+    /// the state after «…»"), so the state map has a screenshot of every state it shows at
+    /// first. They add pictures, not verdicts, and each arranges a start of its own, so a quick
+    /// run can leave them out and a docs build can have them. Call it last: it adds only the
+    /// states the tests there are already don't pass through.
+    pub fn with_state_pictures(mut self) -> Self {
         let visits = expectation_story::visit_plans(&self.suite, &self.analysis, &self.plans);
         self.plans.extend(visits);
         self
