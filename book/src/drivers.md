@@ -162,6 +162,36 @@ A test whose start can't be set up (the reset or an arrangement fails) fails the
 other steps are skipped. The runner still asks for a screenshot, so the report shows what the
 system looked like when it went wrong. If there is none, the failure stands as it is.
 
+### A run as a gate
+
+A run passes when nothing failed. Tests the driver can't run yet, pending ones and ones that
+weren't run don't count against it, so a suite can be adopted a binding at a time. A release
+gate needs more: that the tests ran. Ask for it with a policy.
+
+| Policy | Passes when | `expectation-run` |
+|---|---|---|
+| `Policy::Lenient` | nothing failed | the default |
+| `Policy::Required` | every test that isn't pending ran and passed | `--strict` |
+| `Policy::All` | every test ran and passed, with nothing pending | `--strict=all` |
+
+```rust
+acceptance.assert_passes_with(&mut driver, &opts, Policy::Required);
+
+// Or with the report:
+let report = acceptance.run(&mut driver, &opts);
+if !report.meets(Policy::Required) {
+    eprint!("{}", report.failures(&acceptance.suite, &acceptance.plans));
+    eprint!("{}", report.incomplete(&acceptance.plans, Policy::Required));
+}
+```
+
+- `report.incomplete` lists each test that didn't run with its status and why, and under
+  `Required` the pending ones it let by, apart.
+- A run of no tests doesn't meet `Required` or `All`: it verified nothing.
+- A policy judges the run that was just made. The report `publish` returns is merged with what
+  earlier runs saved, and a pass saved earlier doesn't stand in for a test that didn't run now.
+- An expectation's approval is about the spec, not the run. It plays no part.
+
 ### Several runners
 
 `Acceptance::publish(dir, runner, &report)` saves a run's results as

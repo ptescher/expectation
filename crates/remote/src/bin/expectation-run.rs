@@ -3,7 +3,7 @@
 //! ```text
 //! expectation-run <suite-dir> [--platform NAME] [--addr 127.0.0.1:4477] [--wait SECONDS]
 //!                 [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd "COMMAND"]
-//!                 [--attachments DIR] [--screenshot-store DIR]
+//!                 [--attachments DIR] [--screenshot-store DIR] [--strict[=all]]
 //!                 [--app-revision REV] [--data-mode MODE] [--fixture NAME]
 //! ```
 //!
@@ -20,9 +20,12 @@
 //! the fixture's name): they are saved with the results and shown in the manual, which is
 //! written for the same, so results other runs saved for another build are labelled as such.
 //! Nothing is read from the environment; say only what may be published.
-//! Exits 1 if anything failed.
+//! Exits 1 if anything failed. Tests that aren't supported yet, are pending or didn't run don't
+//! fail it, unless it is `--strict`: then every test that isn't pending must have run and passed
+//! in this run (`--strict=all`: every test, pending or not), and there must be at least one.
+//! Results saved by earlier runs don't count towards it.
 
-use expectation_harness::{Acceptance, RunOptions, Screenshot};
+use expectation_harness::{Acceptance, Policy, RunOptions, Screenshot};
 use expectation_remote::{DEFAULT_ADDR, RemoteDriver};
 use expectation_story::Status;
 use std::path::PathBuf;
@@ -31,7 +34,7 @@ use std::time::Duration;
 
 const USAGE: &str = "usage: expectation-run <suite-dir> [--platform NAME] [--addr HOST:PORT] [--wait SECONDS] \
                      [--command-timeout SECONDS] \
-                     [--stylesheet CSS] [--reader] [--state-shot-ratio W:H] [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd COMMAND] [--attachments DIR] [--screenshot-store DIR] [--app-revision REV] [--data-mode MODE] [--fixture NAME]";
+                     [--stylesheet CSS] [--reader] [--state-shot-ratio W:H] [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd COMMAND] [--attachments DIR] [--screenshot-store DIR] [--strict[=all]] [--app-revision REV] [--data-mode MODE] [--fixture NAME]";
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -59,6 +62,7 @@ fn main() {
     let (mut stylesheet, mut ratio, mut attachments, mut store) = (None, None, None, None);
     let mut reader = false;
     let mut provenance = expectation_harness::Provenance::default();
+    let mut policy = Policy::Lenient;
     while let Some(a) = args.next() {
         let mut value = || {
             args.next()
@@ -96,6 +100,12 @@ fn main() {
             "--app-revision" => provenance.app_revision = Some(value()),
             "--data-mode" => provenance.data_mode = Some(value()),
             "--fixture" => provenance.fixture = Some(value()),
+            "--strict" => policy = Policy::Required,
+            _ if a.starts_with("--strict=") => {
+                policy = Policy::parse(&a["--strict=".len()..]).unwrap_or_else(|| {
+                    fail("--strict is --strict, --strict=required or --strict=all")
+                })
+            }
             "--docs" => docs = Some(PathBuf::from(value())),
             "--runner" => runner = Some(value()),
             "--settle" => {
@@ -207,11 +217,16 @@ fn main() {
             )),
         }
     }
-    if !report.passed() {
+    // This run's own report: what earlier runs saved doesn't stand in for a test that didn't run.
+    if !report.meets(policy) {
         eprint!(
             "\n{}",
             report.failures(&acceptance.suite, &acceptance.plans)
         );
+        let incomplete = report.incomplete(&acceptance.plans, policy);
+        if !incomplete.is_empty() {
+            eprint!("\nNot every test ran and passed (--strict):\n{incomplete}");
+        }
         exit(1);
     }
 }

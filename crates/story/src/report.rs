@@ -291,6 +291,47 @@ impl PlanResult {
     }
 }
 
+/// What a run must show to count as done. [`Report::passed`] is the first: fine while a suite
+/// is being adopted, when tests the driver can't run yet shouldn't stop anyone. The others are
+/// for a gate (a release, a merge) that needs the tests to have run.
+///
+/// A policy is about the report of the run that was just made. Results loaded from files and
+/// merged say what other runs showed, so don't judge a merged report with one.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Policy {
+    /// Nothing failed. What isn't supported yet, is pending or wasn't run doesn't count against it.
+    #[default]
+    Lenient,
+    /// Every test ran and passed, but for the ones that depend on an expectation marked
+    /// `Status: pending`: those are behaviour that is known not to be built, and are listed
+    /// apart. A run of no tests doesn't meet it.
+    Required,
+    /// Every test ran and passed, with nothing pending. A run of no tests doesn't meet it.
+    All,
+}
+
+impl Policy {
+    /// `required` or `all`, as `expectation-run --strict` takes them; `lenient` is the default.
+    pub fn parse(s: &str) -> Option<Policy> {
+        match s {
+            "lenient" => Some(Policy::Lenient),
+            "required" => Some(Policy::Required),
+            "all" => Some(Policy::All),
+            _ => None,
+        }
+    }
+
+    /// Does a test with this status count against the policy?
+    fn rejects(self, status: Status) -> bool {
+        match (self, status) {
+            (_, Status::Failed) => true,
+            (Policy::Lenient, _) | (_, Status::Passed) => false,
+            (Policy::Required, Status::Pending) => false,
+            _ => true,
+        }
+    }
+}
+
 /// One result per plan, in plan order.
 #[derive(Clone, Debug, Default)]
 pub struct Report {
@@ -368,6 +409,59 @@ impl Report {
     /// against it, and none of them counts as verified either.
     pub fn passed(&self) -> bool {
         !self.results.iter().any(|r| r.status == Status::Failed)
+    }
+
+    /// Does this run meet `policy`? [`Policy::Lenient`] is [`Report::passed`]; the others also
+    /// want every test (or every test that isn't pending) to have run, and at least one test.
+    pub fn meets(&self, policy: Policy) -> bool {
+        (policy == Policy::Lenient || !self.results.is_empty())
+            && !self.results.iter().any(|r| policy.rejects(r.status))
+    }
+
+    /// Why this run doesn't meet `policy`, for a failure message: each test that didn't run
+    /// (unsupported, pending, not run), with its status and the reason it gave, and then the
+    /// pending ones [`Policy::Required`] lets by, apart. Empty when the policy is met, and when
+    /// all that is wrong is what failed: that is in [`Report::failures`].
+    pub fn incomplete(&self, plans: &[Plan], policy: Policy) -> String {
+        let mut s = String::new();
+        if self.meets(policy) {
+            return s;
+        }
+        if self.results.is_empty() {
+            return "No tests were selected, so nothing was verified.\n".into();
+        }
+        let line = |s: &mut String, plan: &Plan, r: &PlanResult| {
+            let _ = write!(s, "– {}: {}", r.status.name(), plan.title);
+            match r
+                .start
+                .error
+                .as_deref()
+                .filter(|_| r.status != Status::Failed)
+            {
+                Some(why) => {
+                    let _ = writeln!(s, " ({why})");
+                }
+                None => s.push('\n'),
+            }
+        };
+        for (plan, r) in plans.iter().zip(&self.results) {
+            if policy.rejects(r.status) && r.status != Status::Failed {
+                line(&mut s, plan, r);
+            }
+        }
+        let allowed: Vec<_> = plans
+            .iter()
+            .zip(&self.results)
+            .filter(|(_, r)| r.status == Status::Pending && !policy.rejects(r.status))
+            .filter(|_| !s.is_empty())
+            .collect();
+        if !allowed.is_empty() {
+            s.push_str("Pending, and not required:\n");
+            for (plan, r) in allowed {
+                line(&mut s, plan, r);
+            }
+        }
+        s
     }
 
     pub fn count(&self, status: Status) -> usize {
