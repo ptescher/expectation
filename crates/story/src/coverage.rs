@@ -766,6 +766,7 @@ Story: Get a quote
         Run {
             id: id.into(),
             started_ms: 1,
+            provenance: Default::default(),
         }
     }
 

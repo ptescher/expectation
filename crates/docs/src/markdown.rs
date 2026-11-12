@@ -684,6 +684,9 @@ fn report(d: &Docs, f: &Facts) -> String {
          [test vocabulary](vocabulary.md).\n",
         s.name
     );
+    if let Some(text) = d.against_summary() {
+        let _ = writeln!(o, "{text}\n");
+    }
     match (d.report, &f.verdicts) {
         (Some(r), Some(v)) => {
             let count = |x: Verdict| v.iter().filter(|&&y| y == x).count();
@@ -1049,6 +1052,21 @@ fn test_page(d: &Docs, f: &Facts, i: usize) -> String {
         }
     }
     let _ = writeln!(o, "**Result:** {}\n", status_mark(f.status[i]));
+    if let Some(a) = d.against(i) {
+        let said: Vec<String> = a
+            .said
+            .iter()
+            .map(|(label, v)| format!("{label} `{}`", v.replace('`', "'")))
+            .collect();
+        let mut line = String::new();
+        if !said.is_empty() {
+            let _ = write!(line, "**Run against:** {}. ", said.join(", "));
+        }
+        if let Some((_, text)) = &a.verdict {
+            line.push_str(text);
+        }
+        let _ = writeln!(o, "{}\n", line.trim_end());
+    }
     if let Some(e) = result.and_then(|r| r.start.error.as_ref()) {
         let _ = writeln!(o, "> {e}\n");
     }

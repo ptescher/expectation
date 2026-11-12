@@ -66,6 +66,85 @@ pub struct Run {
     pub id: String,
     /// Wall-clock milliseconds since the Unix epoch.
     pub started_ms: u64,
+    /// What it ran against, as far as whoever started it said.
+    pub provenance: Provenance,
+}
+
+/// What a run was made against: which build of the program, and what data it had. A test's
+/// fingerprint says the test hasn't changed; this says what it was a test of, so a pass saved
+/// for one build isn't read as evidence about another.
+///
+/// Every part is what the caller said (`RunOptions::provenance`, `expectation-run
+/// --app-revision`), or nothing. Nothing is collected from the environment, and the results
+/// and the manual publish it, so say only what may be published: a commit, a version, the name
+/// of a fixture; not a credential, and not the data itself. A part nobody gave is unknown,
+/// and is never guessed.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Provenance {
+    /// The program's revision: a commit, a version, a build number.
+    pub app_revision: Option<String>,
+    /// The kind of data it ran on: `fixtures`, `live`, `recorded`.
+    pub data_mode: Option<String>,
+    /// Which fixture or data source that was, by a name that is safe to publish.
+    pub fixture: Option<String>,
+}
+
+/// How a result's [`Provenance`] compares with the one a manual is written for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Agreement {
+    /// Every part that was asked for is what the run said.
+    Matching,
+    /// A part differs: the result is about something else. It is still what that run saw, and
+    /// not a failure.
+    Mismatched,
+    /// Nothing differs, but the run didn't say a part that was asked for.
+    Unknown,
+}
+
+impl Provenance {
+    /// Each part, as the results files key it and as the manual calls it.
+    pub fn parts(&self) -> [(&'static str, &'static str, Option<&str>); 3] {
+        [
+            (
+                "app-revision",
+                "application revision",
+                self.app_revision.as_deref(),
+            ),
+            ("data-mode", "data mode", self.data_mode.as_deref()),
+            ("fixture", "fixture", self.fixture.as_deref()),
+        ]
+    }
+
+    /// Nothing was said.
+    pub fn is_empty(&self) -> bool {
+        self.parts().iter().all(|(_, _, v)| v.is_none())
+    }
+
+    fn set(&mut self, key: &str, value: &str) {
+        let slot = match key {
+            "app-revision" => &mut self.app_revision,
+            "data-mode" => &mut self.data_mode,
+            "fixture" => &mut self.fixture,
+            // A part a later version says: not this one's to keep.
+            _ => return,
+        };
+        *slot = Some(value.to_string());
+    }
+
+    /// How this compares with `expected`, over the parts `expected` says. `None` when it says
+    /// none: there is nothing to compare with.
+    pub fn agreement(&self, expected: &Provenance) -> Option<Agreement> {
+        let mut out = None;
+        for ((_, _, mine), (_, _, want)) in self.parts().into_iter().zip(expected.parts()) {
+            let Some(want) = want else { continue };
+            match mine {
+                Some(mine) if mine != want => return Some(Agreement::Mismatched),
+                Some(_) => out = out.or(Some(Agreement::Matching)),
+                None => out = Some(Agreement::Unknown),
+            }
+        }
+        out
+    }
 }
 
 impl Run {
@@ -78,7 +157,14 @@ impl Run {
         Run {
             id: format!("{started_ms:x}-{:x}-{n:x}", std::process::id()),
             started_ms,
+            provenance: Provenance::default(),
         }
+    }
+
+    /// The same run, made against `provenance`.
+    pub fn against(mut self, provenance: Provenance) -> Run {
+        self.provenance = provenance;
+        self
     }
 }
 
@@ -388,6 +474,12 @@ impl Report {
                 match run {
                     Some(x) => {
                         let _ = writeln!(out, "run\t{}\t{}", field(&x.id), x.started_ms);
+                        // What the run was against, a line for each part that was said.
+                        for (key, _, value) in x.provenance.parts() {
+                            if let Some(v) = value.map(field).filter(|v| !v.is_empty()) {
+                                let _ = writeln!(out, "provenance\t{key}\t{v}");
+                            }
+                        }
                     }
                     None => out.push_str("run\t-\t-\n"),
                 }
@@ -469,8 +561,15 @@ impl Report {
                         (id, Ok(started_ms)) => Some(Run {
                             id: id.to_string(),
                             started_ms,
+                            provenance: Provenance::default(),
                         }),
                     };
+                }
+                // About the run line before it, and so about the plans after.
+                ["provenance", key, value, ..] => {
+                    if let Some(run) = run.as_mut() {
+                        run.provenance.set(key, value);
+                    }
                 }
                 ["window", n, start, end] => {
                     let Some((_, r)) = current.as_mut() else {

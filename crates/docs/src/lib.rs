@@ -83,6 +83,9 @@ pub struct Look<'a> {
     /// Code coverage files (see [`expectation_story::CodeCoverage`]): shown on the test pages
     /// as observed execution, apart from the results.
     pub code: &'a [expectation_story::CodeCoverage],
+    /// What this manual is written for (a build, its data): each test page says whether the
+    /// run its result is from was against the same. `None` compares nothing.
+    pub expected: Option<&'a expectation_story::Provenance>,
 }
 
 /// Where the screenshots are that the results name as `screenshots/<rest>`.
@@ -277,7 +280,93 @@ fn prune(dir: &Path, written: &std::collections::HashSet<&Path>) -> std::io::Res
     Ok(())
 }
 
+/// What a test page says about what its result was run against.
+pub(crate) struct Against {
+    /// The parts the run said, by what the manual calls them.
+    pub said: Vec<(&'static str, String)>,
+    /// How that compares with what the manual is for, in a sentence, if it is for something.
+    pub verdict: Option<(expectation_story::Agreement, String)>,
+}
+
 impl Docs<'_> {
+    /// What test `i`'s result was run against, and whether that is what this manual is for.
+    /// `None` when it didn't run, or there is nothing to say: no part was given and the manual
+    /// isn't for anything in particular.
+    pub(crate) fn against(&self, i: usize) -> Option<Against> {
+        use expectation_story::Agreement;
+        let result = self.report?.results.get(i)?;
+        if !result.status.ran() {
+            return None;
+        }
+        // A result from before runs said what they were against says nothing: unknown.
+        let none = expectation_story::Provenance::default();
+        let run = result.run.as_ref().map_or(&none, |r| &r.provenance);
+        let said: Vec<(&'static str, String)> = run
+            .parts()
+            .into_iter()
+            .filter_map(|(_, label, v)| Some((label, v?.to_string())))
+            .collect();
+        let verdict = self.look.expected.and_then(|want| {
+            let agreement = run.agreement(want)?;
+            let pairs = run.parts().into_iter().zip(want.parts());
+            let text = match agreement {
+                Agreement::Matching => "This is what this manual is for.".to_string(),
+                Agreement::Mismatched => {
+                    let differs: Vec<String> = pairs
+                        .filter_map(|((_, label, mine), (_, _, want))| {
+                            let (mine, want) = (mine?, want?);
+                            (mine != want).then(|| format!("{label} {want}"))
+                        })
+                        .collect();
+                    format!(
+                        "This manual is for {}, so this is what an earlier or other run saw. It \
+                         is not a result for this one, and not a failure of it.",
+                        expectation_model::text::join_and(&differs)
+                    )
+                }
+                Agreement::Unknown => {
+                    let missing: Vec<String> = pairs
+                        .filter(|((_, _, mine), (_, _, want))| mine.is_none() && want.is_some())
+                        .map(|((_, label, _), _)| label.to_string())
+                        .collect();
+                    format!(
+                        "The run didn't say its {}, so it isn't known whether this is about \
+                         what this manual is for.",
+                        expectation_model::text::join_and(&missing)
+                    )
+                }
+            };
+            Some((agreement, text))
+        });
+        (!said.is_empty() || verdict.is_some()).then_some(Against { said, verdict })
+    }
+
+    /// For the test report's first page, when the manual is for something: how many of the
+    /// results that ran are about it.
+    pub(crate) fn against_summary(&self) -> Option<String> {
+        use expectation_story::Agreement;
+        let want = self.look.expected.filter(|w| !w.is_empty())?;
+        let (mut same, mut other, mut unknown) = (0, 0, 0);
+        for i in 0..self.plans.len() {
+            match self.against(i).and_then(|a| a.verdict) {
+                Some((Agreement::Matching, _)) => same += 1,
+                Some((Agreement::Mismatched, _)) => other += 1,
+                Some((Agreement::Unknown, _)) => unknown += 1,
+                None => {}
+            }
+        }
+        let for_what: Vec<String> = want
+            .parts()
+            .into_iter()
+            .filter_map(|(_, label, v)| Some(format!("{label} {}", v?)))
+            .collect();
+        Some(format!(
+            "This manual is for {}. Of the tests that ran, {same} ran against it, {other} against \
+             something else, and {unknown} didn't say. Each test's page says which; a result from \
+             another run is what that run saw, and is never counted as a failure.",
+            expectation_model::text::join_and(&for_what)
+        ))
+    }
     /// Is this the reader edition?
     pub fn reader(&self) -> bool {
         self.look.reader || self.outline.is_some_and(|o| o.reader)
@@ -1519,6 +1608,7 @@ Feature: Paying
             r.run = Some(expectation_story::Run {
                 id: "r1".into(),
                 started_ms: 1,
+                provenance: Default::default(),
             });
         }
         let (slug, print) = (&plans[0].slug, expectation_story::fingerprint(&plans[0]));
