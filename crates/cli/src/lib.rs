@@ -20,8 +20,11 @@ commands:
                             print the map of the app's states and the moves between them, as
                             a Mermaid state diagram or Graphviz DOT; --by names the states that
                             tell them apart, comma separated (default: every enumerated one)
-  plan  <dir> [--coverage]  print the acceptance tests the stories compile to
-                            (--coverage adds generated tests for untested expectations)
+  plan  <dir> [--coverage] [--state-pictures]
+                            print the acceptance tests the stories compile to
+                            (--coverage adds generated tests for untested expectations,
+                            --state-pictures the ones that visit a state for the state map's
+                            picture of it)
   docs  <dir> <out-dir> [--approved-only] [--reader] [--results <dir>] [--stylesheet <css>] [--state-shot-ratio <w:h>]
         [--screenshots <dir|url>] [--section <name|dir>]... [--base-url <url>]
         [--expect-app-revision <rev>] [--expect-data-mode <mode>] [--expect-fixture <name>]
@@ -193,6 +196,8 @@ pub fn main() {
             if flag("--coverage") {
                 let extra = expectation_story::coverage_plans(&c.suite, &c.analysis, &c.plans);
                 c.plans.extend(extra);
+            }
+            if flag("--state-pictures") {
                 let visits = expectation_story::visit_plans(&c.suite, &c.analysis, &c.plans);
                 c.plans.extend(visits);
             }

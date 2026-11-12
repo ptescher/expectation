@@ -4,6 +4,7 @@
 //! expectation-run <suite-dir> [--platform NAME] [--addr 127.0.0.1:4477] [--wait SECONDS]
 //!                 [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd "COMMAND"]
 //!                 [--attachments DIR] [--screenshot-store DIR] [--strict[=all]]
+//!                 [--no-state-pictures]
 //!                 [--app-revision REV] [--data-mode MODE] [--fixture NAME]
 //! ```
 //!
@@ -16,6 +17,8 @@
 //! `DIR/<run>/<plan>/<step>/<name>`; keep it outside `--docs`, which is for publishing.
 //! `--screenshot-store` keeps screenshots by content in `DIR` (`<sha256>.png`), so identical
 //! frames are stored once and unchanged tests write nothing new; the docs take them from there.
+//! `--no-state-pictures` leaves out the tests that only visit a state for the state map's
+//! picture of it: a quicker run with the same verdicts.
 //! `--app-revision`, `--data-mode` and `--fixture` say what the run is against (a commit, `fixtures`,
 //! the fixture's name): they are saved with the results and shown in the manual, which is
 //! written for the same, so results other runs saved for another build are labelled as such.
@@ -34,7 +37,7 @@ use std::time::Duration;
 
 const USAGE: &str = "usage: expectation-run <suite-dir> [--platform NAME] [--addr HOST:PORT] [--wait SECONDS] \
                      [--command-timeout SECONDS] \
-                     [--stylesheet CSS] [--reader] [--state-shot-ratio W:H] [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd COMMAND] [--attachments DIR] [--screenshot-store DIR] [--strict[=all]] [--app-revision REV] [--data-mode MODE] [--fixture NAME]";
+                     [--stylesheet CSS] [--reader] [--state-shot-ratio W:H] [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd COMMAND] [--attachments DIR] [--screenshot-store DIR] [--strict[=all]] [--no-state-pictures] [--app-revision REV] [--data-mode MODE] [--fixture NAME]";
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -63,6 +66,7 @@ fn main() {
     let mut reader = false;
     let mut provenance = expectation_harness::Provenance::default();
     let mut policy = Policy::Lenient;
+    let mut state_pictures = true;
     while let Some(a) = args.next() {
         let mut value = || {
             args.next()
@@ -97,6 +101,7 @@ fn main() {
                     Some(expectation_harness::parse_ratio(&value()).unwrap_or_else(|e| fail(&e)))
             }
             "--reader" => reader = true,
+            "--no-state-pictures" => state_pictures = false,
             "--app-revision" => provenance.app_revision = Some(value()),
             "--data-mode" => provenance.data_mode = Some(value()),
             "--fixture" => provenance.fixture = Some(value()),
@@ -135,6 +140,9 @@ fn main() {
     })
     .with_coverage();
     let mut acceptance = acceptance;
+    if state_pictures {
+        acceptance = acceptance.with_state_pictures();
+    }
     if let Some(p) = &stylesheet {
         acceptance = acceptance.with_stylesheet(p).unwrap_or_else(|e| fail(&e));
     }
