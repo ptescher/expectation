@@ -22,6 +22,13 @@ pub struct RunOptions {
     /// --screenshots <store>`), or make it the docs' own `screenshots/` directory. Screenshots
     /// are taken when this or `docs_dir` is set.
     pub screenshot_store: Option<PathBuf>,
+    /// A folder under `screenshots/` for this run's per-test screenshots, so that runs which
+    /// share a docs directory don't write over each other's: with `platforms/android`, they go
+    /// to `<docs_dir>/screenshots/platforms/android/<plan>/<step>.<ext>` and the results name
+    /// them so. [`Acceptance::run_options`](crate::Acceptance::run_options) sets it for a
+    /// platform other than the suite's first. A store has no use for it: its names are the
+    /// content's.
+    pub screenshots_under: Option<String>,
     /// How many times to [`Driver::advance`] while waiting for a step's checks to hold.
     pub patience: u32,
     /// Ask the driver for its controls and which ones each test used (see
@@ -39,6 +46,7 @@ impl Default for RunOptions {
         RunOptions {
             docs_dir: None,
             screenshot_store: None,
+            screenshots_under: None,
             patience: 100,
             controls: true,
             attachments_dir: None,
@@ -302,10 +310,18 @@ fn run_steps(
     }
 
     // Per test and step under the docs, replaced each run; or by content in a store.
+    let named = match opts
+        .screenshots_under
+        .as_deref()
+        .map(|u| u.trim_matches('/'))
+    {
+        Some(under) if !under.is_empty() => format!("screenshots/{under}/{}", plan.slug),
+        _ => format!("screenshots/{}", plan.slug),
+    };
     let shots = match (&opts.screenshot_store, &opts.docs_dir) {
         (Some(_), _) => None,
         (None, Some(d)) => {
-            let dir = d.join("screenshots").join(&plan.slug);
+            let dir = d.join(&named);
             let _ = std::fs::remove_dir_all(&dir);
             Some(dir)
         }
@@ -321,7 +337,7 @@ fn run_steps(
         let name = format!("{n:02}.{}", shot.extension);
         std::fs::create_dir_all(dir).ok()?;
         std::fs::write(dir.join(&name), &shot.bytes).ok()?;
-        Some(format!("screenshots/{}/{name}", plan.slug))
+        Some(format!("{named}/{name}"))
     };
     let mut attachments = vec![];
     let mut keep = |driver: &mut dyn Driver, n: usize| {
@@ -353,6 +369,13 @@ fn run_steps(
     let setup_failed =
         |error: String, driver: &mut dyn Driver, keep: &mut dyn FnMut(&mut dyn Driver, usize)| {
             let mut start = failed(error);
+            start.window = Some(Window {
+                start_ms: began,
+                end_ms: now_ms(),
+            });
+            // What it looked like when it went wrong, if the driver can still say. The failure
+            // is the setup's whether or not there is a picture of it.
+            start.screenshot = shoot(driver, 0);
             start.window = Some(Window {
                 start_ms: began,
                 end_ms: now_ms(),

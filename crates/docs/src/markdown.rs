@@ -236,6 +236,8 @@ fn image(
             );
             if stale {
                 let _ = writeln!(o, "*From before this page changed.*\n");
+            } else if status == Status::Failed {
+                let _ = writeln!(o, "*What it looked like when this failed.*\n");
             }
         }
         None if reader => {}

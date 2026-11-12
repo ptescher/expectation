@@ -158,6 +158,10 @@ acceptance.docs(Some(&report)).write("docs")?;
 
 With a `docs_dir`, screenshots go to `<docs_dir>/screenshots/<test>/<step>.<ext>`.
 
+A test whose start can't be set up (the reset or an arrangement fails) fails there, and its
+other steps are skipped. The runner still asks for a screenshot, so the report shows what the
+system looked like when it went wrong. If there is none, the failure stands as it is.
+
 ### Several runners
 
 `Acceptance::publish(dir, runner, &report)` saves a run's results as

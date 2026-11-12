@@ -55,7 +55,8 @@ test('a suite runs through the JS driver', async () => {
 
 /** Runs the turnstile suite through a JS driver that `extra` adds handlers to, keeping attachments in `keep`. */
 async function runTurnstile(extra, keep) {
-  const port = 5000 + Math.floor(Math.random() * 1000);
+  // Not 5060 or 5061: fetch refuses to connect to them (they are SIP's), and no app would arrive.
+  const port = 5100 + Math.floor(Math.random() * 900);
   const docs = fs.mkdtempSync(path.join(os.tmpdir(), 'expectation-js-docs-'));
   const args = [path.join(here, 'fixture'), '--addr', `127.0.0.1:${port}`, '--settle', '0', '--wait', '20', '--docs', docs];
   if (keep) args.push('--attachments', keep);

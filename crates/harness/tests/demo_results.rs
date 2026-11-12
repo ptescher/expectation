@@ -42,7 +42,7 @@ fn the_demos_saved_results_still_match_its_tests() {
 }
 
 /// A platform other than the first is written under `platforms/<name>/`, but its screenshots
-/// are the run's, in the docs' own `screenshots/`: its pages show them from there.
+/// are in the docs' own `screenshots/`, in a folder of their own: its pages show them from there.
 #[test]
 fn a_later_platforms_manual_shows_the_shared_screenshots() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../demos/kettle");
@@ -75,7 +75,9 @@ fn a_later_platforms_manual_shows_the_shared_screenshots() {
     let mut shown = 0;
     for entry in std::fs::read_dir(tree.join("site")).unwrap().flatten() {
         let page = std::fs::read_to_string(entry.path()).unwrap_or_default();
-        shown += page.matches("../../../screenshots/").count();
+        shown += page
+            .matches("../../../screenshots/platforms/swiftui/")
+            .count();
         assert!(
             !page.contains(r#"src="../screenshots/"#),
             "{}",
