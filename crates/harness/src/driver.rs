@@ -105,6 +105,14 @@ pub trait Driver {
         Ok(())
     }
 
+    /// May a test start where the last one ended, without a reset? The runner only does so when
+    /// the last test passed and everything this one is given is observed to hold already, so
+    /// say no when that isn't enough: when what a test leaves behind that no state of the
+    /// suite describes (a log, a clock, a cache) could change what the next one sees.
+    fn may_continue(&self) -> bool {
+        true
+    }
+
     /// Make `var` hold `value` before the first step ("Given …").
     fn arrange(&mut self, var: &Variable, value: &Value) -> Result<(), String> {
         self.set(var, value)

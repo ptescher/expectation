@@ -28,6 +28,9 @@ mod states;
 mod thumbs;
 mod voice;
 
+/// What a test's page says when it began where another ended (`Began::Continued`).
+pub(crate) const CONTINUED: &str = "This run started where the test that ran before it had ended: everything it is given was seen to hold there, so nothing was reset or arranged.";
+
 use expectation_graph::Analysis;
 use expectation_model::{ExpId, Feature, StepText, Suite, VarKind, Variable};
 use expectation_story::{Because, Plan, Report, Status, Verdict, coverage};

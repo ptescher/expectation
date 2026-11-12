@@ -25,7 +25,7 @@ use expectation_graph::Analysis;
 use expectation_language::Loaded;
 use expectation_model::diagnostic::{has_errors, render_all};
 use expectation_model::{Diagnostic, Suite};
-pub use expectation_story::{Control, Policy, Provenance};
+pub use expectation_story::{Began, Control, Policy, Provenance};
 use expectation_story::{Plan, Report};
 use std::path::Path;
 

@@ -4,7 +4,7 @@
 //! expectation-run <suite-dir> [--platform NAME] [--addr 127.0.0.1:4477] [--wait SECONDS]
 //!                 [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd "COMMAND"]
 //!                 [--attachments DIR] [--screenshot-store DIR] [--strict[=all]]
-//!                 [--no-state-pictures]
+//!                 [--no-state-pictures] [--no-shared-starts]
 //!                 [--app-revision REV] [--data-mode MODE] [--fixture NAME]
 //! ```
 //!
@@ -19,6 +19,9 @@
 //! frames are stored once and unchanged tests write nothing new; the docs take them from there.
 //! `--no-state-pictures` leaves out the tests that only visit a state for the state map's
 //! picture of it: a quicker run with the same verdicts.
+//! A test starts where the last one ended, without a reset, when that test passed and what this
+//! one is given already holds there; such a test is marked `(continued)`. `--no-shared-starts`
+//! resets before every test.
 //! `--app-revision`, `--data-mode` and `--fixture` say what the run is against (a commit, `fixtures`,
 //! the fixture's name): they are saved with the results and shown in the manual, which is
 //! written for the same, so results other runs saved for another build are labelled as such.
@@ -37,7 +40,7 @@ use std::time::Duration;
 
 const USAGE: &str = "usage: expectation-run <suite-dir> [--platform NAME] [--addr HOST:PORT] [--wait SECONDS] \
                      [--command-timeout SECONDS] \
-                     [--stylesheet CSS] [--reader] [--state-shot-ratio W:H] [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd COMMAND] [--attachments DIR] [--screenshot-store DIR] [--strict[=all]] [--no-state-pictures] [--app-revision REV] [--data-mode MODE] [--fixture NAME]";
+                     [--stylesheet CSS] [--reader] [--state-shot-ratio W:H] [--docs DIR] [--runner NAME] [--settle MS] [--screenshot-cmd COMMAND] [--attachments DIR] [--screenshot-store DIR] [--strict[=all]] [--no-state-pictures] [--no-shared-starts] [--app-revision REV] [--data-mode MODE] [--fixture NAME]";
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -67,6 +70,7 @@ fn main() {
     let mut provenance = expectation_harness::Provenance::default();
     let mut policy = Policy::Lenient;
     let mut state_pictures = true;
+    let mut share_starts = true;
     while let Some(a) = args.next() {
         let mut value = || {
             args.next()
@@ -102,6 +106,7 @@ fn main() {
             }
             "--reader" => reader = true,
             "--no-state-pictures" => state_pictures = false,
+            "--no-shared-starts" => share_starts = false,
             "--app-revision" => provenance.app_revision = Some(value()),
             "--data-mode" => provenance.data_mode = Some(value()),
             "--fixture" => provenance.fixture = Some(value()),
@@ -200,6 +205,7 @@ fn main() {
             screenshots_under: acceptance.screenshots_under(),
             attachments_dir: attachments,
             provenance,
+            share_starts,
             screenshot_store: store.map(PathBuf::from),
             ..Default::default()
         },
@@ -210,7 +216,11 @@ fn main() {
             Status::Failed => "✗",
             _ => "–",
         };
-        println!("{mark} {}", plan.title);
+        let how = match r.began {
+            Some(expectation_harness::Began::Continued) => " (continued)",
+            _ => "",
+        };
+        println!("{mark} {}{how}", plan.title);
     }
     if let Some(e) = driver.screenshot_error() {
         eprintln!("warning: some screenshots failed: {e}");

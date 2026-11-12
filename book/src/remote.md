@@ -161,6 +161,9 @@ expectation-run expectations --platform SwiftUI --docs docs --runner app
 `--command-timeout SECONDS` sets that per-command deadline (`--wait` only covers connecting).
 `--no-state-pictures` leaves out the tests that only visit a state for the state map's picture
 of it: a quicker run with the same verdicts (see [Stories](stories.md)).
+A test starts where the last one ended when what it is given already holds there, and is
+printed with `(continued)`; `--no-shared-starts` resets before every test (see
+[Drivers](drivers.md#starting-where-the-last-test-ended)).
 It listens, waits for the app, runs the suite for that platform, prints the results, and
 with `--docs` saves them and writes the manual. `--screenshot-cmd 'xcrun simctl io booted
 screenshot "$1"'` takes screenshots from outside, for apps that don't take their own.

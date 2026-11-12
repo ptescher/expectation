@@ -39,6 +39,7 @@ pub struct Bindings<W> {
     attachments: Option<Capturer<W>>,
     needs: Vec<String>,
     fresh: Vec<String>,
+    always_reset: bool,
 }
 
 impl<W> Bindings<W> {
@@ -58,7 +59,15 @@ impl<W> Bindings<W> {
             attachments: None,
             needs: vec![],
             fresh: vec![],
+            always_reset: false,
         }
+    }
+
+    /// Reset before every test, even one that could start where the last one ended (see
+    /// [`Driver::may_continue`]): for a world that keeps what no state of the suite describes.
+    pub fn always_reset(mut self) -> Self {
+        self.always_reset = true;
+        self
     }
 
     /// The services to start afresh before each test (a subset of those it needs).
@@ -154,6 +163,10 @@ impl<W> Driver for Bindings<W> {
 
     fn fresh(&self) -> Vec<String> {
         self.fresh.clone()
+    }
+
+    fn may_continue(&self) -> bool {
+        !self.always_reset
     }
 
     fn reset(&mut self) -> Result<(), String> {
