@@ -14,8 +14,8 @@ use expectation_graph::Node;
 use expectation_model::text::paragraphs;
 use expectation_model::{ExpId, FeatureId, Keyword, PhraseBody, SectionId, StepText, Suite};
 use expectation_story::{
-    Attribution, Basis, Because, CaptureState, Check, CheckResult, Completeness, Credit, Origin,
-    Source, State, Status, StepResult, Verdict,
+    Attribution, Basis, Because, CaptureState, Check, CheckResult, Completeness, Credit, Exchange,
+    Origin, Role, Source, State, Status, StepResult, Verdict, exchange,
 };
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -1054,6 +1054,44 @@ impl Site<'_> {
         }
     }
 
+    /// Requests, each as a `curl` command with the response it got, where a screenshot would
+    /// be. The same request sent again in a row (a check that polled) is shown once.
+    fn exchanges(&self, xs: &[&Exchange], stale: bool, failed: bool) -> String {
+        let mut o = String::new();
+        for (x, times) in crate::collapse(xs) {
+            let response = exchange::response(x);
+            let (status_line, rest) = response.split_once('\n').unwrap_or((&response, ""));
+            let class = match x.status {
+                0 | 500.. => "s5",
+                400..=499 => "s4",
+                _ => "s2",
+            };
+            let mut notes = vec![];
+            if times > 1 {
+                notes.push(format!("Sent {times} times."));
+            }
+            if stale {
+                notes.push("From before this page changed.".into());
+            } else if failed {
+                notes.push("What came back when this failed.".into());
+            }
+            let caption = if notes.is_empty() {
+                String::new()
+            } else {
+                format!("<figcaption>{}</figcaption>", esc(&notes.join(" ")))
+            };
+            let _ = write!(
+                o,
+                r#"<figure class="exchange"><pre class="http request" aria-label="Request"><code>{}</code></pre><pre class="http response {class}" aria-label="Response"><code><span class="status">{}</span>{}{}</code></pre>{caption}</figure>"#,
+                esc(&exchange::curl(x)),
+                esc(status_line),
+                if rest.is_empty() { "" } else { "\n" },
+                esc(rest),
+            );
+        }
+        o
+    }
+
     /// Verdict counts for a set of expectations: "12 verified · 3 not supported yet".
     fn tally(&self, exps: &[ExpId]) -> String {
         let mut counts: Vec<(&str, &str, usize)> = vec![];
@@ -1404,8 +1442,13 @@ impl Site<'_> {
             let _ = write!(o, r#"<p class="how">{}</p>"#, self.prose(&how));
             o.push_str(&self.exception_notes(e));
             match self.f.shot_of(self.d, e) {
-                Some((_, _, shot)) => {
-                    o.push_str(&self.figure(Some(&shot), Status::Passed, false, false, &how))
+                Some((p, step, shot)) => {
+                    if let Some(shot) = &shot {
+                        o.push_str(&self.figure(Some(shot), Status::Passed, false, false, &how));
+                    }
+                    let r = crate::step_result(self.d, p, step);
+                    let xs = r.map(|r| crate::actions(&r.exchanges)).unwrap_or_default();
+                    o.push_str(&self.exchanges(&xs, false, false));
                 }
                 None => {
                     let status = self
@@ -1481,7 +1524,11 @@ impl Site<'_> {
             } else {
                 &step.seen
             };
-            o.push_str(&self.figure(step.shot.as_deref(), step.status, step.stale, false, alt));
+            if step.shot.is_some() || step.exchanges.is_empty() {
+                o.push_str(&self.figure(step.shot.as_deref(), step.status, step.stale, false, alt));
+            }
+            let xs: Vec<&Exchange> = step.exchanges.iter().collect();
+            o.push_str(&self.exchanges(&xs, step.stale, step.status == Status::Failed));
             o.push_str("</li>");
         }
         o.push_str("</ol>");
@@ -2223,13 +2270,29 @@ impl Site<'_> {
         plan_status: Status,
     ) -> String {
         let status = result.map_or(plan_status, |r| r.status);
-        let mut o = self.figure(
-            result.and_then(|r| r.screenshot.as_deref()),
-            status,
-            result.is_some_and(|r| r.stale),
-            true,
-            "",
-        );
+        let stale = result.is_some_and(|r| r.stale);
+        let shot = result.and_then(|r| r.screenshot.as_deref());
+        let all: &[Exchange] = result.map_or(&[], |r| &r.exchanges);
+        let mut o = if shot.is_some() || all.is_empty() {
+            self.figure(shot, status, stale, true, "")
+        } else {
+            String::new()
+        };
+        o.push_str(&self.exchanges(&crate::actions(all), stale, status == Status::Failed));
+        for (role, summary) in [
+            (Role::Setup, "Requests that set it up"),
+            (Role::Check, "Requests that checked it"),
+        ] {
+            let xs: Vec<&Exchange> = all.iter().filter(|x| x.role == role).collect();
+            if !xs.is_empty() {
+                let _ = write!(
+                    o,
+                    r#"<details class="requests"><summary>{summary} ({})</summary>{}</details>"#,
+                    xs.len(),
+                    self.exchanges(&xs, stale, false)
+                );
+            }
+        }
         if let Some(e) = result
             .and_then(|r| r.error.as_ref())
             .filter(|_| status == Status::Failed)
@@ -2933,6 +2996,13 @@ section.exp:first-of-type { border-top: 0; }
 figure { margin: 14px 0; max-width: 870px; padding: var(--bezel-pad); background: var(--bezel); border: 1px solid var(--bezel-edge); border-radius: var(--radius-panel); }
 figure img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--radius-screen); background: var(--screen); }
 figcaption { color: var(--muted); font-size: 12px; padding: 7px 4px 2px; }
+/* A request and its response: two screens in one bezel. */
+figure.exchange pre.http { margin: 0; padding: 12px 16px; overflow-x: auto; background: var(--screen); color: var(--text); border-radius: var(--radius-screen); font: 13px/1.55 var(--font-mono); white-space: pre; }
+figure.exchange pre.http + pre.http { margin-top: var(--bezel-pad); }
+figure.exchange pre.response .status { font-weight: 700; color: var(--ok); }
+figure.exchange pre.response.s4 .status, figure.exchange pre.response.s5 .status { color: var(--warning); }
+details.requests { margin: 10px 0; }
+details.requests > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 /* A missing screenshot is a gap to note, not something to look at: keep it small. */
 figure.placeholder { max-width: 360px; }
 dl.meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; font-size: 15px; margin: 12px 0 0; }

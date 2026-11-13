@@ -6,7 +6,7 @@ use crate::{Docs, Facts, voice};
 use expectation_graph::ConflictKind;
 use expectation_model::text::{join_and, paragraphs};
 use expectation_model::{ExpId, FeatureId, Said, SectionId, StepText, Suite, VarId};
-use expectation_story::{Origin, Plan, Status};
+use expectation_story::{Exchange, Origin, Plan, Status};
 
 /// A section's "Before you begin".
 pub struct Before {
@@ -176,6 +176,8 @@ pub struct Step {
     /// What you'll see: "The tool is PEN."
     pub seen: String,
     pub shot: Option<String>,
+    /// The requests the step's actions made, for an API: shown as a `curl` command each.
+    pub exchanges: Vec<Exchange>,
     pub status: Status,
     /// The picture, if any, is from before the page changed.
     pub stale: bool,
@@ -278,6 +280,12 @@ pub fn tutorial(d: &Docs, f: &Facts, i: usize) -> Option<Tutorial> {
             doing: voice::instruction(s, &whens),
             seen: outcome(s, plan, &group),
             shot: last.and_then(|r| r.screenshot.clone()),
+            exchanges: group
+                .iter()
+                .filter_map(|&n| result.and_then(|r| r.steps.get(n)))
+                .flat_map(|r| crate::actions(&r.exchanges))
+                .cloned()
+                .collect(),
             status: last.map_or(f.status[i], |r| r.status),
             stale: last.is_some_and(|r| r.stale),
         });

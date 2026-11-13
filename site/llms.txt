@@ -24,6 +24,7 @@ For AI agents: install the skill at https://expectation.sim001.net/skills/expect
 - [Drivers](https://expectation.sim001.net/guide/drivers.html)
 - [Remote drivers](https://expectation.sim001.net/guide/remote.html): Swift, JavaScript and Rust clients, embedded in the app or in a UI-automation test process, driven by `expectation-run`
 - [The generated manual](https://expectation.sim001.net/guide/manual.html): includes custom themes and approved-only manuals
+- [APIs: requests as evidence](https://expectation.sim001.net/guide/api.html): suites for an HTTP API, where the manual shows each step's request as a curl command and the response it got; what the runner redacts before it keeps them
 - [Evidence and contract coverage](https://expectation.sim001.net/guide/evidence.html): run ids, step windows and attachments for extensions; the coverage file format and the rules it is held to
 - [The expectation command](https://expectation.sim001.net/guide/cli.html)
 - [Diagnostics](https://expectation.sim001.net/guide/diagnostics.html)
@@ -33,6 +34,7 @@ For AI agents: install the skill at https://expectation.sim001.net/skills/expect
 - [Smart kettle, a worked feature-docs suite](https://expectation.sim001.net/smart-kettle/site/index.html) ([approved only](https://expectation.sim001.net/smart-kettle-approved/site/index.html))
 - [The kettle manual](https://expectation.sim001.net/example/site/index.html)
 - [One suite, three apps](https://expectation.sim001.net/demo/site/index.html)
+- [An invoices API's manual](https://expectation.sim001.net/invoices/site/index.html): curl commands and responses where screenshots would be
 
 ## Optional
 

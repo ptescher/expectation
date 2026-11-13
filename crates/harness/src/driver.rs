@@ -1,7 +1,7 @@
 //! The system under test, as the runner sees it.
 
 use expectation_model::{Event, Value, Variable};
-use expectation_story::Control;
+use expectation_story::{Control, Exchange};
 
 /// Whether waiting could change anything.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -166,6 +166,17 @@ pub trait Driver {
     /// and to the test's start for anything since the last test. It asks even when it has nowhere
     /// to keep them, so a driver's buffer never grows past one step.
     fn take_attachments(&mut self) -> Vec<Capture> {
+        vec![]
+    }
+
+    /// The HTTP requests the driver made since this was last called, and what came back (see
+    /// [`Exchange`]): for a system that is an API, what the docs show where they'd show a
+    /// screenshot. The runner asks after arranging a test's start, after each action and after
+    /// each step's checks, so it knows which request was the action and which only read the
+    /// system back, and keeps each one redacted ([`RunOptions::redaction`](crate::RunOptions::redaction)):
+    /// hand over the requests as sent, credentials and all. It asks even when nothing is kept,
+    /// so a driver's buffer never grows past one step.
+    fn take_exchanges(&mut self) -> Vec<Exchange> {
         vec![]
     }
 
