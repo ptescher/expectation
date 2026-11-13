@@ -87,6 +87,9 @@ error.
 - `--approved-only` writes just what the suite marks `Approval: approved` (see
   [Approved-only manuals](manual.md#approved-only-manuals)); `--results <dir>` reads the saved
   results from there instead of `<out-dir>/results`.
+- `--reader` writes the edition for people who read the manual, not test it: no "How this is
+  tested" blocks and no screenshot placeholders (see
+  [The reader edition](manual.md#the-reader-edition)).
 - `--stylesheet <css>` restyles the HTML site with your CSS file (see
   [Your own theme](manual.md#your-own-theme)). A missing, empty or malformed file stops the
   command before anything is written.
