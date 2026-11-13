@@ -121,6 +121,10 @@ Bind only what the UI really shows and lets a person do. Anything else stays unb
 reported as "not supported yet", which is honest: a binding that reaches round the UI into the
 app's internals is an embedded driver in disguise, and should be reported as one.
 
+## In the runner
+
+Wherever the client lives, the runner's side is the same: a `RemoteDriver` that listens for
+it and runs the suite through it.
 
 ```rust
 use expectation_remote::RemoteDriver;

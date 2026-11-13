@@ -39,6 +39,23 @@ error[bad-value]: `boiling` isn't a value of the kettle
 | `maybe-step` | warning | Description text that looks like a misspelled step ("Gvien the kettle is off"). |
 | `says-nothing` | warning | A step that's true of every value ("off or heating" of a state with only those). |
 | `shows-what` | warning | A `Shows:` line that doesn't say which value it's for. |
+| `reference` | error | A term's `Reference:` that isn't a label and an `http` or `https` URL, or a second one in the same term. |
+| `launch-in-step` | warning | A `Say:` that holds a shell command in backticks. Starting the program is not a step: put it in `Launch:` under the `Section:`. |
+
+## The size of the pages
+
+These warn when the manual's pages would be badly sized. The limits are constants in
+[`sizing.rs`](https://github.com/ptescher/expectation/blob/main/crates/language/src/sizing.rs).
+
+| Code | | Means |
+| --- | --- | --- |
+| `many-scenarios` | warning | A story has more than one scenario. Each scenario is a tutorial page of its own. |
+| `short-story` | warning | A scenario has fewer than 3 numbered steps (each `When` starts one). |
+| `long-story` | warning | A scenario has more than 8 numbered steps. |
+| `big-feature` | warning | A feature has more than 8 expectations on its topic page (`Docs: hidden` ones don't count). |
+| `small-feature` | warning | A feature has 1 expectation on its page, and its section has other features. |
+| `crowded-section` | warning | A section (not counting its subsections) has more than 8 tutorials or more than 8 topics. |
+| `no-tutorial` | warning | A section has 2 or more features and no story. |
 
 ## Platforms
 

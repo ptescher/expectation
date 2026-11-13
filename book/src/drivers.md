@@ -93,7 +93,9 @@ Say which vocabulary event using a control makes happen with `Control::mapped_to
 presses lock")`, and the report joins the control to the behaviour specified for that event and
 the stories about it. Each control then shows its gaps, with the reason: *no event mapping*,
 *event not in the vocabulary*, *no expectation*, *only pending expectations*, *no authored
-story*, *never used by a test*, *no passing execution*. A story that performs the event in a
+story*, *never used by a test*, *no passing execution* (in `interactions.json`:
+`no-event-mapping`, `unknown-event`, `no-expectation`, `only-pending`, `no-authored-story`,
+`never-used`, `no-passing-execution`). A story that performs the event in a
 section named like the control's view documents the control even if it couldn't run; it still
 isn't verification. The same event on a control in another view is a different row, and what
 covers one doesn't cover the other. An integration that knows controls no run will reach can

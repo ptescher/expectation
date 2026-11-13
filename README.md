@@ -168,7 +168,7 @@ SwiftUI and React Native.
 | `expectation_service` | [crates/service](crates/service) | The external things a run needs (a server, a database, a container): started once, stopped after, and "not supported yet" with how to get them when they can't be had |
 | `expectation_harness` | [crates/harness](crates/harness) | The `Driver` trait, closure `Bindings`, the runner, and the `Acceptance` pipeline |
 | `expectation_remote` | [crates/remote](crates/remote) | Driving an app through a driver embedded in it (Swift, JavaScript and Rust clients), and `expectation-run` |
-| `expectation_cli` | [crates/cli](crates/cli) | The `expectation` command: `check`, `graph`, `plan`, `docs` |
+| `expectation_cli` | [crates/cli](crates/cli) | The `expectation` command: `check`, `graph`, `states`, `plan`, `docs`, `screenshots` |
 
 ## The language
 
@@ -263,8 +263,8 @@ outcome, so "Then the kettle is dry" reads "The display says DRY".
 phrase of `Given`s is a setup ("the kettle is plugged in and full"), usable in a Background,
 a Given or a scenario's start. A phrase of `When`s is a sequence of actions ("the user draws
 two shapes", one `When` per action); an expectation can use one that's a single action, and
-a story step can use any. A phrase's `Say:` is how the docs put it. Phrases can use the
-phrases declared before them.
+a story step can use any. A phrase's `Say:` is how the docs put it. A phrase can use any
+other phrase, whichever is written first; two that use each other are an error.
 
 **Steps.** A step is either an event or a fact `<subject> is [not] <predicate>`. The
 predicate is one or more values (`off or heating`) or, for numbers, a comparison: `80 %`,
@@ -299,6 +299,12 @@ which are arranged on top of the Background. After that, each `When` starts a st
 phrase of several actions becomes several test steps but stays one numbered step in the docs.
 Each top-level section is a system of its own: a story only goes through its own section's
 expectations.
+
+**More in the guide.** [The language](https://expectation.sim001.net/guide/language.html) is
+the full reference. It also covers `Approval: approved | proposed` (whether the specification
+is agreed, and approved-only manuals), `Launch:` (how to start the program under test),
+`Follows:` and `Hands over to:` (how one section's setup is reached from another), and
+`Scopes: sections` (each top-level section with its own vocabulary).
 
 ## Platforms
 
@@ -517,6 +523,9 @@ cargo run -p expectation_cli -- states <dir> [--by <states>] [--dot]  # the app'
 cargo run -p expectation_cli -- plan  <dir> [--coverage]   # the acceptance tests, step by step
 cargo run -p expectation_cli -- docs  <dir> <out-dir>      # docs from the results saved in <out-dir>/results
 ```
+
+[The command's chapter](https://expectation.sim001.net/guide/cli.html) has every option, and
+the `screenshots` commands.
 
 Or install it: `cargo install --git https://github.com/ptescher/expectation expectation_cli`.
 
