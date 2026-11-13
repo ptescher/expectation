@@ -1,6 +1,7 @@
 //! Results of running plans, and what they say about each expectation.
 
 use crate::controls::Control;
+use crate::exchange::{self, Exchange};
 use crate::plan::{Because, Check, Plan};
 use expectation_model::{ExpId, Suite, Value};
 use std::fmt::Write;
@@ -228,6 +229,9 @@ pub struct StepResult {
     pub checks: Vec<CheckResult>,
     /// Relative to the docs directory.
     pub screenshot: Option<String>,
+    /// The HTTP requests it made and what came back, redacted to be published (see
+    /// [`crate::exchange`]): what the docs show of an API where they'd show a screenshot.
+    pub exchanges: Vec<Exchange>,
     pub error: Option<String>,
     /// How many times the checks were observed before they passed or it gave up.
     pub polls: u32,
@@ -248,6 +252,7 @@ impl StepResult {
             status,
             checks: vec![],
             screenshot: None,
+            exchanges: vec![],
             error: None,
             polls: 0,
             window: None,
@@ -304,10 +309,12 @@ impl PlanResult {
         if r.stale {
             r.start.stale = true;
             r.start.screenshot = old.start.screenshot;
+            r.start.exchanges = old.start.exchanges;
             if old.steps.len() == plan.steps.len() {
                 for (new, old) in r.steps.iter_mut().zip(old.steps) {
                     new.stale = true;
                     new.screenshot = old.screenshot;
+                    new.exchanges = old.exchanges;
                 }
             } else {
                 for step in &mut r.steps {
@@ -642,6 +649,9 @@ impl Report {
                 if let Some(w) = step.window {
                     let _ = writeln!(out, "window\t{n}\t{}\t{}", w.start_ms, w.end_ms);
                 }
+                for x in &step.exchanges {
+                    exchange::save(&mut out, n, x);
+                }
                 for a in r.attachments.iter().filter(|a| a.step == n) {
                     let _ = writeln!(
                         out,
@@ -714,6 +724,44 @@ impl Report {
                         step.window = Some(Window { start_ms, end_ms });
                     }
                 }
+                ["exchange", ..] => {
+                    let Some((_, r)) = current.as_mut() else {
+                        continue;
+                    };
+                    let Some((n, x)) = exchange::load(&f) else {
+                        continue;
+                    };
+                    let step = if n == 0 {
+                        Some(&mut r.start)
+                    } else {
+                        r.steps.get_mut(n - 1)
+                    };
+                    if let Some(step) = step {
+                        step.exchanges.push(x);
+                    }
+                }
+                [
+                    kind
+                    @ ("request-header" | "request-body" | "response-header" | "response-body"),
+                    rest @ ..,
+                ] => {
+                    // Part of the exchange before it: the last one of the last step read.
+                    let Some((_, r)) = current.as_mut() else {
+                        continue;
+                    };
+                    let step = r.steps.last_mut().unwrap_or(&mut r.start);
+                    let Some(x) = step.exchanges.last_mut() else {
+                        continue;
+                    };
+                    let un = exchange::unescape;
+                    match (*kind, rest) {
+                        ("request-header", [k, v]) => x.request_headers.push((un(k), un(v))),
+                        ("response-header", [k, v]) => x.response_headers.push((un(k), un(v))),
+                        ("request-body", [b]) => x.request_body = Some(un(b)),
+                        ("response-body", [b]) => x.response_body = Some(un(b)),
+                        _ => {}
+                    }
+                }
                 ["attachment", n, media_type, path] => {
                     if let (Some((_, r)), Ok(step)) = (current.as_mut(), n.parse()) {
                         r.attachments.push(Attachment {
@@ -769,6 +817,7 @@ impl Report {
                         status: Status::parse(status).unwrap_or(Status::NotRun),
                         checks: vec![],
                         screenshot: opt(shot),
+                        exchanges: vec![],
                         error: opt(error),
                         polls: polls.parse().unwrap_or(0),
                         window: None,

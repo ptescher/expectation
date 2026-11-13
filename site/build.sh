@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds the GitHub Pages site into target/pages (or $1): the landing page, the guide
 # (mdBook), the API reference (rustdoc), the kettle example's generated manual, and the
-# multi-platform demo's manual, and the smart-kettle example's two manuals.
+# multi-platform demo's manual, the smart-kettle example's two manuals, and the invoices API's
+# manual.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 out="${1:-target/pages}"
@@ -11,6 +12,9 @@ out="$(cd "$out" && pwd)"
 
 # The example's manual, from a real run: tutorials, topics, the test report and screenshots.
 cargo run -q -p expectation_harness --example kettle -- "$out/example"
+
+# An API's manual, from a real run against a stand-in API: curl commands where screenshots would be.
+cargo run -q -p expectation_harness --example invoices -- "$out/invoices"
 
 # The multi-platform demo's manual, from the results and screenshots its runs saved.
 mkdir -p "$out/demo"

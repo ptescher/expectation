@@ -33,7 +33,9 @@ pub(crate) const CONTINUED: &str = "This run started where the test that ran bef
 
 use expectation_graph::Analysis;
 use expectation_model::{ExpId, Feature, StepText, Suite, VarKind, Variable};
-use expectation_story::{Because, Plan, Report, Status, Verdict, coverage};
+use expectation_story::{
+    Because, Exchange, Plan, Report, Role, Status, StepResult, Verdict, coverage,
+};
 pub use links::broken_links;
 use std::path::{Path, PathBuf};
 
@@ -658,7 +660,10 @@ impl Facts {
 
     /// The best picture of `e` in action: the screenshot after a step whose checks for it
     /// passed, else after any step that exercises it. Returns (plan, step) with the path.
-    fn shot_of(&self, d: &Docs, e: ExpId) -> Option<(usize, Option<usize>, String)> {
+    ///
+    /// For an API, a step's requests show it as a screenshot would: a step with action requests
+    /// and no screenshot counts, and the screenshot is then `None`.
+    fn shot_of(&self, d: &Docs, e: ExpId) -> Option<(usize, Option<usize>, Option<String>)> {
         let report = d.report?;
         let mut fallback = None;
         for &(p, step) in &self.coverage[e.0 as usize] {
@@ -667,7 +672,10 @@ impl Facts {
                 None => (&result.start, &d.plans[p].start_checks),
                 Some(s) => (&result.steps[s], &d.plans[p].steps[s].checks),
             };
-            let Some(shot) = &r.screenshot else { continue };
+            if r.screenshot.is_none() && actions(&r.exchanges).is_empty() {
+                continue;
+            }
+            let shot = &r.screenshot;
             let verified = checks
                 .iter()
                 .zip(&r.checks)
@@ -679,6 +687,33 @@ impl Facts {
         }
         fallback
     }
+}
+
+/// The result of step `step` (`None` for the start) of plan `p`, if it ran.
+fn step_result<'d>(d: &Docs<'d>, p: usize, step: Option<usize>) -> Option<&'d StepResult> {
+    let r = d.report?.results.get(p)?;
+    match step {
+        None => Some(&r.start),
+        Some(s) => r.steps.get(s),
+    }
+}
+
+/// Requests with the same request sent again in a row counted instead of repeated: a check
+/// that polled until it held asked the same thing many times.
+fn collapse<'a>(xs: &[&'a Exchange]) -> Vec<(&'a Exchange, usize)> {
+    let mut out: Vec<(&Exchange, usize)> = vec![];
+    for &x in xs {
+        match out.last_mut() {
+            Some((last, n)) if **last == *x => *n += 1,
+            _ => out.push((x, 1)),
+        }
+    }
+    out
+}
+
+/// The requests that were a step's action: what a reading page shows of it.
+fn actions(xs: &[Exchange]) -> Vec<&Exchange> {
+    xs.iter().filter(|x| x.role == Role::Action).collect()
 }
 
 /// `to` relative to `from`, both directories: "../expectations".

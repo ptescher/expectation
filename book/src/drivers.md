@@ -36,6 +36,7 @@ Terms are matched the way steps are: ignoring case, extra spaces and a leading "
 | `on_settle(f)` | Letting the system settle after each action, before anything is observed. |
 | `on_advance(f)` | Letting a little time pass before the runner looks again. |
 | `on_screenshot(f)` | A picture of the system after each step: `Screenshot::png`, `jpeg` or `svg`. |
+| `on_exchanges(f)` | The HTTP requests the system made since the last call, with their responses: what an API's manual shows instead of a screenshot. See [APIs](api.md). |
 | `needs(&[…])`, `fresh(&[…])` | The [external services](services.md) the tests need. |
 
 The values passed to `set` and `arrange` are `Value`s: `v.as_str()` for a named value,
@@ -115,6 +116,12 @@ A driver can hand over files it captured during each step, such as a network log
 Extensions use them to report which outcomes of a contract the tests saw. See
 [Evidence and contract coverage](evidence.md).
 
+## HTTP exchanges
+
+A driver for an API hands over the requests it sent and the responses it got, with
+`Bindings::on_exchanges` or `Driver::take_exchanges`. The runner redacts them and keeps them in
+the results, and the manual shows each step's request as a `curl` command. See [APIs](api.md).
+
 ## The Driver trait
 
 For full control, implement `Driver` yourself. Only `set`, `perform` and `observe` are
@@ -133,6 +140,7 @@ pub trait Driver {
     fn can_arrange(&self, var: &Variable, value: &Value) -> bool { true }
     fn settle(&mut self) {}
     fn advance(&mut self) -> Progress { Progress::Static }
+    fn take_exchanges(&mut self) -> Vec<Exchange> { vec![] }
     fn screenshot(&mut self) -> Result<Option<Screenshot>, String> { Ok(None) }
     fn supports(&self, need: Need<'_>) -> bool { true }
 }

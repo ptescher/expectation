@@ -4,8 +4,8 @@ use crate::driver::{Driver, Need, Progress};
 use crate::service::Services;
 use expectation_model::{Suite, Trigger};
 use expectation_story::{
-    Attachment, Began, Check, CheckResult, Control, Plan, PlanResult, Report, Run, Status,
-    StepResult, Window, now_ms,
+    Attachment, Began, Check, CheckResult, Control, Exchange, Plan, PlanResult, Redaction, Report,
+    Role, Run, Status, StepResult, Window, now_ms,
 };
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -50,6 +50,10 @@ pub struct RunOptions {
     /// refuse it for itself ([`Driver::may_continue`]), and one that wants services afresh
     /// for each test ([`Driver::fresh`]) never continues.
     pub share_starts: bool,
+    /// What is kept of the HTTP requests the driver hands over ([`Driver::take_exchanges`]):
+    /// which headers, which fields are secret, what origin the docs show. Exchanges are kept
+    /// in the results, which are published with the manual, so only what this lets through is.
+    pub redaction: Redaction,
 }
 
 impl Default for RunOptions {
@@ -63,6 +67,7 @@ impl Default for RunOptions {
             attachments_dir: None,
             provenance: Default::default(),
             share_starts: true,
+            redaction: Redaction::default(),
         }
     }
 }
@@ -432,6 +437,17 @@ fn run_steps(
             attachments.extend(save_captures(dir, run, &plan.slug, n, taken));
         }
     };
+    // The requests the driver made since it was last asked, as `role`, redacted.
+    let exchanges = |driver: &mut dyn Driver, role: Role| -> Vec<Exchange> {
+        driver
+            .take_exchanges()
+            .into_iter()
+            .map(|mut x| {
+                x.role = role;
+                opts.redaction.apply(&x)
+            })
+            .collect()
+    };
     let skip_all = |start: StepResult, attachments: Vec<Attachment>| PlanResult {
         status: Status::Failed,
         start,
@@ -458,6 +474,7 @@ fn run_steps(
     let setup_failed =
         |error: String, driver: &mut dyn Driver, keep: &mut dyn FnMut(&mut dyn Driver, usize)| {
             let mut start = failed(error);
+            start.exchanges = exchanges(driver, Role::Setup);
             start.window = Some(Window {
                 start_ms: began,
                 end_ms: now_ms(),
@@ -481,7 +498,11 @@ fn run_steps(
         && driver.may_continue()
         && driver.fresh().is_empty()
         && observe(suite, driver, &plan.start_checks, 0).status == Status::Passed;
+    // What looking cost: this test's first check if it continues; if not, about a system it
+    // is about to reset, so nobody's.
+    let mut taken = exchanges(driver, Role::Check);
     if !continued {
+        taken.clear();
         if let Err(e) = driver.reset() {
             let start = setup_failed(format!("couldn't reset: {e}"), driver, &mut keep);
             return skip_all(start, attachments);
@@ -498,6 +519,7 @@ fn run_steps(
             }
         }
     }
+    taken.extend(exchanges(driver, Role::Setup));
     driver.settle();
     // Setting the test up is not using the controls.
     let mut seen = Seen::new(opts.controls);
@@ -505,6 +527,8 @@ fn run_steps(
     seen.used.clear();
     seen.look(driver);
     let mut start = observe(suite, driver, &plan.start_checks, opts.patience);
+    taken.extend(exchanges(driver, Role::Check));
+    start.exchanges = taken;
     start.screenshot = shoot(driver, 0);
     start.window = Some(Window {
         start_ms: began,
@@ -521,6 +545,7 @@ fn run_steps(
         }
         let began = now_ms();
         let acted = act(suite, driver, &step.action);
+        let mut taken = exchanges(driver, Role::Action);
         seen.take(driver);
         let mut r = match acted {
             Ok(()) => {
@@ -530,6 +555,8 @@ fn run_steps(
             }
             Err(e) => failed(e),
         };
+        taken.extend(exchanges(driver, Role::Check));
+        r.exchanges = taken;
         r.screenshot = shoot(driver, n + 1);
         r.window = Some(Window {
             start_ms: began,
