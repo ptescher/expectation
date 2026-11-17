@@ -13,7 +13,7 @@ use crate::driver::Checkpoint;
 use crate::driver::{Capture, Driver, Need, Progress, Screenshot};
 use expectation_model::text;
 use expectation_model::{Event, Value, Variable};
-use expectation_story::Control;
+use expectation_story::{Control, Exchange};
 use std::collections::HashMap;
 
 type Observer<W> = Box<dyn FnMut(&W) -> Value>;
@@ -26,6 +26,7 @@ type Lister<W> = Box<dyn FnMut(&W) -> Vec<Control>>;
 type Taker<W> = Box<dyn FnMut(&mut W) -> Vec<String>>;
 type Shooter<W> = Box<dyn FnMut(&W) -> Screenshot>;
 type Capturer<W> = Box<dyn FnMut(&mut W) -> Vec<Capture>>;
+type Exchanger<W> = Box<dyn FnMut(&mut W) -> Vec<Exchange>>;
 
 pub struct Bindings<W> {
     pub world: W,
@@ -42,6 +43,7 @@ pub struct Bindings<W> {
     controls: Option<Lister<W>>,
     used: Option<Taker<W>>,
     attachments: Option<Capturer<W>>,
+    exchanges: Option<Exchanger<W>>,
     needs: Vec<String>,
     fresh: Vec<String>,
     always_reset: bool,
@@ -64,6 +66,7 @@ impl<W> Bindings<W> {
             controls: None,
             used: None,
             attachments: None,
+            exchanges: None,
             needs: vec![],
             fresh: vec![],
             always_reset: false,
@@ -184,6 +187,13 @@ impl<W> Bindings<W> {
         self
     }
 
+    /// The HTTP requests the world made since this was last called, emptied as it is read (see
+    /// [`Driver::take_exchanges`]).
+    pub fn on_exchanges(mut self, f: impl FnMut(&mut W) -> Vec<Exchange> + 'static) -> Self {
+        self.exchanges = Some(Box::new(f));
+        self
+    }
+
     pub fn on_screenshot(mut self, f: impl FnMut(&W) -> Screenshot + 'static) -> Self {
         self.screenshot = Some(Box::new(f));
         self
@@ -281,6 +291,13 @@ impl<W> Driver for Bindings<W> {
 
     fn take_attachments(&mut self) -> Vec<Capture> {
         self.attachments
+            .as_mut()
+            .map(|f| f(&mut self.world))
+            .unwrap_or_default()
+    }
+
+    fn take_exchanges(&mut self) -> Vec<Exchange> {
+        self.exchanges
             .as_mut()
             .map(|f| f(&mut self.world))
             .unwrap_or_default()

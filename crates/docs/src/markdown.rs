@@ -11,7 +11,8 @@ use expectation_model::text::paragraphs;
 use expectation_model::{ExpId, PhraseBody, SectionId, StepText, Suite};
 use expectation_story::{Attribution, Credit, State};
 use expectation_story::{
-    Because, Check, CheckResult, ControlRow, Origin, Plan, Status, StepResult, Verdict,
+    Because, Check, CheckResult, ControlRow, Exchange, Origin, Plan, Role, Status, StepResult,
+    Verdict, exchange,
 };
 use std::fmt::Write;
 
@@ -256,6 +257,34 @@ fn image(
     }
 }
 
+/// Requests, each as a `curl` command and the response it got, where a screenshot would be.
+fn exchanges(o: &mut String, xs: &[&Exchange], stale: bool, failed: bool) {
+    for (x, times) in crate::collapse(xs) {
+        fenced(o, "sh", &exchange::curl(x));
+        fenced(o, "http", &exchange::response(x));
+        if times > 1 {
+            let _ = writeln!(o, "*Sent {times} times.*\n");
+        }
+        if stale {
+            let _ = writeln!(o, "*From before this page changed.*\n");
+        } else if failed {
+            let _ = writeln!(o, "*What came back when this failed.*\n");
+        }
+    }
+}
+
+/// A fenced code block, its fence longer than any run of backticks in `code`.
+fn fenced(o: &mut String, lang: &str, code: &str) {
+    let mut longest = 0;
+    let mut run = 0;
+    for c in code.chars() {
+        run = if c == '`' { run + 1 } else { 0 };
+        longest = longest.max(run);
+    }
+    let fence = "`".repeat((longest + 1).max(3));
+    let _ = writeln!(o, "{fence}{lang}\n{code}\n{fence}\n");
+}
+
 fn index(d: &Docs) -> String {
     let s = d.suite;
     let mut o = String::new();
@@ -497,19 +526,23 @@ fn tutorial_page(d: &Docs, f: &Facts, i: usize, t: &manual::Tutorial) -> String 
         }
         o.push('\n');
         let mut img = String::new();
-        image(
-            &mut img,
-            &d.look,
-            step.shot.as_deref(),
-            step.status,
-            step.stale,
-            d.reader(),
-            if step.seen.is_empty() {
-                &step.doing
-            } else {
-                &step.seen
-            },
-        );
+        if step.shot.is_some() || step.exchanges.is_empty() {
+            image(
+                &mut img,
+                &d.look,
+                step.shot.as_deref(),
+                step.status,
+                step.stale,
+                d.reader(),
+                if step.seen.is_empty() {
+                    &step.doing
+                } else {
+                    &step.seen
+                },
+            );
+        }
+        let xs: Vec<&Exchange> = step.exchanges.iter().collect();
+        exchanges(&mut img, &xs, step.stale, step.status == Status::Failed);
         for line in img.lines() {
             let _ = writeln!(o, "   {line}");
         }
@@ -583,15 +616,22 @@ fn feature_page(d: &Docs, f: &Facts, fi: usize) -> String {
             let _ = writeln!(o, "> {line}\n");
         }
         match f.shot_of(d, e) {
-            Some((_, _, shot)) => image(
-                &mut o,
-                &d.look,
-                Some(&shot),
-                Status::Passed,
-                false,
-                d.reader(),
-                &voice::how(s, &x.steps),
-            ),
+            Some((p, step, shot)) => {
+                if let Some(shot) = &shot {
+                    image(
+                        &mut o,
+                        &d.look,
+                        Some(shot),
+                        Status::Passed,
+                        false,
+                        d.reader(),
+                        &voice::how(s, &x.steps),
+                    );
+                }
+                let r = crate::step_result(d, p, step);
+                let xs = r.map(|r| crate::actions(&r.exchanges)).unwrap_or_default();
+                exchanges(&mut o, &xs, false, false);
+            }
             None => image(
                 &mut o,
                 &d.look,
@@ -1458,17 +1498,25 @@ fn step_body(
 ) {
     let status = result.map_or(plan_status, |r| r.status);
     let stale = result.is_some_and(|r| r.stale);
-    image(
-        o,
-        &d.look,
-        result.and_then(|r| r.screenshot.as_deref()),
-        status,
-        stale,
-        false,
-        "",
-    );
-    if result.and_then(|r| r.screenshot.as_ref()).is_none() {
-        let _ = writeln!(o, "*{}*\n", missing_shot(status, stale));
+    let shot = result.and_then(|r| r.screenshot.as_deref());
+    let all: &[Exchange] = result.map_or(&[], |r| &r.exchanges);
+    if shot.is_some() || all.is_empty() {
+        image(o, &d.look, shot, status, stale, false, "");
+        if shot.is_none() {
+            let _ = writeln!(o, "*{}*\n", missing_shot(status, stale));
+        }
+    }
+    exchanges(o, &crate::actions(all), stale, status == Status::Failed);
+    for (role, summary) in [
+        (Role::Setup, "Requests that set it up"),
+        (Role::Check, "Requests that checked it"),
+    ] {
+        let xs: Vec<&Exchange> = all.iter().filter(|x| x.role == role).collect();
+        if !xs.is_empty() {
+            let _ = writeln!(o, "<details><summary>{summary} ({})</summary>\n", xs.len());
+            exchanges(o, &xs, stale, false);
+            o.push_str("</details>\n\n");
+        }
     }
     if let Some(e) = result
         .and_then(|r| r.error.as_ref())

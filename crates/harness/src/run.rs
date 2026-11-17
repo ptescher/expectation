@@ -4,8 +4,8 @@ use crate::driver::{Checkpoint, Driver, Need, Progress};
 use crate::service::Services;
 use expectation_model::{Condition, Suite, Trigger};
 use expectation_story::{
-    Attachment, Began, Check, CheckResult, Control, Plan, PlanResult, Report, Run, Status,
-    StepResult, Window, now_ms,
+    Attachment, Began, Check, CheckResult, Control, Exchange, Plan, PlanResult, Redaction, Report,
+    Role, Run, Status, StepResult, Window, now_ms,
 };
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -50,6 +50,10 @@ pub struct RunOptions {
     /// refuse it for itself ([`Driver::may_continue`]), and one that wants services afresh
     /// for each test ([`Driver::fresh`]) never continues.
     pub share_starts: bool,
+    /// What is kept of the HTTP requests the driver hands over ([`Driver::take_exchanges`]):
+    /// which headers, which fields are secret, what origin the docs show. Exchanges are kept
+    /// in the results, which are published with the manual, so only what this lets through is.
+    pub redaction: Redaction,
     /// How many saved starts a run keeps at once (see [`Driver::checkpoint`]); the oldest goes
     /// first. A start is only kept while a test still to run begins there.
     pub checkpoint_limit: usize,
@@ -66,6 +70,7 @@ impl Default for RunOptions {
             attachments_dir: None,
             provenance: Default::default(),
             share_starts: true,
+            redaction: Redaction::default(),
             checkpoint_limit: 8,
         }
     }
@@ -472,6 +477,17 @@ fn run_steps(
             attachments.extend(save_captures(dir, run, &plan.slug, n, taken));
         }
     };
+    // The requests the driver made since it was last asked, as `role`, redacted.
+    let exchanges = |driver: &mut dyn Driver, role: Role| -> Vec<Exchange> {
+        driver
+            .take_exchanges()
+            .into_iter()
+            .map(|mut x| {
+                x.role = role;
+                opts.redaction.apply(&x)
+            })
+            .collect()
+    };
     let skip_all = |start: StepResult, attachments: Vec<Attachment>| PlanResult {
         status: Status::Failed,
         start,
@@ -498,6 +514,7 @@ fn run_steps(
     let setup_failed =
         |error: String, driver: &mut dyn Driver, keep: &mut dyn FnMut(&mut dyn Driver, usize)| {
             let mut start = failed(error);
+            start.exchanges = exchanges(driver, Role::Setup);
             start.window = Some(Window {
                 start_ms: began,
                 end_ms: now_ms(),
@@ -521,6 +538,9 @@ fn run_steps(
         && driver.may_continue()
         && driver.fresh().is_empty()
         && observe(suite, driver, &plan.start_checks, 0).status == Status::Passed;
+    // What looking cost: this test's first check if it continues; if not, about a system it
+    // is about to reset, so nobody's.
+    let mut taken = exchanges(driver, Role::Check);
     // Put back as it was when another test with this start was arranged, if the driver saved it:
     // and then looked at like an arrangement, so a bad restore is found and not trusted.
     let may_share = opts.share_starts && driver.may_continue() && driver.fresh().is_empty();
@@ -538,8 +558,10 @@ fn run_steps(
             // It didn't hold: arrange afresh, and don't trust that one again.
             session.forget(plan);
         }
+        taken.extend(exchanges(driver, Role::Check));
     }
     if !continued && !restored {
+        taken.clear();
         if let Err(e) = driver.reset() {
             let start = setup_failed(format!("couldn't reset: {e}"), driver, &mut keep);
             return skip_all(start, attachments);
@@ -556,6 +578,7 @@ fn run_steps(
             }
         }
     }
+    taken.extend(exchanges(driver, Role::Setup));
     driver.settle();
     // Setting the test up is not using the controls.
     let mut seen = Seen::new(opts.controls);
@@ -563,6 +586,8 @@ fn run_steps(
     seen.used.clear();
     seen.look(driver);
     let mut start = observe(suite, driver, &plan.start_checks, opts.patience);
+    taken.extend(exchanges(driver, Role::Check));
+    start.exchanges = taken;
     // An arranged start another test begins at, and that is seen to hold: save it, if the
     // driver can, so that test can be put back instead of arranged.
     if !continued
@@ -574,6 +599,8 @@ fn run_steps(
         && let Ok(Some(cp)) = driver.checkpoint()
     {
         session.keep(plan, cp, opts.checkpoint_limit);
+        // Saving is not part of the test: whatever it asked of the system is nobody's.
+        let _ = exchanges(driver, Role::Setup);
     }
     start.screenshot = shoot(driver, 0);
     start.window = Some(Window {
@@ -591,6 +618,7 @@ fn run_steps(
         }
         let began = now_ms();
         let acted = act(suite, driver, &step.action);
+        let mut taken = exchanges(driver, Role::Action);
         seen.take(driver);
         let mut r = match acted {
             Ok(()) => {
@@ -600,6 +628,8 @@ fn run_steps(
             }
             Err(e) => failed(e),
         };
+        taken.extend(exchanges(driver, Role::Check));
+        r.exchanges = taken;
         r.screenshot = shoot(driver, n + 1);
         r.window = Some(Window {
             start_ms: began,
