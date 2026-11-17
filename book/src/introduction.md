@@ -1,6 +1,23 @@
 # Introduction
 
-Expectation is acceptance testing where the behaviour itself is the source of truth.
+Expectation is a spec for how a system behaves, written so a tool can check it, run it and
+publish it.
+
+## What it is for
+
+- **Spec-driven development.** The spec is a checked artifact, not a document that drifts.
+  Behaviour can be written before it is built (`Status: pending`) and what is agreed is marked
+  (`Approval:`), so a suite says what is decided, what is built and what is proven. Conflicts
+  surface while you write the spec.
+- **Keeping agents on task.** A step that names no declared state or event is an error, and a
+  story can't rely on behaviour the spec doesn't give, so an agent can't quietly invent
+  behaviour. Done is defined by commands (`check`, `plan --coverage`, a run) that exit non-zero
+  and give per-test verdicts. "Not supported yet" is reported apart from "failed", so a run that
+  bound nothing doesn't read as a pass. See [For AI agents](agents.md).
+- **Deterministic results.** Tests are derived from the model by an algorithm, not written or
+  sampled at run time: the same suite gives the same plans in the same order. A test starts
+  where the last one ended only after observing that the system is there, and otherwise resets.
+  Runs are saved with ids, timings and evidence, and the manual can be rebuilt from them.
 
 You describe a system as **expectations**: given some state, when something happens, then the
 system ends up in some state. Every step is written in a shared **vocabulary** of states and
@@ -24,11 +41,13 @@ From a suite of expectations, Expectation:
    step, the expectations it passes through supply the checks. A story that relies on
    unspecified behaviour, or contradicts an expectation, is rejected before anything runs.
    Generated tests reach whatever no story does.
-4. **runs those tests** against your system through a small driver, and takes a screenshot at
-   every step.
+4. **runs those tests** against your system through a small driver, and keeps what each step
+   saw: a screenshot, or the HTTP requests it made. It also lists the controls (buttons,
+   fields) no test used.
 5. **writes the documentation**: a manual where stories are step-by-step tutorials and features
    are topic pages, with the test evidence folded away under "How this is tested", plus a full
-   test report.
+   test report. For an HTTP API the evidence is each step's request as a `curl` command and
+   the response, see [APIs](api.md).
 
 ```text
 .expect files ─language─▶ Suite ─graph─▶ conflicts · override DAG · flow DAG

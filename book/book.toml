@@ -1,6 +1,6 @@
 [book]
 title = "Expectation"
-description = "Acceptance testing where the behaviour is the source of truth"
+description = "A spec for how a system behaves that a tool can check, run and publish"
 authors = ["Patrick Tescher"]
 language = "en"
 src = "src"

@@ -6,8 +6,11 @@ description: Work with Expectation, an acceptance-testing tool where .expect fil
 # Expectation
 
 Expectation turns a suite of `*.expect` files into: conflict and reachability checks, acceptance
-tests compiled from user stories, and a user manual (Markdown and HTML) with screenshots.
-Every step is a declared **state** or **event**, so the suite is a model, not a script.
+tests compiled from user stories, and a user manual (Markdown and HTML) with the evidence each
+step produced (screenshots, or an API's requests as curl commands). Every step is a declared
+**state** or **event**, so the suite is a model, not a script. Use it as the definition of done:
+don't call work finished until `check` is clean, `plan --coverage` shows what is covered, and the
+run's per-test results say what passed, failed or was "not supported yet".
 Docs: https://expectation.sim001.net/guide/ · all of it as one text file:
 https://expectation.sim001.net/llms-full.txt · index: https://expectation.sim001.net/llms.txt
 
@@ -139,3 +142,8 @@ yet", not a failure, so a run where nothing was bound exits 0; a failed screensh
 warning. Read the per-plan results (`✓`, `✗`, `–` lines, or the `plan` rows in
 `docs/results/*.tsv`) and check that the stories and screenshots you expect actually passed
 and were taken. Never infer "verified" from the exit code alone.
+
+If the driver lists the app's controls (buttons, fields), the report also lists the ones no test
+used. That is a gap in the tests, not in the spec. In a large suite, `Scopes: sections` in a
+top-level `Vocabulary:` block gives each top-level directory its own words
+(https://expectation.sim001.net/guide/language.html#scoping-the-words-of-a-large-suite).

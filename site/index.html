@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Expectation</title>
-<meta name="description" content="Acceptance testing where the behaviour is the source of truth: write expectations once, and get conflict checking, generated acceptance tests and a user manual.">
+<meta name="description" content="A checked spec of how a system behaves. Expectations in a declared vocabulary are checked for conflicts, compiled into acceptance tests, run against the real system and published as a manual.">
 <link rel="stylesheet" href="theme.css">
 <link rel="stylesheet" href="style.css">
 <link rel="alternate" type="text/plain" href="llms.txt" title="llms.txt">
@@ -26,16 +26,41 @@
 
 <main>
 <section class="hero">
-  <p class="eyebrow">Acceptance testing for Rust</p>
-  <h1>Write the behaviour once.<br>Get the conflicts, the tests <span class="nowrap">and the manual.</span></h1>
-  <p class="lede">Describe your system as expectations in a shared vocabulary. Expectation checks
-  that they agree, compiles your user stories into acceptance tests, runs them against the real
-  thing, and writes the user manual, with a screenshot of every step.</p>
+  <p class="eyebrow">Executable specs</p>
+  <h1>A spec a tool can check, run and publish.</h1>
+  <p class="lede">You write expectations (given, when, then) in a vocabulary of declared states and
+  events. Expectation checks them for conflicts, compiles user stories into acceptance tests, runs
+  them against the real system through a driver, and writes the manual from the same suite.</p>
   <p class="actions">
     <a class="btn primary" href="guide/getting-started.html">Get started</a>
     <a class="btn" href="example/site/index.html">See a generated manual</a>
   </p>
   <pre class="install"><span class="prompt">$</span> cargo install --git https://github.com/ptescher/expectation expectation_cli</pre>
+</section>
+
+<section class="features">
+  <h2>What it is for</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>Spec-driven development</h3>
+      <p>The spec is a checked artifact, not a document that drifts. Write behaviour before it is
+      built (<code>Status: pending</code>), mark what is agreed (<code>Approval:</code>), and find
+      contradictions while writing the spec instead of while debugging.</p>
+    </div>
+    <div class="card">
+      <h3>Keeping agents on task</h3>
+      <p>A step that names no declared state or event is an error, and a story can't rely on
+      behaviour the spec doesn't give. Done is a set of commands with exit codes and per-test
+      verdicts, and "not supported yet" is reported apart from "failed".
+      <a href="guide/agents.html">For agents</a>.</p>
+    </div>
+    <div class="card">
+      <h3>Deterministic results</h3>
+      <p>Tests are derived from the model by an algorithm, not written or sampled at run time: the
+      same suite gives the same plans. A test continues from the last one only after observing the
+      system is where it needs to be, and results are saved so the manual can be rebuilt.</p>
+    </div>
+  </div>
 </section>
 
 <section class="pipeline" aria-label="From spec to manual">
@@ -95,43 +120,43 @@ disagree about the kettle
 </section>
 
 <section class="features">
-  <h2>What you get</h2>
+  <h2>How it works</h2>
   <div class="grid">
     <div class="card">
-      <h3>Conflicts, found mechanically</h3>
+      <h3>Conflicts</h3>
       <p>Conditions are sets of states, so overlaps and contradictions are exact. Exceptions are
       explicit with <code>Overrides:</code>, and they must form a DAG.</p>
     </div>
     <div class="card">
-      <h3>Stories that can't drift</h3>
-      <p>A story that relies on unspecified behaviour, or contradicts an expectation, is
-      rejected before it runs. It never has to restate what the rules already promise.</p>
+      <h3>Stories</h3>
+      <p>A story describes a journey. The expectations it passes through supply the checks, so it
+      never restates the rules, and one that contradicts them is rejected before it runs.</p>
     </div>
     <div class="card">
-      <h3>Coverage by construction</h3>
-      <p>A flow DAG from the starting state gives every expectation a shortest route, and a
-      generated test follows it when no story does.</p>
+      <h3>Coverage</h3>
+      <p>A flow DAG from the starting state gives every expectation a shortest route. A generated
+      test follows it when no story does. Controls the tests never touched are listed.</p>
     </div>
     <div class="card">
-      <h3>Any system, through a driver</h3>
-      <p>A dozen closures bind the vocabulary to your code: a library, a game loop, an API, a
-      browser, a device. Time, polling and screenshots are built in.</p>
+      <h3>Drivers</h3>
+      <p>A dozen closures bind the vocabulary to a library, a game loop, an HTTP API, a browser or
+      a device. Remote clients exist for Swift, JavaScript and Rust.</p>
     </div>
     <div class="card">
-      <h3>Honest about gaps</h3>
-      <p>What the driver or the machine can't do yet is "not supported yet", not a failure,
-      and the manual shows it. Databases and containers start themselves.</p>
+      <h3>Evidence</h3>
+      <p>Each step keeps what it saw: a screenshot, or for an API the request as a curl command
+      and its response, with credentials redacted. Missing capabilities are "not supported yet".</p>
     </div>
     <div class="card">
-      <h3>A manual people read</h3>
-      <p>Markdown for GitHub and an HTML site, in the user's words, with
-      <code>Say:</code> and <code>Shows:</code> lines for what to press and what appears.</p>
+      <h3>Manual</h3>
+      <p>Markdown and HTML in the user's words, with <code>Say:</code> and <code>Shows:</code>
+      lines for what to press and what appears. Approved-only manuals are supported.</p>
     </div>
   </div>
 </section>
 
 <section class="platforms">
-  <h2>One suite, every front end</h2>
+  <h2>One suite, several front ends</h2>
   <p class="sub">Embed a driver in the app (Swift, JavaScript or Rust) and the same runner drives it.
   The demo is one kettle built three times, held to one suite.</p>
   <div class="grid">
@@ -144,15 +169,16 @@ disagree about the kettle
 
 <section class="platforms">
   <h2>Specs that explain</h2>
-  <p class="sub">A suite can pass every check and still make a thin manual. The guide shows the
-  depth a feature page needs and the workflow to get there, and the example has an outside data
-  source, an unavailable state and a decision nobody has made yet. Mark what is agreed and
-  publish a manual of just that.</p>
+  <p class="sub">A suite can pass every check and still make a thin manual. The guide covers the
+  depth a feature page needs. The smart-kettle example has an outside data source, an unavailable
+  state and an undecided question; mark what is agreed and publish a manual of just that. The
+  invoices example runs against an HTTP API.</p>
   <div class="grid">
     <a class="card link" href="guide/feature-docs.html"><small>Read</small>Feature docs that explain</a>
     <a class="card link" href="smart-kettle/site/feature-boiling-when-it-is-cheap.html"><small>See the page</small>A generated feature page</a>
     <a class="card link" href="smart-kettle/site/index.html"><small>Full manual</small>Smart kettle, with drafts</a>
     <a class="card link" href="smart-kettle-approved/site/index.html"><small>Approved only</small>Smart kettle, agreed behaviour</a>
+    <a class="card link" href="invoices/site/index.html"><small>An HTTP API</small>Invoices, with curl evidence</a>
   </div>
   <p><a href="guide/manual.html#approved-only-manuals">Approved-only manuals in the guide →</a></p>
 </section>
@@ -161,7 +187,7 @@ disagree about the kettle
   <div class="copy">
     <h2>Bind it, run it</h2>
     <p>Bind each term of the vocabulary to your system, then run the suite from a test. It fails
-    with every broken promise, named after the expectation that made it.</p>
+    with every broken expectation, by name.</p>
     <p><a href="guide/drivers.html">Drivers in the guide →</a></p>
   </div>
   <pre class="screen rust"><span class="k">let mut</span> driver = Bindings::new(Kettle::default())

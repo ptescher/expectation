@@ -1,6 +1,6 @@
 # Expectation
 
-> Acceptance testing where the behaviour is the source of truth. You write expectations (given/when/then) in a shared vocabulary of states and events; Expectation checks them for conflicts, compiles user stories into acceptance tests, runs them against the system, and writes the user manual with screenshots.
+> A spec for how a system behaves, checked and run by a tool. You write expectations (given/when/then) in a vocabulary of declared states and events. `expectation check` finds conflicts and unspecified behaviour, `plan` compiles user stories into acceptance tests, a driver runs them against the real system, and `docs` writes the manual from the same suite. Used for spec-driven development, for giving agents a checkable definition of done, and for deterministic, reproducible test results.
 
 For AI agents: install the skill at https://expectation.sim001.net/skills/expectation/SKILL.md (also /skill.md), or read the whole guide as one text file at https://expectation.sim001.net/llms-full.txt.
 
