@@ -25,6 +25,10 @@ commands:
                             (--coverage adds generated tests for untested expectations,
                             --state-pictures the ones that visit a state for the state map's
                             picture of it)
+  status <dir> <out-dir> [--results <dir>]
+                            print as JSON where every feature and story stands: approved or
+                            not, pending or built, and what the tests the runs saved in
+                            <out-dir>/results said (for a board or a CI gate)
   docs  <dir> <out-dir> [--approved-only] [--reader] [--results <dir>] [--stylesheet <css>] [--state-shot-ratio <w:h>]
         [--screenshots <dir|url>] [--section <name|dir>]... [--base-url <url>]
         [--expect-app-revision <rev>] [--expect-data-mode <mode>] [--expect-fixture <name>]
@@ -205,6 +209,7 @@ pub fn main() {
                 print_plan(&c.suite, p);
             }
         }
+        ["status", dir, out] => status(dir, out, results),
         ["docs", dir, out] => docs(
             dir,
             out,
@@ -229,6 +234,21 @@ pub fn main() {
             exit(2);
         }
     }
+}
+
+/// Where every feature and story stands, from the results the runs saved: JSON on stdout.
+fn status(dir: &str, out: &str, results: Option<String>) {
+    let mut c = load(dir);
+    let extra = expectation_story::coverage_plans(&c.suite, &c.analysis, &c.plans);
+    c.plans.extend(extra);
+    let visits = expectation_story::visit_plans(&c.suite, &c.analysis, &c.plans);
+    c.plans.extend(visits);
+    let results_dir = results.map_or_else(|| Path::new(out).join("results"), |r| r.into());
+    let report = expectation_story::load_results_for(&results_dir, &c.plans, None);
+    print!(
+        "{}",
+        expectation_story::status_json(&c.suite, &c.plans, &report)
+    );
 }
 
 /// The manual, once for each platform the suite declares (the first at `out`, the others

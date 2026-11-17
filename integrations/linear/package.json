@@ -1,0 +1,25 @@
+{
+  "name": "expectation-linear",
+  "version": "0.1.0",
+  "description": "Keep a Linear board in step with an Expectation suite: one issue per feature, with whether it is approved, built and passing",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ptescher/expectation",
+    "directory": "integrations/linear"
+  },
+  "type": "module",
+  "bin": {
+    "expectation-linear": "bin/expectation-linear.js"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}

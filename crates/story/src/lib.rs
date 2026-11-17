@@ -10,6 +10,7 @@ pub mod plan;
 pub mod report;
 pub mod sha256;
 pub mod sidecar;
+pub mod status;
 
 pub use codecov::{
     Basis, Capture, CaptureState, CodeCoverage, Count, code_coverage_file, is_code_coverage_file,
@@ -30,6 +31,7 @@ pub use report::{
     StepResult, Verdict, Window, fingerprint, load_results, load_results_for, now_ms,
     platform_shots, results_file, screenshots_named,
 };
+pub use status::{Rollup, rollup, status_json};
 
 #[cfg(test)]
 mod tests {

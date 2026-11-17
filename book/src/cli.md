@@ -72,6 +72,26 @@ expectations fire and what's checked. `--coverage` adds the generated tests for 
 no story reaches. `--state-pictures` adds the ones that visit a state only so the state map has
 a picture of it (see [Stories](stories.md)).
 
+## status
+
+```bash
+expectation status <dir> <out-dir> [--results <dir>]
+```
+
+Prints as JSON where every feature and story stands, from the suite and the results the runs
+saved in `<out-dir>/results`: for a board or a CI gate. Three facts are kept apart:
+
+- `approval`: `approved`, `proposed`, `unmarked`, or for a feature `partial` when only some of
+  its expectations are approved (`Approval:` is about the specification being agreed).
+- `pending`: how many expectations are marked `Status: pending`, written ahead of the behaviour.
+- `verdict`: the worst of what the tests said about its expectations (`failed`, `unsupported`,
+  `untested`, `not_run`, `verified`), leaving out the pending ones, or `pending` if nothing else
+  is there. Results saved for an older version of a test count as `not_run`.
+
+Each feature lists its expectations with the same three, and its section, file and line. Each
+story has its approval and a `status` from its scenarios' results. Nothing is run: a suite that
+hasn't been run reads `not_run`. [A Linear board](linear.md) can be kept in step from it.
+
 ## docs
 
 ```bash
