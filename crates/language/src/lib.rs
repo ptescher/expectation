@@ -1177,6 +1177,57 @@ Story: Draft
     }
 
     #[test]
+    fn the_same_word_declared_alike_in_two_sections_suggests_sharing_it() {
+        let (a, b) = (area("on | off", "a"), area("on | off", "b"));
+        let l = load_sources(
+            "S",
+            &[
+                ("vocab.expect", ROOT),
+                ("a/a.expect", &a),
+                ("b/b.expect", &b),
+            ],
+        );
+        let dup: Vec<_> = l
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "duplicate-word")
+            .collect();
+        assert_eq!(dup.len(), 1, "{}", l.render_diagnostics());
+        // Declared differently, they are two words and nothing is said.
+        let c = area("on | off | broken", "b");
+        let l = load_sources(
+            "S",
+            &[
+                ("vocab.expect", ROOT),
+                ("a/a.expect", &a),
+                ("b/b.expect", &c),
+            ],
+        );
+        assert!(!codes(&l).contains(&"duplicate-word"));
+    }
+
+    #[test]
+    fn a_scoped_word_is_used_only_by_its_own_section() {
+        // «b» declares a lamp and never uses it, while «a» uses its own.
+        let a = area("on | off", "a");
+        let b = "Vocabulary:\n  State: the lamp is on | off\n";
+        let l = load_sources(
+            "S",
+            &[
+                ("vocab.expect", ROOT),
+                ("a/a.expect", &a),
+                ("b/b.expect", b),
+            ],
+        );
+        let unused: Vec<_> = l
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "unused-word" && d.message.contains("lamp"))
+            .collect();
+        assert_eq!(unused.len(), 1, "{}", l.render_diagnostics());
+    }
+
+    #[test]
     fn a_word_of_another_section_is_not_visible() {
         let b = "Feature: B\n  Expectation: Hit\n    Given the lamp is on\n    When the user flips the switch\n    Then the lamp is off\n";
         let a = area("on | off", "a");
