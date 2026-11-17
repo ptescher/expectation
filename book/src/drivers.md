@@ -193,6 +193,46 @@ RunOptions { share_starts: false, ..Default::default() }   // one run
 A driver that asks for services afresh before each test (`fresh`) never continues: those
 services must not keep what the last test left.
 
+### Saved starts
+
+When several tests begin at the same arranged start and none of them ends where another
+starts, each one rebuilds it: a reset, then every Given. If building that start is slow (a
+simulator, a flight, a long sign-up) and the system's state is something you can copy, the
+driver can save it:
+
+```rust,ignore
+// Bindings over a world that is plain data (it is Clone):
+Bindings::new(world).checkpointed()
+
+// Anything else: say how to save and put back.
+Bindings::new(world).on_checkpoint(
+    |w| Checkpoint::new(w.snapshot()),
+    |w, cp| w.restore(cp.get::<Snapshot>().ok_or("not mine")?),
+)
+
+// Or on a Driver of your own:
+fn checkpoint(&mut self) -> Result<Option<Checkpoint>, String>   // None: can't (the default)
+fn restore(&mut self, checkpoint: &Checkpoint) -> Result<(), String>
+```
+
+The runner arranges the start once, and only when another test still to run begins there. It
+saves it after observing that everything the test is given holds. Each of the other tests with
+that start is put back to it, and then the runner looks at everything the test is given, as it
+does after arranging. If that doesn't hold, or the restore fails, it resets and arranges as
+usual and forgets that checkpoint, so a bad restore costs time and never a wrong result.
+A saved start is dropped when no test left begins there, and a run keeps at most
+`RunOptions::checkpoint_limit` (8) at once.
+
+A test that continued from the last one is still cheaper and is tried first. The result says
+how each test began: `arranged`, `continued` or `restored`, in the results, on the test's page
+in the manual, and `(restored)` in `expectation-run`.
+
+Save what a test could notice and the suite doesn't describe, too: a clock, a log, a cache.
+If you can't, or restoring is not exact, leave the default (no checkpoints), or turn sharing
+off for the run with `share_starts: false` or for the driver with `always_reset()` /
+`may_continue`, which turn checkpoints off along with continuing. A driver that asks for
+services afresh before each test (`fresh`) never restores.
+
 ### A run as a gate
 
 A run passes when nothing failed. Tests the driver can't run yet, pending ones and ones that
