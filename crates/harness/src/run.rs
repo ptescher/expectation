@@ -525,16 +525,18 @@ fn run_steps(
     // and then looked at like an arrangement, so a bad restore is found and not trusted.
     let may_share = opts.share_starts && driver.may_continue() && driver.fresh().is_empty();
     let mut restored = false;
-    if !continued && may_share && !plan.start_checks.is_empty() {
-        if let Some(cp) = session.checkpoint_for(plan) {
-            restored = driver.restore(cp).is_ok() && {
-                driver.settle();
-                observe(suite, driver, &plan.start_checks, 0).status == Status::Passed
-            };
-            if !restored {
-                // It didn't hold: arrange afresh, and don't trust that one again.
-                session.forget(plan);
-            }
+    if !continued
+        && may_share
+        && !plan.start_checks.is_empty()
+        && let Some(cp) = session.checkpoint_for(plan)
+    {
+        restored = driver.restore(cp).is_ok() && {
+            driver.settle();
+            observe(suite, driver, &plan.start_checks, 0).status == Status::Passed
+        };
+        if !restored {
+            // It didn't hold: arrange afresh, and don't trust that one again.
+            session.forget(plan);
         }
     }
     if !continued && !restored {
