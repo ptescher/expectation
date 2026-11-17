@@ -16,7 +16,7 @@ pub mod run;
 pub use expectation_service as service;
 
 pub use bindings::Bindings;
-pub use driver::{Capture, Driver, Need, Progress, Screenshot};
+pub use driver::{Capture, Checkpoint, Driver, Need, Progress, Screenshot};
 pub use run::{RunOptions, Worker, run, run_parallel};
 
 use expectation_docs::Docs;

@@ -77,6 +77,22 @@ impl std::fmt::Display for Need<'_> {
 /// Calls may block. A real-time system (a game, a simulation) can let time pass in [`Driver::advance`]
 /// and the runner keeps observing until a step's checks hold or its patience runs out, so
 /// "Then the kettle is heating" means *eventually*, as it would for a person watching.
+/// The system saved by [`Driver::checkpoint`]: opaque to the runner, which only keeps it and
+/// hands it back. A driver puts in whatever it needs to restore (a copy of its state, a
+/// snapshot id) and reads it back with [`Checkpoint::get`].
+pub struct Checkpoint(Box<dyn std::any::Any>);
+
+impl Checkpoint {
+    pub fn new<T: std::any::Any>(saved: T) -> Self {
+        Checkpoint(Box::new(saved))
+    }
+
+    /// What was saved, if it is a `T`.
+    pub fn get<T: std::any::Any>(&self) -> Option<&T> {
+        self.0.downcast_ref()
+    }
+}
+
 pub trait Driver {
     /// The external services this driver needs for its tests (see [`crate::service`]): a
     /// controller, a database. The runner starts them before a plan, and when one cannot be had
@@ -111,6 +127,26 @@ pub trait Driver {
     /// suite describes (a log, a clock, a cache) could change what the next one sees.
     fn may_continue(&self) -> bool {
         true
+    }
+
+    /// Save the system as it is now, so a test with this start can be put back to it instead of
+    /// being arranged again. `None`: this driver can't (the default), and every start is
+    /// arranged. The runner asks once a start has been arranged and observed to hold, and only
+    /// when another test still to run begins there.
+    ///
+    /// Worth implementing when a start is slow to build and its state is something you can copy
+    /// (a simulation core, a database snapshot, a VM image). It need only hold what the suite's
+    /// states describe, plus whatever else a test could notice.
+    fn checkpoint(&mut self) -> Result<Option<Checkpoint>, String> {
+        Ok(None)
+    }
+
+    /// Put the system back as it was at `checkpoint`, which this driver made. The runner
+    /// observes everything the test is given afterwards, as it does after arranging; if that
+    /// doesn't hold, or this fails, it resets and arranges as usual and drops the checkpoint.
+    fn restore(&mut self, checkpoint: &Checkpoint) -> Result<(), String> {
+        let _ = checkpoint;
+        Err("this driver has no checkpoints".into())
     }
 
     /// Make `var` hold `value` before the first step ("Given …").

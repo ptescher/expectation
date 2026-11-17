@@ -86,13 +86,20 @@ warning[untested]: no story exercises «Pushing a locked turnstile does nothing�
    |   Expectation: Pushing a locked turnstile does nothing
    = help: a story that would: When a visitor pushes the arm
 
-0 errors, 1 warning
+warning[short-story]: scenario «A day at the zoo» has 2 steps
+  --> turnstile.expect:30
+   | Story: A day at the zoo
+   = help: a tutorial needs 3 to 8 steps; with fewer it is a topic, so let the expectations say it, or add the steps a reader takes before and after
+
+0 errors, 2 warnings
 Turnstile: 3 expectations in 1 feature, 1 story (1 test); 0 exceptions; flow DAG 3 edges, 2 levels deep (search truncated)
 ```
 
 Nothing ran, but the suite was checked: every step uses the vocabulary, no two expectations
-disagree, and the story only relies on behaviour the expectations specify. The warning says
-one expectation has no story, and how a story could reach it.
+disagree, and the story only relies on behaviour the expectations specify. The first warning
+says one expectation has no story, and how a story could reach it. The second is about the
+manual: the story becomes a tutorial, and two steps make a thin one. A suite this small can
+live with both.
 
 "Search truncated" is normal here: every coin makes a new state, so the search for what
 leads to what stops at its depth limit instead of counting to 1000. It has already found
