@@ -29,6 +29,7 @@
 - [The generated manual](manual.md)
 - [APIs: requests as evidence](api.md)
 - [Evidence and contract coverage](evidence.md)
+- [A Linear board](linear.md)
 
 # Reference
 

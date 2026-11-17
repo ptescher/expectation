@@ -17,6 +17,14 @@ pub struct StoryId(pub u32);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SectionId(pub u32);
 
+/// `Approval:` on a feature, expectation or story: whether the *specification* is agreed. It says
+/// nothing about whether the behaviour is built (`Status: pending`) or tested.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Approval {
+    Approved,
+    Proposed,
+}
+
 /// A Then that's relative to what was there before: "the drawing goes up by 1 item", "the
 /// selected item stays the same".
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -179,6 +187,8 @@ pub struct Expectation {
     /// `Status: pending`: written ahead of the behaviour. It stays in the model (states,
     /// reachability, conflicts), but a test that depends on it is reported as pending, not run.
     pub pending: bool,
+    /// `Approval:` under it, or under its feature.
+    pub approval: Option<Approval>,
 }
 
 impl Expectation {
@@ -267,6 +277,8 @@ pub struct Feature {
     pub description: Vec<String>,
     pub span: Span,
     pub expectations: Vec<ExpId>,
+    /// `Approval:` under the feature itself (its expectations may say otherwise).
+    pub approval: Option<Approval>,
 }
 
 /// "As a tea drinker, I want …, so that …", told through one or more scenarios.
@@ -282,6 +294,7 @@ pub struct Story {
     pub description: Vec<String>,
     pub span: Span,
     pub scenarios: Vec<Scenario>,
+    pub approval: Option<Approval>,
 }
 
 #[derive(Clone, Debug)]

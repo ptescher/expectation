@@ -95,12 +95,7 @@ pub struct RawStep {
     pub span: Span,
 }
 
-/// `Approval:` on a feature, expectation or story.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Approval {
-    Approved,
-    Proposed,
-}
+pub use expectation_model::Approval;
 
 #[derive(Debug)]
 pub struct RawFeature {

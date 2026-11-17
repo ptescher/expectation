@@ -102,6 +102,7 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
                 description: rf.description.clone(),
                 span: rf.span.clone(),
                 expectations: vec![],
+                approval: rf.approval,
             };
             for re in &rf.expectations {
                 let id = ExpId(suite.expectations.len() as u32);
@@ -117,9 +118,9 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
                     );
                 }
                 by_key.entry(key).or_insert(id);
-                suite
-                    .expectations
-                    .push(expectation(id, fid, re, vocab, diags));
+                let mut built = expectation(id, fid, re, vocab, diags);
+                built.approval = built.approval.or(rf.approval);
+                suite.expectations.push(built);
                 feature.expectations.push(id);
                 overrides.push((id, re.overrides.clone()));
             }
@@ -204,6 +205,7 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
                 description: rs.description.clone(),
                 span: rs.span.clone(),
                 scenarios,
+                approval: rs.approval,
             });
         }
     }
@@ -1201,6 +1203,7 @@ fn expectation(
         steps: re.steps.iter().map(|s| text_of(s, vocab)).collect(),
         hidden: re.hidden,
         pending: re.pending,
+        approval: re.approval,
     }
 }
 

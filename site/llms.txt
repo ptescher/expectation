@@ -25,6 +25,7 @@ For AI agents: install the skill at https://expectation.sim001.net/skills/expect
 - [Remote drivers](https://expectation.sim001.net/guide/remote.html): Swift, JavaScript and Rust clients, embedded in the app or in a UI-automation test process, driven by `expectation-run`
 - [The generated manual](https://expectation.sim001.net/guide/manual.html): includes custom themes and approved-only manuals
 - [APIs: requests as evidence](https://expectation.sim001.net/guide/api.html): suites for an HTTP API, where the manual shows each step's request as a curl command and the response it got; what the runner redacts before it keeps them
+- [A Linear board](https://expectation.sim001.net/guide/linear.html): `expectation status` prints where each feature stands (approved, pending, verdict) as JSON, and a script keeps a Linear team's issues in step with it
 - [Evidence and contract coverage](https://expectation.sim001.net/guide/evidence.html): run ids, step windows and attachments for extensions; the coverage file format and the rules it is held to
 - [The expectation command](https://expectation.sim001.net/guide/cli.html)
 - [Diagnostics](https://expectation.sim001.net/guide/diagnostics.html)
