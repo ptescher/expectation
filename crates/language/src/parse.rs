@@ -390,6 +390,7 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
             continue;
         }
         if let Some(rest) = line.strip_prefix("Platform:") {
+            diags.extend(trailing_comment(&span, rest, false));
             if block != Block::Vocabulary {
                 diags.push(
                     Diagnostic::error("syntax", "`Platform:` belongs in a Vocabulary block")
@@ -407,6 +408,7 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
             let (tag, rest) = tagged(line, p)?;
             Some((*p, tag, rest))
         }) {
+            diags.extend(trailing_comment(&span, rest, false));
             let decl = RawDecl {
                 text: rest.trim().to_string(),
                 span: span.clone(),
@@ -449,6 +451,7 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
         }
 
         if let Some((tag, rest)) = tagged(line, "Launch") {
+            diags.extend(trailing_comment(&span, rest, true));
             match (block, out.section.as_mut()) {
                 (Block::Section, Some(sec)) => match tag {
                     Some(platform) => sec.launch_variants.push(Variant {
@@ -472,6 +475,7 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
         }
 
         if let Some(rest) = line.strip_prefix("On:") {
+            diags.extend(trailing_comment(&span, rest, false));
             let on: Vec<(String, Span)> = rest
                 .split(',')
                 .map(|p| (p.trim().to_string(), span.clone()))
@@ -509,6 +513,7 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
         }
 
         if let Some((tag, rest)) = tagged(line, "Shows") {
+            diags.extend(trailing_comment(&span, rest, true));
             match (block, last, out.states.last_mut(), tag) {
                 (Block::Vocabulary, Last::State, Some(d), None) => {
                     d.shows.push((rest.trim().to_string(), span))
@@ -535,6 +540,7 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
             let (tag, rest) = tagged(line, p)?;
             Some((*p, tag, rest))
         }) {
+            diags.extend(trailing_comment(&span, rest, true));
             let said = Some((rest.trim().to_string(), span.clone()));
             let ok = matches!(
                 (block, last, prefix),
@@ -595,7 +601,10 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                 (Block::Expectation, Some(_)) => diags.push(
                     Diagnostic::error("syntax", "`Docs:` can only say `hidden`")
                         .at(&span, "")
-                        .help("`Docs: hidden` keeps an expectation out of the reading pages"),
+                        .help(value_help(
+                            rest,
+                            "`Docs: hidden` keeps an expectation out of the reading pages",
+                        )),
                 ),
                 _ => diags.push(
                     Diagnostic::error("syntax", "`Docs:` belongs in an Expectation").at(&span, ""),
@@ -626,7 +635,10 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                 (Some(_), None) => diags.push(
                     Diagnostic::error("syntax", "`Approval:` is `approved` or `proposed`")
                         .at(&span, "")
-                        .help("leave it out while nobody has said either"),
+                        .help(value_help(
+                            rest,
+                            "leave it out while nobody has said either",
+                        )),
                 ),
                 _ => diags.push(
                     Diagnostic::error(
@@ -649,9 +661,10 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
                 (Block::Expectation, Some(_)) => diags.push(
                     Diagnostic::error("syntax", "`Status:` can only say `pending`")
                         .at(&span, "")
-                        .help(
+                        .help(value_help(
+                            rest,
                             "`Status: pending` marks an expectation written before the behaviour exists",
-                        ),
+                        )),
                 ),
                 _ => diags.push(
                     Diagnostic::error("syntax", "`Status:` belongs in an Expectation")
@@ -676,6 +689,7 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
             continue;
         }
         if let Some(rest) = line.strip_prefix("Follows:") {
+            diags.extend(trailing_comment(&span, rest, false));
             match block {
                 Block::Background => out.follows.push(RawStep {
                     keyword: Keyword::Given,
@@ -689,6 +703,7 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
             continue;
         }
         if let Some(rest) = line.strip_prefix("Hands over to:") {
+            diags.extend(trailing_comment(&span, rest, false));
             match (
                 block,
                 out.features
@@ -708,6 +723,7 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
             continue;
         }
         if let Some(rest) = line.strip_prefix("Overrides:") {
+            diags.extend(trailing_comment(&span, rest, false));
             match (
                 block,
                 out.features
@@ -725,8 +741,12 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
 
         // Features, sections and terms hold no steps, so a line there that starts with "When"
         // or "Then" is prose: "When PEN is selected, each click adds a shape".
-        let prose = matches!(block, Block::Feature | Block::Section | Block::Term);
+        // In a story with scenarios, everything before the first is its introduction, even a
+        // sentence that starts with "When": "When you first unpack the kettle, it is empty."
+        let prose = matches!(block, Block::Feature | Block::Section | Block::Term)
+            || block == Block::Story && scenario_follows(&lines, i);
         if let Some((keyword, text)) = step_keyword(line).filter(|_| !prose) {
+            diags.extend(trailing_comment(&span, text, false));
             let step = RawStep {
                 keyword,
                 text: text.to_string(),
@@ -851,8 +871,54 @@ pub fn parse(file: &str, text: &str, diags: &mut Vec<Diagnostic>) -> RawFile {
     out
 }
 
+/// Whether a `Scenario:` comes after line `i` before the next block: the story it is in has
+/// scenarios, so the lines before them introduce it.
+fn scenario_follows(lines: &[&str], i: usize) -> bool {
+    for l in &lines[i + 1..] {
+        let l = l.trim();
+        if l.starts_with("Scenario:") {
+            return true;
+        }
+        if l.starts_with("Suite:")
+            || l.starts_with("Section:")
+            || HEADERS.iter().any(|h| l.starts_with(h))
+        {
+            return false;
+        }
+    }
+    false
+}
+
+/// A `#` after the text of a line is part of it: the language has no trailing comments. Where
+/// the line names words of the vocabulary any ` #` is a mistake; in an instruction for the
+/// reader ("press # to confirm") only one set apart by two spaces, as a comment would be.
+fn trailing_comment(span: &Span, rest: &str, instruction: bool) -> Option<Diagnostic> {
+    let rest = rest.trim();
+    let found = if instruction {
+        rest.contains("  #") || rest.contains("\t#")
+    } else {
+        rest.contains(" #") || rest.contains("\t#")
+    };
+    found.then(|| {
+        Diagnostic::warning("trailing-comment", "the `#` and what follows it are part of this line")
+            .at(span, "")
+            .help("a `#` only starts a comment at the start of a line: move the note to a line of its own")
+    })
+}
+
 /// Free text before the first step is a description, so a misspelt first step would vanish
 /// into it silently. Flag lines that start with something close to a step keyword.
+/// The help for a line whose value isn't one it can have: when a `#` follows the value, the
+/// likely cause is a trailing comment, which the language doesn't have.
+fn value_help(rest: &str, otherwise: &str) -> String {
+    if rest.contains('#') {
+        "a `#` only starts a comment at the start of a line: move the note to a line of its own"
+            .to_string()
+    } else {
+        otherwise.to_string()
+    }
+}
+
 fn near_keyword(span: &Span, line: &str) -> Option<Diagnostic> {
     let word = line.split_whitespace().next()?;
     // A wrapped line ("the plan.") continues a sentence; only a capitalised word could be a

@@ -18,7 +18,7 @@ error[bad-value]: `boiling` isn't a value of the kettle
 | `empty-suite` | error | The directory has no `.expect` files. |
 | `unknown-step` | error | A step that's neither a declared state nor a declared event. The hint suggests the closest. |
 | `bad-value` | error | A value the state doesn't have, a number outside its range, or a comparison that doesn't fit. |
-| `bad-state` | error | A state declaration that can't be read, or one declared twice differently. |
+| `bad-state` | error | A state declaration that can't be read, or one declared twice differently. Also two values where one is the other with `not` in front (`started` and `not started`). |
 | `bad-event` | error | An event with no name. |
 | `bad-phrase` | error | A phrase that mixes Givens and Whens, or has no steps. |
 | `bad-override` | error | `Overrides:` names an expectation that doesn't exist. |
@@ -37,6 +37,7 @@ error[bad-value]: `boiling` isn't a value of the kettle
 | `misplaced-shift` | error | A relative step ("goes up by 1") anywhere but an expectation's Then. |
 | `two-events` | error | One action with two events. Put a Then between them, or split the step. |
 | `empty-story` | error | A story or scenario with no steps. |
+| `trailing-comment` | warning | A `#` after the text of a line. The language only has whole-line comments, so the `#` and what follows are part of the line. In a `Say:`, `Set:`, `Shows:` or `Launch:` it takes two spaces before the `#`, so "press # to confirm" is fine. |
 | `maybe-step` | warning | Description text that looks like a misspelled step ("Gvien the kettle is off"). |
 | `says-nothing` | warning | A step that's true of every value ("off or heating" of a state with only those). |
 | `shows-what` | warning | A `Shows:` line that doesn't say which value it's for. |

@@ -1,0 +1,24 @@
+{
+  "name": "expectation-syntax",
+  "displayName": "Expectation (.expect)",
+  "description": "Syntax highlighting for Expectation suites (.expect files)",
+  "version": "0.1.0",
+  "publisher": "expectation",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/ptescher/expectation", "directory": "editors/vscode" },
+  "engines": { "vscode": "^1.70.0" },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "expect",
+        "aliases": ["Expectation", "expect"],
+        "extensions": [".expect"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      { "language": "expect", "scopeName": "source.expect", "path": "./syntaxes/expect.tmLanguage.json" }
+    ]
+  }
+}

@@ -6,6 +6,8 @@
 
 - [For AI agents](agents.md)
 - [Getting started](getting-started.md)
+- [Getting started without Rust](getting-started-node.md)
+- [Spec first: a feature before it is built](spec-first.md)
 - [A worked example: the kettle](kettle.md)
 - [One suite, three apps](demo.md)
 
@@ -15,6 +17,7 @@
 - [Platforms](platforms.md)
 - [Writing specs that read well](writing-specs.md)
 - [Feature docs that explain](feature-docs.md)
+- [Modelling an app with data](modelling.md)
 
 # How it works
 
@@ -29,6 +32,7 @@
 - [The generated manual](manual.md)
 - [APIs: requests as evidence](api.md)
 - [Evidence and contract coverage](evidence.md)
+- [In CI](ci.md)
 
 # Reference
 

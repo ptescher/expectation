@@ -27,6 +27,11 @@ jobs:
       - run: cargo run -p expectation_cli -- docs examples/smart-kettle target/smart-kettle-approved --approved-only
       - run: cargo run -p expectation_harness --example turnstile
       - run: cargo build -p expectation_remote && node --test clients/js/test.mjs
+      # The Node example, end to end: its suite checks, and a strict run through its driver passes.
+      - run: cargo run -p expectation_cli -- check examples/cart-node/expectations
+      - run: node examples/cart-node/run.mjs
+        env:
+          EXPECTATION_RUN: target/debug/expectation-run
 
   extensions:
     runs-on: ubuntu-latest

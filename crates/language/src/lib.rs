@@ -1367,4 +1367,86 @@ Story: Draft
             l.render_diagnostics()
         );
     }
+
+    const KETTLE: &str = "\
+Vocabulary:
+  State: the kettle is off | heating
+  State: the dial is 0..100 %
+    Shows: over 50 %: the light is red
+  Event: the user starts the kettle
+Background:
+  Given the kettle is off
+  And the dial is 0 %
+Feature: F
+  Expectation: Start
+    Given the kettle is off
+    When the user starts the kettle
+    Then the kettle is heating
+";
+
+    #[test]
+    fn a_comment_after_a_line_is_named() {
+        let src = KETTLE.replace(
+            "State: the kettle is off | heating",
+            "State: the kettle is off | heating   # the two it can be",
+        );
+        let l = load_sources("t", &[("t.expect", &src)]);
+        let d = l
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "trailing-comment")
+            .expect("a trailing-comment warning");
+        assert_eq!(d.labels[0].span.line, 2);
+        // An instruction can hold a `#` of its own.
+        let src = KETTLE.replace(
+            "Event: the user starts the kettle",
+            "Event: the user starts the kettle\n    Say: press # to start",
+        );
+        let l = load_sources("t", &[("t.expect", &src)]);
+        assert!(l.diagnostics.iter().all(|d| d.code != "trailing-comment"));
+    }
+
+    #[test]
+    fn a_story_introduction_can_start_with_when() {
+        let src = format!(
+            "{KETTLE}Story: First cup
+  As a tea drinker
+  I want hot water
+
+  When you first unpack the kettle, it is off.
+
+  Scenario: Start it
+    When the user starts the kettle
+    Then the kettle is heating
+"
+        );
+        let l = load_sources("t", &[("t.expect", &src)]);
+        assert!(!l.has_errors(), "{}", l.render_diagnostics());
+        let story = &l.suite.stories[0];
+        assert_eq!(
+            story.description,
+            vec!["When you first unpack the kettle, it is off."]
+        );
+        assert_eq!(story.scenarios.len(), 1);
+    }
+
+    #[test]
+    fn shows_reads_a_comparison_as_steps_do() {
+        let l = load_sources("t", &[("t.expect", KETTLE)]);
+        assert!(
+            l.diagnostics.iter().all(|d| d.code != "shows-what"),
+            "{}",
+            l.render_diagnostics()
+        );
+        let v = &l.suite.vocabulary;
+        let shown = |step: &str| match step::resolve(step, &expectation_model::Span::new("t", 1), v)
+        {
+            Ok(step::Meaning::Fact(f)) => v.var(f.var).shown(&f.constraint),
+            _ => panic!("{step} isn't a state"),
+        };
+        assert_eq!(
+            shown("the dial is above 50 %").as_deref(),
+            Some("the light is red")
+        );
+    }
 }

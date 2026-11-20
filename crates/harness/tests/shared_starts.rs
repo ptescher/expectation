@@ -54,7 +54,7 @@ Story: Off again
   Then the lamp is off
 ";
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Lamp {
     on: bool,
     high: bool,
@@ -192,6 +192,19 @@ fn a_driver_can_refuse_to_continue() {
             "reset",
             "flip back"
         ]
+    );
+}
+
+#[test]
+fn a_saved_start_is_put_back_when_nothing_continues() {
+    // «Dim again» still continues from «Bright light». Nothing starts where it ends, so
+    // «Just the dimmer» is next, from the start that was saved for «Bright light».
+    let a = lamp();
+    let report = a.run(&mut driver(false).checkpointed(), &RunOptions::default());
+    assert!(report.passed());
+    assert_eq!(
+        began(&report),
+        [ARRANGED, Some(Began::Restored), CONTINUED, ARRANGED]
     );
 }
 

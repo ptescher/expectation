@@ -45,7 +45,7 @@ per term.
 ### Swift (iOS, macOS, SwiftUI, UIKit)
 
 ```swift
-// Package: https://github.com/ptescher/expectation, path clients/swift
+// A local package: clients/swift in the repository (see its README for adding it)
 import ExpectationDriver
 
 let driver = ExpectationDriver(platform: "SwiftUI", app: "Kettle")
@@ -66,7 +66,7 @@ with `SIMCTL_CHILD_EXPECTATION_URL=http://127.0.0.1:4477 xcrun simctl launch …
 ### JavaScript (React Native, web, Node)
 
 ```js
-// npm: clients/js in the repository (expectation-driver)
+// clients/js in the repository (expectation-driver; not on npm yet, see its README)
 import { ExpectationDriver } from 'expectation-driver';
 
 const driver = new ExpectationDriver({ platform: 'React Native', app: 'Kettle' })
@@ -167,7 +167,9 @@ expectation-run expectations --platform SwiftUI --docs docs --runner app
 of it: a quicker run with the same verdicts (see [Stories](stories.md)).
 A test starts where the last one ended when what it is given already holds there, and is
 printed with `(continued)`; `--no-shared-starts` resets before every test (see
-[Drivers](drivers.md#starting-where-the-last-test-ended)).
+[Drivers](drivers.md#starting-where-the-last-test-ended)). The remote protocol has no
+command for [saving a start](drivers.md#saved-starts) yet, so a
+remote driver arranges every start that isn't continued.
 It listens, waits for the app, runs the suite for that platform, prints the results, and
 with `--docs` saves them and writes the manual. `--screenshot-cmd 'xcrun simctl io booted
 screenshot "$1"'` takes screenshots from outside, for apps that don't take their own.

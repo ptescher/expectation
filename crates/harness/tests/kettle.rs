@@ -47,6 +47,42 @@ fn every_story_passes_and_documents_itself() {
 }
 
 #[test]
+fn putting_a_saved_start_back_gives_what_arranging_it_does() {
+    use expectation_harness::Began;
+    let a = suite().with_state_pictures();
+    let count = |report: &expectation_story::Report, how| {
+        let began = report.results.iter().filter(|r| r.began == Some(how));
+        began.count()
+    };
+    for lock_leaks in [false, true] {
+        let shared = a.run(&mut world::driver(lock_leaks), &RunOptions::default());
+        assert!(count(&shared, Began::Restored) > 0);
+        let opts = RunOptions {
+            share_starts: false,
+            ..Default::default()
+        };
+        let each = a.run(&mut world::driver(lock_leaks), &opts);
+        assert_eq!(count(&each, Began::Arranged), a.plans.len());
+        assert!(count(&shared, Began::Arranged) < a.plans.len());
+        assert_eq!(
+            shared.verdicts(&a.suite, &a.plans),
+            each.verdicts(&a.suite, &a.plans)
+        );
+        // Not only the verdicts: every test saw what it would have seen.
+        for ((x, y), plan) in shared.results.iter().zip(&each.results).zip(&a.plans) {
+            assert_eq!(x.status, y.status, "{}", plan.title);
+            let seen = |r: &expectation_story::PlanResult| -> Vec<String> {
+                std::iter::once(&r.start)
+                    .chain(&r.steps)
+                    .flat_map(|s| s.checks.iter().map(|c| format!("{:?}", c.observed)))
+                    .collect()
+            };
+            assert_eq!(seen(x), seen(y), "{}", plan.title);
+        }
+    }
+}
+
+#[test]
 fn a_seeded_defect_fails_the_expectation_it_breaks() {
     let a = suite();
     let report = a.run(&mut world::driver(true), &RunOptions::default());

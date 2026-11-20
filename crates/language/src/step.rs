@@ -139,6 +139,20 @@ fn enum_constraint(
     pred: &str,
     neg: bool,
 ) -> Result<Constraint, Problem> {
+    // A value of its own that starts with "not": "the job is not started" names it.
+    if neg {
+        let named: Option<u64> = pred.split(" or ").enumerate().try_fold(0, |m, (i, part)| {
+            let part = if i == 0 {
+                format!("not {part}")
+            } else {
+                part.to_string()
+            };
+            Some(m | 1 << var.value_index(&part)?)
+        });
+        if let Some(mask) = named {
+            return Ok(Constraint::OneOf(mask));
+        }
+    }
     let mut mask = 0u64;
     for part in pred.split(" or ") {
         let Some(i) = var.value_index(part) else {
@@ -160,7 +174,25 @@ fn enum_constraint(
     Ok(Constraint::OneOf(if neg { all & !mask } else { mask }))
 }
 
-fn number_constraint(
+/// The words that start a comparison above a number: "above 55 %", "more than 3 shapes".
+pub const ABOVE: &[&str] = &[
+    "above ",
+    "over ",
+    "more than ",
+    "greater than ",
+    "higher than ",
+];
+/// The words that start a comparison below a number: "below 10", "fewer than 3 shapes".
+pub const BELOW: &[&str] = &[
+    "below ",
+    "under ",
+    "less than ",
+    "fewer than ",
+    "lower than ",
+];
+
+/// What a number predicate allows: "80 %", "above 55 %", "between 20 and 40 %".
+pub(crate) fn number_constraint(
     pred: &str,
     neg: bool,
     min: f64,
@@ -187,32 +219,14 @@ fn number_constraint(
             .split_once(" and ")
             .ok_or_else(|| ("expected `between <a> and <b>`".to_string(), None))?;
         Interval::closed(num(a)?, num(b)?)
-    } else if let Some(v) = strip_any(
-        pred,
-        &[
-            "above ",
-            "over ",
-            "more than ",
-            "greater than ",
-            "higher than ",
-        ],
-    ) {
+    } else if let Some(v) = strip_any(pred, ABOVE) {
         Interval {
             lo: num(v)?,
             lo_open: true,
             hi: max,
             hi_open: false,
         }
-    } else if let Some(v) = strip_any(
-        pred,
-        &[
-            "below ",
-            "under ",
-            "less than ",
-            "fewer than ",
-            "lower than ",
-        ],
-    ) {
+    } else if let Some(v) = strip_any(pred, BELOW) {
         Interval {
             lo: min,
             lo_open: false,
@@ -263,12 +277,14 @@ fn parse_number(s: &str, unit: &Option<String>) -> Option<f64> {
         .unwrap_or(s.len());
     let v: f64 = s[..end].parse().ok()?;
     let rest = s[end..].trim();
-    // Units match either way round in number: "1 item" and "3 items" are both items.
-    let singular = |s: &str| text::normalize(s).trim_end_matches('s').to_string();
+    // Units match either way round in number: "1 item" and "3 items" are both items. A symbol
+    // of one letter has no plural, so "m" is not "ms".
+    let plural = |one: &str, many: &str| one.chars().count() > 1 && many == format!("{one}s");
     let unit_ok = rest.is_empty()
-        || unit
-            .as_deref()
-            .is_some_and(|u| singular(u) == singular(rest));
+        || unit.as_deref().is_some_and(|u| {
+            let (u, r) = (text::normalize(u), text::normalize(rest));
+            u == r || plural(&r, &u) || plural(&u, &r)
+        });
     unit_ok.then_some(v)
 }
 
@@ -314,10 +330,16 @@ pub fn declare_state(decl: &str, span: &Span, id: VarId) -> Result<Variable, Dia
             .at(span, "")
             .help("write `State: the kettle is off | heating` or `State: the dial is 0..100 %`")
     };
+    // The subject can hold a verb of its own ("the page that has focus is home | settings"),
+    // so the verb that starts the values is the last one before the first value ends.
+    let head = &decl[..decl
+        .find('|')
+        .or_else(|| decl.find(".."))
+        .unwrap_or(decl.len())];
     let (at, len) = [" is ", " are ", " has ", " have "]
         .iter()
-        .filter_map(|c| decl.find(c).map(|i| (i, c.len())))
-        .min()
+        .filter_map(|c| head.rfind(c).map(|i| (i, c.len())))
+        .max()
         .ok_or_else(|| bad("expected `<subject> is <values>`"))?;
     let subject = decl[..at].trim().to_string();
     let values = decl[at + len..].trim();
@@ -356,6 +378,16 @@ pub fn declare_state(decl: &str, span: &Span, id: VarId) -> Result<Variable, Dia
                 .any(|m| text::normalize(m) == text::normalize(n))
             {
                 return Err(bad(&format!("`{n}` is listed twice")));
+            }
+            // "not started" is a value steps can name ("the job is not started"), unless
+            // "started" is one too: then the step could mean either.
+            if let Some(rest) = text::normalize(n).strip_prefix("not ")
+                && let Some(other) = names.iter().find(|m| text::normalize(m) == rest)
+            {
+                return Err(bad(&format!(
+                    "`{n}` and `{other}` are both values, so `is {n}` could mean either"
+                ))
+                .help(format!("name `{n}` without `not`")));
             }
             if n.contains(" or ") {
                 return Err(bad(&format!(
@@ -509,5 +541,70 @@ mod tests {
         assert!(err("the user presses rest").help.unwrap().contains("reset"));
         assert_eq!(err("the dial is above 120 %").code, "bad-value");
         assert_eq!(err("the dial is not 5").code, "bad-value");
+    }
+
+    #[test]
+    fn a_one_letter_unit_has_no_plural() {
+        let span = Span::new("t", 1);
+        let delay = declare_state("the delay is 0..1000 ms", &span, VarId(0))
+            .ok()
+            .unwrap();
+        let v = Vocabulary {
+            variables: vec![delay],
+            events: vec![],
+            phrases: vec![],
+        };
+        let err = |s| resolve(s, &span, &v).err().map(|d| d.code);
+        assert_eq!(err("the delay is 5 m"), Some("bad-value"));
+        assert_eq!(err("the delay is 5 ms"), None);
+        assert_eq!(err("the delay is 5"), None);
+    }
+
+    #[test]
+    fn a_value_can_start_with_not() {
+        let span = Span::new("t", 1);
+        let job = declare_state("the job is not started | running | done", &span, VarId(0))
+            .ok()
+            .unwrap();
+        let v = Vocabulary {
+            variables: vec![job],
+            events: vec![],
+            phrases: vec![],
+        };
+        let mask = |s| match resolve(s, &span, &v) {
+            Ok(Meaning::Fact(f)) => f.constraint,
+            _ => panic!("{s}"),
+        };
+        assert_eq!(mask("the job is not started"), Constraint::OneOf(0b001));
+        assert_eq!(mask("the job isn't started"), Constraint::OneOf(0b001));
+        assert_eq!(
+            mask("the job is not started or done"),
+            Constraint::OneOf(0b101)
+        );
+        assert_eq!(mask("the job is not running"), Constraint::OneOf(0b101));
+        // With "started" a value too, "is not started" could mean either.
+        let err = declare_state("the job is not started | started", &span, VarId(0))
+            .err()
+            .unwrap();
+        assert_eq!(err.code, "bad-state");
+    }
+
+    #[test]
+    fn a_subject_can_hold_a_verb() {
+        let span = Span::new("t", 1);
+        let page = declare_state(
+            "the page that has focus is home | settings",
+            &span,
+            VarId(0),
+        )
+        .ok()
+        .unwrap();
+        assert_eq!(page.subject, "the page that has focus");
+        assert_eq!(page.verb, "is");
+        let items = declare_state("the cart that is open has 0..10 items", &span, VarId(1))
+            .ok()
+            .unwrap();
+        assert_eq!(items.subject, "the cart that is open");
+        assert_eq!(items.verb, "has");
     }
 }

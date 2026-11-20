@@ -130,6 +130,10 @@ fn main() {
                 println!("{USAGE}");
                 return;
             }
+            "-V" | "--version" => {
+                println!("expectation-run {}", env!("CARGO_PKG_VERSION"));
+                return;
+            }
             _ if a.starts_with("--") => fail(&format!("unknown option {a}")),
             _ => suite = Some(a),
         }

@@ -20,7 +20,9 @@ script, or the revision its README or CI pins), so the command, the runner and t
 the suite. Otherwise pin one:
 
 ```bash
-cargo install --git https://github.com/ptescher/expectation --rev <commit> expectation_cli
+rev=$(git ls-remote https://github.com/ptescher/expectation HEAD | cut -f1)   # no tagged releases yet
+cargo install --git https://github.com/ptescher/expectation --rev "$rev" expectation_cli
+expectation init expectations               # a starter suite, for a new project
 expectation check expectations              # errors exit 1
 expectation plan expectations --coverage    # the tests the stories compile to
 expectation docs expectations docs          # the manual
@@ -32,8 +34,17 @@ language](language.md) is the reference.
 
 ## Rules that matter
 
-- Don't invent behaviour. Inspect the product; if something is undecided, write
-  `Unresolved: <question>` in the description, mark it `Approval: proposed`, and ask.
+- Don't invent behaviour. For a product that exists, inspect it. For a feature that isn't built
+  yet, the suite is the specification: write what was asked, mark it `Status: pending` and
+  `Approval: proposed`, and follow [Spec first](spec-first.md). Either way, if something is
+  undecided, write `Unresolved: <question>` in the description (plain text, not a keyword),
+  mark it `Approval: proposed`, and ask.
+- A driver has one handler per word of the vocabulary: `observe` and `arrange` for a state's
+  subject, `on` for an event. [Getting started without Rust](getting-started-node.md) and
+  [Drivers](drivers.md) show one. A word with no handler makes its tests "not supported yet";
+  don't fake one to make a test pass.
+- States are named values or numbers, not strings or records. See
+  [Modelling an app with data](modelling.md).
 - Write the explanation and the expectations together, then check, plan, generate and read
   the pages. See [Feature docs that explain](feature-docs.md).
 - Stories become tutorials, so they teach the feature: a real goal, the path a user would

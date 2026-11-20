@@ -59,13 +59,19 @@ publish as the user manual.
 - It doesn't drive your UI for you. You write a **driver** (usually a dozen closures) that
   sets states, makes events happen and reads states back. Anything you can control from Rust
   can be tested: a library, a game loop, a web app through its API or a browser, a device
-  over a serial line.
+  over a serial line. A driver can also be JavaScript or Swift, in the app or in a
+  browser-automation test, talking to the runner over HTTP.
+- It doesn't model data. States are named values and numbers, not strings or records;
+  [Modelling an app with data](modelling.md) says how a product full of records is written.
 - It isn't a property-based tester. Generated tests follow the shortest routes through the
   flow graph to cover every expectation; they don't search for counterexamples.
 
 ## Where to go next
 
-- [Getting started](getting-started.md) runs a whole suite in five minutes.
+- [Getting started](getting-started.md) runs a whole suite in five minutes, from a Rust test.
+  [Getting started without Rust](getting-started-node.md) does the same with a JavaScript
+  driver.
+- [Spec first](spec-first.md) is the workflow for a feature that isn't built yet.
 - [A worked example](kettle.md) walks through conflicts, exceptions, stories, coverage and a
   failing run.
 - [The language](language.md) is the reference for `.expect` files.

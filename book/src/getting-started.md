@@ -20,11 +20,16 @@ For the command-line tool:
 cargo install --git https://github.com/ptescher/expectation expectation_cli
 ```
 
-That installs a binary called `expectation`.
+That installs a binary called `expectation`. For a build you can repeat, pin the commit: see
+[Pinning a version](cli.md#pinning-a-version).
+
+If your product isn't written in Rust, read [Getting started without
+Rust](getting-started-node.md) instead: the suite is the same, and the driver is JavaScript.
 
 ## Write the suite
 
-A suite is every `*.expect` file under a directory. Make `expectations/turnstile.expect`:
+A suite is every `*.expect` file under a directory. Make `expectations/turnstile.expect`
+(`expectation init` writes a commented one much like it):
 
 ```gherkin
 Suite: Turnstile
@@ -182,5 +187,7 @@ website. The story is now a tutorial called "A day at the zoo".
 
 ## Next
 
-The [worked example](kettle.md) is a richer system, with time, exceptions, several stories
-and screenshots.
+- The [worked example](kettle.md) is a richer system, with time, exceptions, several stories
+  and screenshots.
+- [Spec first](spec-first.md) writes a feature's expectations before it is built.
+- [In CI](ci.md) checks the suite on every pull request and gates a release on a run.
