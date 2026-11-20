@@ -200,7 +200,7 @@ fn a_saved_start_is_put_back_when_nothing_continues() {
     // «Dim again» still continues from «Bright light». Nothing starts where it ends, so
     // «Just the dimmer» is next, from the start that was saved for «Bright light».
     let a = lamp();
-    let report = a.run(&mut driver(false).checkpoints(), &RunOptions::default());
+    let report = a.run(&mut driver(false).checkpointed(), &RunOptions::default());
     assert!(report.passed());
     assert_eq!(
         began(&report),

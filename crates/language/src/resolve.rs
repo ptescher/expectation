@@ -215,9 +215,11 @@ pub fn resolve(suite: &mut Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>
 /// the real words harder to find. A step uses a state by starting with its subject, and an
 /// event or a phrase by being, or containing, its text.
 fn unused_words(suite: &Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
-    // Every run of up to 10 words in every step.
-    let mut grams: HashSet<String> = HashSet::new();
-    let mut add = |step: &RawStep| {
+    // Every run of up to 10 words in every step, by the scope of the file it is in: a section's
+    // own word is only used by its own steps, and a shared word by anyone's.
+    let scoped = files.iter().any(|f| f.scopes.is_some());
+    let mut grams: HashMap<Option<String>, HashSet<String>> = HashMap::new();
+    let add = |grams: &mut HashSet<String>, step: &RawStep| {
         let key = text::key(&step.text);
         let words: Vec<&str> = key.split(' ').collect();
         for start in 0..words.len() {
@@ -227,18 +229,31 @@ fn unused_words(suite: &Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
         }
     };
     for f in files {
-        f.background.iter().chain(&f.follows).for_each(&mut add);
-        f.phrases.iter().flat_map(|p| &p.steps).for_each(&mut add);
+        let g = grams
+            .entry(scope_of(scoped, &f.dir).map(String::from))
+            .or_default();
+        f.background
+            .iter()
+            .chain(&f.follows)
+            .for_each(|s| add(g, s));
+        f.phrases
+            .iter()
+            .flat_map(|p| &p.steps)
+            .for_each(|s| add(g, s));
         for e in f.features.iter().flat_map(|x| &x.expectations) {
-            e.steps.iter().chain(&e.hands_over).for_each(&mut add);
+            e.steps.iter().chain(&e.hands_over).for_each(|s| add(g, s));
         }
         for sc in f.stories.iter().flat_map(|x| &x.scenarios) {
-            sc.steps.iter().for_each(&mut add);
+            sc.steps.iter().for_each(|s| add(g, s));
         }
     }
     let v = &suite.vocabulary;
-    let mut unused = |kind: &str, what: String, key: &str, span: &Span| {
-        if !grams.contains(key) {
+    let mut unused = |kind: &str, what: String, key: &str, scope: &Option<String>, span: &Span| {
+        let used = match scope {
+            Some(_) => grams.get(scope).is_some_and(|g| g.contains(key)),
+            None => grams.values().any(|g| g.contains(key)),
+        };
+        if !used {
             diags.push(
                 Diagnostic::warning(
                     "unused-word",
@@ -250,13 +265,19 @@ fn unused_words(suite: &Suite, files: &[RawFile], diags: &mut Vec<Diagnostic>) {
         }
     };
     for var in &v.variables {
-        unused("the state", var.subject.clone(), &var.key, &var.span);
+        unused(
+            "the state",
+            var.subject.clone(),
+            &var.key,
+            &var.scope,
+            &var.span,
+        );
     }
     for e in &v.events {
-        unused("the event", e.text.clone(), &e.key, &e.span);
+        unused("the event", e.text.clone(), &e.key, &e.scope, &e.span);
     }
     for p in &v.phrases {
-        unused("the phrase", p.name.clone(), &p.key, &p.span);
+        unused("the phrase", p.name.clone(), &p.key, &p.scope, &p.span);
     }
 }
 
@@ -692,7 +713,37 @@ fn vocabulary(files: &[RawFile], diags: &mut Vec<Diagnostic>) -> Vocabulary {
             break;
         }
     }
+    if scoped {
+        same_word_in_sections(&vocab, diags);
+    }
     vocab
+}
+
+/// With scoped words: the same state declared identically in two sections is probably one word
+/// that belongs in the top directory, where both can share it.
+fn same_word_in_sections(vocab: &Vocabulary, diags: &mut Vec<Diagnostic>) {
+    for (i, a) in vocab.variables.iter().enumerate() {
+        let Some(scope) = &a.scope else { continue };
+        let twin = vocab.variables[..i].iter().find(|b| {
+            b.key == a.key && b.kind == a.kind && b.scope.as_ref().is_some_and(|s| s != scope)
+        });
+        if let Some(b) = twin {
+            diags.push(
+                Diagnostic::warning(
+                    "duplicate-word",
+                    format!(
+                        "{} is declared the same way in «{}» and «{}»",
+                        a.subject,
+                        b.scope.as_deref().unwrap_or_default(),
+                        scope
+                    ),
+                )
+                .at(&a.span, "")
+                .at(&b.span, "also declared here")
+                .help("if it is one word, declare it once in the top directory; if not, leave it"),
+            );
+        }
+    }
 }
 
 fn push_phrase(vocab: &mut Vocabulary, rp: &RawPhrase, scope: Option<String>, body: PhraseBody) {

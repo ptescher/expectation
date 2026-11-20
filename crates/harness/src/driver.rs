@@ -1,7 +1,7 @@
 //! The system under test, as the runner sees it.
 
 use expectation_model::{Event, Value, Variable};
-use expectation_story::Control;
+use expectation_story::{Control, Exchange};
 
 /// Whether waiting could change anything.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,24 +52,6 @@ pub struct Capture {
     pub bytes: Vec<u8>,
 }
 
-/// The system as it was at one moment, saved by [`Driver::checkpoint`] so that
-/// [`Driver::restore`] can put it back. What it holds is the driver's own business: a copy of a
-/// simulation's state, the name of a snapshot. The runner only keeps it and hands it back, and
-/// drops it when no test that is left starts there, so a driver that must free something then
-/// (delete a snapshot) does so when what it put in is dropped.
-pub struct Checkpoint(Box<dyn std::any::Any>);
-
-impl Checkpoint {
-    pub fn new<T: 'static>(saved: T) -> Self {
-        Checkpoint(Box::new(saved))
-    }
-
-    /// What the driver put in, if it was a `T`.
-    pub fn get<T: 'static>(&self) -> Option<&T> {
-        self.0.downcast_ref()
-    }
-}
-
 /// Something a plan needs the driver to do.
 #[derive(Clone, Copy, Debug)]
 pub enum Need<'a> {
@@ -95,6 +77,22 @@ impl std::fmt::Display for Need<'_> {
 /// Calls may block. A real-time system (a game, a simulation) can let time pass in [`Driver::advance`]
 /// and the runner keeps observing until a step's checks hold or its patience runs out, so
 /// "Then the kettle is heating" means *eventually*, as it would for a person watching.
+/// The system saved by [`Driver::checkpoint`]: opaque to the runner, which only keeps it and
+/// hands it back. A driver puts in whatever it needs to restore (a copy of its state, a
+/// snapshot id) and reads it back with [`Checkpoint::get`].
+pub struct Checkpoint(Box<dyn std::any::Any>);
+
+impl Checkpoint {
+    pub fn new<T: std::any::Any>(saved: T) -> Self {
+        Checkpoint(Box::new(saved))
+    }
+
+    /// What was saved, if it is a `T`.
+    pub fn get<T: std::any::Any>(&self) -> Option<&T> {
+        self.0.downcast_ref()
+    }
+}
+
 pub trait Driver {
     /// The external services this driver needs for its tests (see [`crate::service`]): a
     /// controller, a database. The runner starts them before a plan, and when one cannot be had
@@ -131,22 +129,23 @@ pub trait Driver {
         true
     }
 
-    /// Save the system as it is now, if this driver can; `None` (the default) when it can't.
-    /// The runner asks right after it has reset and arranged a start that another test shares,
-    /// and puts it back with [`Driver::restore`] before that test instead of resetting and
-    /// arranging again. Save everything a test could notice, also what no state of the suite
-    /// describes (a log, a clock): a restored start should be the arranged one, not just look
-    /// like it. An error is taken as `None`.
+    /// Save the system as it is now, so a test with this start can be put back to it instead of
+    /// being arranged again. `None`: this driver can't (the default), and every start is
+    /// arranged. The runner asks once a start has been arranged and observed to hold, and only
+    /// when another test still to run begins there.
+    ///
+    /// Worth implementing when a start is slow to build and its state is something you can copy
+    /// (a simulation core, a database snapshot, a VM image). It need only hold what the suite's
+    /// states describe, plus whatever else a test could notice.
     fn checkpoint(&mut self) -> Result<Option<Checkpoint>, String> {
         Ok(None)
     }
 
-    /// Put the system back as it was at `saved`, one of this driver's own checkpoints. The
-    /// runner then settles and observes what the test is given, as it does after arranging;
-    /// when this fails, or what the test is given doesn't hold afterwards, it drops the
-    /// checkpoint, and resets and arranges the start instead.
-    fn restore(&mut self, saved: &Checkpoint) -> Result<(), String> {
-        let _ = saved;
+    /// Put the system back as it was at `checkpoint`, which this driver made. The runner
+    /// observes everything the test is given afterwards, as it does after arranging; if that
+    /// doesn't hold, or this fails, it resets and arranges as usual and drops the checkpoint.
+    fn restore(&mut self, checkpoint: &Checkpoint) -> Result<(), String> {
+        let _ = checkpoint;
         Err("this driver has no checkpoints".into())
     }
 
@@ -203,6 +202,17 @@ pub trait Driver {
     /// and to the test's start for anything since the last test. It asks even when it has nowhere
     /// to keep them, so a driver's buffer never grows past one step.
     fn take_attachments(&mut self) -> Vec<Capture> {
+        vec![]
+    }
+
+    /// The HTTP requests the driver made since this was last called, and what came back (see
+    /// [`Exchange`]): for a system that is an API, what the docs show where they'd show a
+    /// screenshot. The runner asks after arranging a test's start, after each action and after
+    /// each step's checks, so it knows which request was the action and which only read the
+    /// system back, and keeps each one redacted ([`RunOptions::redaction`](crate::RunOptions::redaction)):
+    /// hand over the requests as sent, credentials and all. It asks even when nothing is kept,
+    /// so a driver's buffer never grows past one step.
+    fn take_exchanges(&mut self) -> Vec<Exchange> {
         vec![]
     }
 

@@ -168,7 +168,7 @@ of it: a quicker run with the same verdicts (see [Stories](stories.md)).
 A test starts where the last one ended when what it is given already holds there, and is
 printed with `(continued)`; `--no-shared-starts` resets before every test (see
 [Drivers](drivers.md#starting-where-the-last-test-ended)). The remote protocol has no
-command for [saving a start](drivers.md#saving-a-start-that-several-tests-share) yet, so a
+command for [saving a start](drivers.md#saved-starts) yet, so a
 remote driver arranges every start that isn't continued.
 It listens, waits for the app, runs the suite for that platform, prints the results, and
 with `--docs` saves them and writes the manual. `--screenshot-cmd 'xcrun simctl io booted

@@ -36,6 +36,7 @@ Terms are matched the way steps are: ignoring case, extra spaces and a leading "
 | `on_settle(f)` | Letting the system settle after each action, before anything is observed. |
 | `on_advance(f)` | Letting a little time pass before the runner looks again. |
 | `on_screenshot(f)` | A picture of the system after each step: `Screenshot::png`, `jpeg` or `svg`. |
+| `on_exchanges(f)` | The HTTP requests the system made since the last call, with their responses: what an API's manual shows instead of a screenshot. See [APIs](api.md). |
 | `needs(&[…])`, `fresh(&[…])` | The [external services](services.md) the tests need. |
 
 The values passed to `set` and `arrange` are `Value`s: `v.as_str()` for a named value,
@@ -117,6 +118,12 @@ A driver can hand over files it captured during each step, such as a network log
 Extensions use them to report which outcomes of a contract the tests saw. See
 [Evidence and contract coverage](evidence.md).
 
+## HTTP exchanges
+
+A driver for an API hands over the requests it sent and the responses it got, with
+`Bindings::on_exchanges` or `Driver::take_exchanges`. The runner redacts them and keeps them in
+the results, and the manual shows each step's request as a `curl` command. See [APIs](api.md).
+
 ## The Driver trait
 
 For full control, implement `Driver` yourself. Only `set`, `perform` and `observe` are
@@ -135,6 +142,7 @@ pub trait Driver {
     fn can_arrange(&self, var: &Variable, value: &Value) -> bool { true }
     fn settle(&mut self) {}
     fn advance(&mut self) -> Progress { Progress::Static }
+    fn take_exchanges(&mut self) -> Vec<Exchange> { vec![] }
     fn screenshot(&mut self) -> Result<Option<Screenshot>, String> { Ok(None) }
     fn supports(&self, need: Need<'_>) -> bool { true }
 }
@@ -193,55 +201,45 @@ RunOptions { share_starts: false, ..Default::default() }   // one run
 A driver that asks for services afresh before each test (`fresh`) never continues: those
 services must not keep what the last test left.
 
-### Saving a start that several tests share
+### Saved starts
 
-Continuing only helps when one test ends where another starts. Often many tests have the same
-arranged start instead, such as "a plane flying a short mission", and each one builds it
-again. A driver that can save the system and put it back lets the runner arrange such a start
-once:
+When several tests begin at the same arranged start and none of them ends where another
+starts, each one rebuilds it: a reset, then every Given. If building that start is slow (a
+simulator, a flight, a long sign-up) and the system's state is something you can copy, the
+driver can save it:
 
 ```rust,ignore
-/// Save the system as it is now, if this driver can. None: it can't (the default).
-fn checkpoint(&mut self) -> Result<Option<Checkpoint>, String> {
-    Ok(Some(Checkpoint::new(self.sim.clone())))
-}
+// Bindings over a world that is plain data (it is Clone):
+Bindings::new(world).checkpointed()
 
-/// Put the system back as it was at `saved`.
-fn restore(&mut self, saved: &Checkpoint) -> Result<(), String> {
-    self.sim = saved.get::<Sim>().ok_or("not one of my checkpoints")?.clone();
-    Ok(())
-}
+// Anything else: say how to save and put back.
+Bindings::new(world).on_checkpoint(
+    |w| Checkpoint::new(w.snapshot()),
+    |w, cp| w.restore(cp.get::<Snapshot>().ok_or("not mine")?),
+)
+
+// Or on a Driver of your own:
+fn checkpoint(&mut self) -> Result<Option<Checkpoint>, String>   // None: can't (the default)
+fn restore(&mut self, checkpoint: &Checkpoint) -> Result<(), String>
 ```
 
-A `Checkpoint` holds whatever the driver puts in it: a copy of the state, or the name of a
-snapshot it took. With `Bindings`, a world that is `Clone` gets both methods from
-`.checkpoints()`, as the kettle example does.
+The runner arranges the start once, and only when another test still to run begins there. It
+saves it after observing that everything the test is given holds. Each of the other tests with
+that start is put back to it, and then the runner looks at everything the test is given, as it
+does after arranging. If that doesn't hold, or the restore fails, it resets and arranges as
+usual and forgets that checkpoint, so a bad restore costs time and never a wrong result.
+A saved start is dropped when no test left begins there, and a run keeps at most
+`RunOptions::checkpoint_limit` (8) at once.
 
-The runner asks for a checkpoint right after it has reset and arranged a start, and only when
-another test that is still to run has the same start. Before that test it calls `restore`
-instead of `reset` and `arrange`. Then it settles and observes what the test is given, exactly
-as it does after arranging. If `restore` fails, or what the test is given doesn't hold
-afterwards, the runner drops the checkpoint, and resets and arranges the start after all. It
-drops a checkpoint as well once no test is left that starts there, so a driver that has
-something to free (a snapshot to delete) can do that when what it put in is dropped. A
-`Launch:` that starts the program again drops them all.
+A test that continued from the last one is still cheaper and is tried first. The result says
+how each test began: `arranged`, `continued` or `restored`, in the results, on the test's page
+in the manual, and `(restored)` in `expectation-run`.
 
-A test whose start was put back says `restored` where one that continued says `continued`:
-in `PlanResult::began`, in the saved results, and on its page of the manual.
-
-Implement checkpoints when a start is slow to build and the system's state is something you
-can copy or snapshot whole: a simulation core, a VM, a database with snapshots. Save
-everything a test could notice, including what no state of the suite describes (a log, a
-clock, a cache). Then a restored start is the arranged start, not just one that looks like
-it, and you don't need to opt out as you might for continuing. Leave them out when part of
-the state can't be captured, such as a device, a remote service, or a process you can't copy.
-The observation after a restore only sees what the suite describes, so it can't catch the
-rest.
-
-The two work together. A test that can continue where the last one ended does so, because
-that costs nothing. Otherwise the runner prefers a test whose start is saved, and arranges a
-start only when it has to. `share_starts: false` turns both off for a run, and a driver with
-`fresh` services saves nothing.
+Save what a test could notice and the suite doesn't describe, too: a clock, a log, a cache.
+If you can't, or restoring is not exact, leave the default (no checkpoints), or turn sharing
+off for the run with `share_starts: false` or for the driver with `always_reset()` /
+`may_continue`, which turn checkpoints off along with continuing. A driver that asks for
+services afresh before each test (`fresh`) never restores.
 
 ### A run as a gate
 

@@ -20,7 +20,7 @@
 //! `--no-state-pictures` leaves out the tests that only visit a state for the state map's
 //! picture of it: a quicker run with the same verdicts.
 //! A test starts where the last one ended, without a reset, when that test passed and what this
-//! one is given already holds there; such a test is marked `(continued)`. `--no-shared-starts`
+//! one is given already holds there; such a test is marked `(continued)`, and one put back from a driver's checkpoint `(restored)`. `--no-shared-starts`
 //! resets before every test.
 //! `--app-revision`, `--data-mode` and `--fixture` say what the run is against (a commit, `fixtures`,
 //! the fixture's name): they are saved with the results and shown in the manual, which is

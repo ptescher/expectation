@@ -141,6 +141,8 @@ Then:
 - Words declared in the top directory are shared, and every section can use them.
 - A section can't declare a word that is also shared (`vocabulary-shadow`), and a step can't use
   another section's word (it is an unknown step).
+- Two sections that declare the same state the same way get a `duplicate-word` warning: if it is
+  one word, move it to the top directory. A section's own word counts as used only by its own steps.
 - Stories and the flow graph already stay within a top-level section, so nothing else changes.
 
 A suite without `Scopes:` behaves as before.

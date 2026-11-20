@@ -137,12 +137,14 @@ to run all of this on every pull request, [In CI](https://expectation.sim001.net
 | [turnstile](crates/harness/examples/turnstile.rs) | The smallest whole run: an inline suite, closures for the driver, one story and a generated test. |
 | [kettle](crates/harness/examples/kettle) | A suite across several files: two exceptions, four stories, three generated tests, a toy world with time in it, SVG screenshots and the generated manual. |
 | [cart-node](examples/cart-node) | The smallest whole run without Rust: a JavaScript driver for a Node module, `expectation-run`, and a script that starts both. |
+| [invoices](crates/harness/examples/invoices) | An API's manual: the driver calls a stand-in invoices API over HTTP and hands over each request, and the manual shows them as `curl` commands with their responses, where a screenshot would be. Admin and member API keys, and an exception only a member's request meets. |
 | [quote](crates/harness/examples/quote) | Contract coverage end to end: the driver hands over each step's HTTP requests as HAR, [the HAR and OpenAPI extension](extensions/har-openapi) holds them against the contract, and the manual shows what the tests saw. |
 
 ```bash
 cargo run -p expectation_harness --example turnstile
 cargo run -p expectation_harness --example kettle                      # docs in target/expectation-docs/kettle
 cargo run -p expectation_harness --example kettle -- out --bug         # a seeded defect, to see a failure
+cargo run -p expectation_harness --example invoices                    # an API's manual, in target/expectation-docs/invoices
 cargo run -p expectation_cli -- check crates/harness/examples/kettle   # check it without running anything
 EXPECTATION_RUN=target/debug/expectation-run node examples/cart-node/run.mjs   # after cargo build -p expectation_remote
 cargo test --workspace                                                 # the examples, as tests too

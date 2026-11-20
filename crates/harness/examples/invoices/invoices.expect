@@ -1,0 +1,109 @@
+Suite: Invoices API
+
+Vocabulary:
+  State: the invoice is none | draft | open | void
+    Shows: draft: the invoice's `status` is `draft`
+    Shows: open: the invoice's `status` is `open`
+    Shows: void: the invoice's `status` is `void`
+  State: the caller is admin | member
+    # The API key a request is sent with decides who it is from.
+    Set: use the {value}'s API key
+  Event: the caller creates an invoice
+    Say: create an invoice for the customer
+  Event: the caller finalizes the invoice
+    Say: finalize the invoice
+  Event: the caller voids the invoice
+    Say: void the invoice
+
+  Phrase: a new account, as its admin
+    Say: start on an account with no invoices, with the admin's API key
+    Given the invoice is none
+    And the caller is admin
+
+Term: API key
+  A secret that says which account a request is for and who in it is asking: an admin or a
+  member. Send it as a bearer token in the `Authorization` header. The examples here read an
+  admin's key from `$ADMIN_API_KEY`, a member's from `$MEMBER_API_KEY`, and the address of the
+  API from `$BASE_URL`.
+
+Background:
+  Given a new account, as its admin
+
+Feature: Invoices
+  Approval: proposed
+
+  An invoice is what your account bills a customer. You create it as a draft, which you can
+  still change, then finalize it, which opens it for payment and gives it its number. Each
+  request returns the invoice as it is now, and its `status` says where it is: `draft`, `open`
+  or `void`.
+
+  Every request is made with an [[API key]]. Admins and members of the account can both create
+  and finalize invoices.
+
+  Expectation: Creating an invoice makes a draft
+    Given the invoice is none
+    When the caller creates an invoice
+    Then the invoice is draft
+
+  Expectation: Finalizing a draft opens it
+    Given the invoice is draft
+    When the caller finalizes the invoice
+    Then the invoice is open
+
+Feature: Voiding
+  Approval: proposed
+
+  Void an open invoice that was issued by mistake: it stays on the account for the record, but
+  can no longer be paid. Voiding can't be undone, so only an admin of the account can do it. A
+  member who tries gets `403 Forbidden` and the invoice stays open.
+
+  Expectation: Voiding an open invoice voids it
+    Given the invoice is open
+    When the caller voids the invoice
+    Then the invoice is void
+
+  Expectation: Members can't void
+    Overrides: Voiding an open invoice voids it
+    Given the invoice is open
+    And the caller is member
+    When the caller voids the invoice
+    Then the invoice is open
+
+Story: Bill a customer
+  Approval: proposed
+  As an admin of the account
+  I want to issue an invoice, and take it back if it was a mistake
+  So that my customer pays what they owe and nothing else
+
+  You bill a customer in two requests: create the invoice as a draft, then finalize it. Until
+  it is finalized the customer can't see it, so a draft is the place to get it right. The
+  response to each request is the whole invoice, so you can read its `status` without asking
+  again.
+
+  If an open invoice turns out to be wrong, void it and issue a new one. A void invoice stays on
+  the account, so the record shows what was sent.
+
+  When the caller creates an invoice
+  Then the invoice is draft
+  When the caller finalizes the invoice
+  Then the invoice is open
+  When the caller voids the invoice
+  Then the invoice is void
+
+Story: Ask an admin to void
+  Approval: proposed
+  As a member of the account
+  I want to bill customers without being able to void what was billed
+  So that money can't quietly be taken back
+
+  Members bill customers the same way admins do. Voiding is the one thing a member's
+  [[API key]] can't do: the API answers `403 Forbidden` and leaves the invoice open, so ask an
+  admin of the account to void it.
+
+  Given the caller is member
+  When the caller creates an invoice
+  Then the invoice is draft
+  When the caller finalizes the invoice
+  Then the invoice is open
+  When the caller voids the invoice
+  Then the invoice is open

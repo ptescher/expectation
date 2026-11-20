@@ -5,6 +5,7 @@
 pub mod codecov;
 pub mod controls;
 pub mod coverage;
+pub mod exchange;
 pub mod plan;
 pub mod report;
 pub mod sha256;
@@ -19,6 +20,7 @@ pub use coverage::{
     Attribution, Completeness, Contract, Coverage, Credit, Evidence, Item, Judged, Note, Source,
     State, coverage_file, is_coverage_file, load_contracts_for,
 };
+pub use exchange::{Exchange, Redaction, Role};
 pub use plan::{
     Because, Check, Origin, Plan, PlanStep, Planned, coverage, coverage_plans, plan_stories,
     reaching_plans, untested, visit_plans,
@@ -314,5 +316,40 @@ Background:
             "{:?}",
             generated.iter().map(|p| &p.title).collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn exchanges_are_saved_with_their_steps() {
+        let (_, _, p) = planned(
+            "
+Story: Boil dry
+  When the dial is 80 %
+  When the water runs out
+  Then the kettle is dry
+",
+        );
+        let plans = &p.plans[..1];
+        let mut r = PlanResult::with(Status::Passed, &plans[0]);
+        let mut setup = Exchange::new("PUT", "$BASE_URL/dial").body("{\n  \"to\": 0\n}");
+        setup.role = Role::Setup;
+        r.start.exchanges.push(setup);
+        let action = Exchange::new("POST", "$BASE_URL/water/out?a=1\tb")
+            .header("Content-Type", "application/json")
+            .response(204);
+        let mut check = Exchange::new("GET", "$BASE_URL/kettle")
+            .response(200)
+            .response_header("Content-Type", "application/json")
+            .response_body("{\n  \"phase\": \"dry\\\\\"\n}");
+        check.role = Role::Check;
+        r.steps[1].exchanges = vec![action, check];
+        let report = Report { results: vec![r] };
+        let text = report.save(plans);
+        let back = Report::load(&text, plans);
+        let (a, b) = (&report.results[0], &back.results[0]);
+        assert_eq!(a.start.exchanges, b.start.exchanges, "{text}");
+        assert!(b.steps[0].exchanges.is_empty());
+        assert_eq!(a.steps[1].exchanges, b.steps[1].exchanges, "{text}");
+        // Every exchange is on lines of its own, so older readers skip them.
+        assert!(text.lines().all(|l| l.split('\t').count() <= 6), "{text}");
     }
 }

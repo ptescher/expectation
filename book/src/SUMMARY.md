@@ -30,6 +30,7 @@
 - [Remote drivers](remote.md)
 - [External services](services.md)
 - [The generated manual](manual.md)
+- [APIs: requests as evidence](api.md)
 - [Evidence and contract coverage](evidence.md)
 - [In CI](ci.md)
 

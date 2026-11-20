@@ -9,22 +9,24 @@
 //!     .on_advance(|w| { w.tick(0.1); Progress::Advanced });
 //! ```
 
-use crate::driver::{Capture, Checkpoint, Driver, Need, Progress, Screenshot};
+use crate::driver::Checkpoint;
+use crate::driver::{Capture, Driver, Need, Progress, Screenshot};
 use expectation_model::text;
 use expectation_model::{Event, Value, Variable};
-use expectation_story::Control;
+use expectation_story::{Control, Exchange};
 use std::collections::HashMap;
 
 type Observer<W> = Box<dyn FnMut(&W) -> Value>;
 type Setter<W> = Box<dyn FnMut(&mut W, &Value)>;
 type Action<W> = Box<dyn FnMut(&mut W)>;
 type Advancer<W> = Box<dyn FnMut(&mut W) -> Progress>;
+type Saver<W> = Box<dyn FnMut(&W) -> Checkpoint>;
+type Restorer<W> = Box<dyn FnMut(&mut W, &Checkpoint) -> Result<(), String>>;
 type Lister<W> = Box<dyn FnMut(&W) -> Vec<Control>>;
 type Taker<W> = Box<dyn FnMut(&mut W) -> Vec<String>>;
 type Shooter<W> = Box<dyn FnMut(&W) -> Screenshot>;
 type Capturer<W> = Box<dyn FnMut(&mut W) -> Vec<Capture>>;
-type Saver<W> = Box<dyn Fn(&W) -> Checkpoint>;
-type Restorer<W> = Box<dyn Fn(&mut W, &Checkpoint) -> Result<(), String>>;
+type Exchanger<W> = Box<dyn FnMut(&mut W) -> Vec<Exchange>>;
 
 pub struct Bindings<W> {
     pub world: W,
@@ -36,13 +38,15 @@ pub struct Bindings<W> {
     settle: Option<Action<W>>,
     advance: Option<Advancer<W>>,
     screenshot: Option<Shooter<W>>,
+    saver: Option<Saver<W>>,
+    restorer: Option<Restorer<W>>,
     controls: Option<Lister<W>>,
     used: Option<Taker<W>>,
     attachments: Option<Capturer<W>>,
+    exchanges: Option<Exchanger<W>>,
     needs: Vec<String>,
     fresh: Vec<String>,
     always_reset: bool,
-    checkpoints: Option<(Saver<W>, Restorer<W>)>,
 }
 
 impl<W> Bindings<W> {
@@ -57,13 +61,15 @@ impl<W> Bindings<W> {
             settle: None,
             advance: None,
             screenshot: None,
+            saver: None,
+            restorer: None,
             controls: None,
             used: None,
             attachments: None,
+            exchanges: None,
             needs: vec![],
             fresh: vec![],
             always_reset: false,
-            checkpoints: None,
         }
     }
 
@@ -130,6 +136,37 @@ impl<W> Bindings<W> {
         self
     }
 
+    /// A starting state that is slow to arrange is arranged once, and put back for the other
+    /// tests that begin there: the world is copied after it is arranged, and replaced by the
+    /// copy before each of those. For a world that is plain data; one that isn't (a process, a
+    /// file, a server) wants [`Bindings::on_checkpoint`] instead.
+    pub fn checkpointed(self) -> Self
+    where
+        W: Clone + 'static,
+    {
+        self.on_checkpoint(
+            |w| Checkpoint::new(w.clone()),
+            |w, cp| match cp.get::<W>() {
+                Some(saved) => {
+                    *w = saved.clone();
+                    Ok(())
+                }
+                None => Err("not this world's checkpoint".into()),
+            },
+        )
+    }
+
+    /// How to save the world and put it back (see [`Driver::checkpoint`]).
+    pub fn on_checkpoint(
+        mut self,
+        save: impl FnMut(&W) -> Checkpoint + 'static,
+        restore: impl FnMut(&mut W, &Checkpoint) -> Result<(), String> + 'static,
+    ) -> Self {
+        self.saver = Some(Box::new(save));
+        self.restorer = Some(Box::new(restore));
+        self
+    }
+
     /// The controls on screen now (see [`Driver::controls`]).
     pub fn on_controls(mut self, f: impl FnMut(&W) -> Vec<Control> + 'static) -> Self {
         self.controls = Some(Box::new(f));
@@ -150,6 +187,13 @@ impl<W> Bindings<W> {
         self
     }
 
+    /// The HTTP requests the world made since this was last called, emptied as it is read (see
+    /// [`Driver::take_exchanges`]).
+    pub fn on_exchanges(mut self, f: impl FnMut(&mut W) -> Vec<Exchange> + 'static) -> Self {
+        self.exchanges = Some(Box::new(f));
+        self
+    }
+
     pub fn on_screenshot(mut self, f: impl FnMut(&W) -> Screenshot + 'static) -> Self {
         self.screenshot = Some(Box::new(f));
         self
@@ -158,25 +202,6 @@ impl<W> Bindings<W> {
 
 fn unbound(what: &str, name: &str) -> String {
     format!("nothing is bound to {what} `{name}`")
-}
-
-impl<W: Clone + 'static> Bindings<W> {
-    /// Save the world as a copy of it, and restore a start by putting the copy back (see
-    /// [`Driver::checkpoint`]): for a world that is plain data, where a copy is all of it. A
-    /// start that several tests share is then arranged once.
-    pub fn checkpoints(mut self) -> Self {
-        self.checkpoints = Some((
-            Box::new(|w| Checkpoint::new(w.clone())),
-            Box::new(|w, saved| {
-                *w = saved
-                    .get::<W>()
-                    .ok_or("the checkpoint is not one of this world's")?
-                    .clone();
-                Ok(())
-            }),
-        ));
-        self
-    }
 }
 
 impl<W> Driver for Bindings<W> {
@@ -190,17 +215,6 @@ impl<W> Driver for Bindings<W> {
 
     fn may_continue(&self) -> bool {
         !self.always_reset
-    }
-
-    fn checkpoint(&mut self) -> Result<Option<Checkpoint>, String> {
-        Ok(self.checkpoints.as_ref().map(|(save, _)| save(&self.world)))
-    }
-
-    fn restore(&mut self, saved: &Checkpoint) -> Result<(), String> {
-        match &self.checkpoints {
-            Some((_, restore)) => restore(&mut self.world, saved),
-            None => Err("this driver has no checkpoints".into()),
-        }
     }
 
     fn reset(&mut self) -> Result<(), String> {
@@ -249,6 +263,17 @@ impl<W> Driver for Bindings<W> {
             .map_or(Progress::Static, |f| f(&mut self.world))
     }
 
+    fn checkpoint(&mut self) -> Result<Option<Checkpoint>, String> {
+        Ok(self.saver.as_mut().map(|f| f(&self.world)))
+    }
+
+    fn restore(&mut self, checkpoint: &Checkpoint) -> Result<(), String> {
+        match self.restorer.as_mut() {
+            Some(f) => f(&mut self.world, checkpoint),
+            None => Err("no checkpoints".into()),
+        }
+    }
+
     fn controls(&mut self) -> Result<Vec<Control>, String> {
         Ok(self
             .controls
@@ -266,6 +291,13 @@ impl<W> Driver for Bindings<W> {
 
     fn take_attachments(&mut self) -> Vec<Capture> {
         self.attachments
+            .as_mut()
+            .map(|f| f(&mut self.world))
+            .unwrap_or_default()
+    }
+
+    fn take_exchanges(&mut self) -> Vec<Exchange> {
+        self.exchanges
             .as_mut()
             .map(|f| f(&mut self.world))
             .unwrap_or_default()

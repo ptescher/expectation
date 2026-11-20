@@ -10,10 +10,11 @@ and macOS and attaches them to a GitHub release
 
 ### Added
 
-- Checkpoints: a driver that can save the system (`Driver::checkpoint` and `restore`, or
-  `Bindings::checkpoints()` for a world that is `Clone`) has a start that several tests share
-  arranged once and put back for the others. Such a test's result says `began restored`. See
-  [Drivers](https://expectation.sim001.net/guide/drivers.html#saving-a-start-that-several-tests-share).
+- Checkpoints: a driver that can save the system (`Driver::checkpoint` and `restore`;
+  `Bindings::checkpointed()` for a world that is `Clone`, or `on_checkpoint` for anything else)
+  has a start that several tests share arranged once and put back for the others. Such a
+  test's result says `began restored`. See
+  [Drivers](https://expectation.sim001.net/guide/drivers.html#saved-starts).
 - `expectation init [dir]` writes a starter suite that checks clean.
 - `expectation --help` and `--version`; `expectation-run --version`. Help that was asked for
   goes to stdout and exits 0.
