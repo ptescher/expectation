@@ -5,3 +5,4 @@
 /clients/swift/.build
 # Thumbnails are made from the screenshots whenever the docs are written.
 screenshots/thumbs/
+/book/book
