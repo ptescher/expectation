@@ -1,0 +1,57 @@
+# A starter suite: a coin-operated turnstile. Check it, then make it yours:
+#
+#   expectation check <this directory>
+#
+# The language: https://expectation.sim001.net/guide/language.html
+
+Suite: Turnstile
+
+Vocabulary:
+  # The states the system can be in and the events that can happen. Every step below uses
+  # these words, so a step outside them is an error.
+  State: the turnstile is locked | unlocked
+  State: the coin box has 0..1000 coins
+  Event: a visitor inserts a coin
+    # How the manual tells a reader to do it:
+    Say: put a coin in the slot
+  Event: a visitor pushes the arm
+    Say: push the arm
+
+Background:
+  # Where every test starts.
+  Given the turnstile is locked
+  And the coin box has 0 coins
+
+Feature: Paying to go through
+  # Text before the first expectation is the feature's page in the manual.
+  The turnstile lets one visitor through for each coin.
+
+  Expectation: A coin unlocks it
+    Given the turnstile is locked
+    When a visitor inserts a coin
+    Then the turnstile is unlocked
+    And the coin box goes up by 1
+
+  Expectation: Pushing through locks it again
+    Given the turnstile is unlocked
+    When a visitor pushes the arm
+    Then the turnstile is locked
+
+  Expectation: Pushing a locked turnstile does nothing
+    Given the turnstile is locked
+    When a visitor pushes the arm
+    Then the turnstile is locked
+
+# A story is a journey through the expectations. It becomes a tutorial and an acceptance test;
+# the expectations it passes through supply the checks.
+Story: A day at the zoo
+  As a visitor
+  I want to pay once and go through
+  So that I can see the animals
+
+  When a visitor pushes the arm
+  Then the turnstile is locked
+  When a visitor inserts a coin
+  Then the turnstile is unlocked
+  When a visitor pushes the arm
+  Then the turnstile is locked

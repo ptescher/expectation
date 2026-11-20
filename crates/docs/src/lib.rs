@@ -31,6 +31,18 @@ mod voice;
 /// What a test's page says when it began where another ended (`Began::Continued`).
 pub(crate) const CONTINUED: &str = "This run started where the test that ran before it had ended: everything it is given was seen to hold there, so nothing was reset or arranged.";
 
+/// What a test's page says when its start was put back from a checkpoint (`Began::Restored`).
+pub(crate) const RESTORED: &str = "This run started from a saved copy of its start, which had been arranged for an earlier test: everything it is given was seen to hold once the copy was put back, so nothing was reset or arranged again.";
+
+/// What a test's page says about how its run began, when the start wasn't arranged for it.
+pub(crate) fn began_note(result: Option<&expectation_story::PlanResult>) -> Option<&'static str> {
+    match result.and_then(|r| r.began)? {
+        expectation_story::Began::Arranged => None,
+        expectation_story::Began::Continued => Some(CONTINUED),
+        expectation_story::Began::Restored => Some(RESTORED),
+    }
+}
+
 use expectation_graph::Analysis;
 use expectation_model::{ExpId, Feature, StepText, Suite, VarKind, Variable};
 use expectation_story::{Because, Plan, Report, Status, Verdict, coverage};

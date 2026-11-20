@@ -1,0 +1,67 @@
+Suite: Cart
+
+Vocabulary:
+  # A list of records is a count, and the record the reader is looking at is a state.
+  State: the cart has 0..20 items
+    Shows: the cart badge reads {value}
+  State: the checkout is closed | open | paid
+    Shows: closed: the Checkout button is at the bottom of the cart
+    Shows: open: the payment form is on screen
+    Shows: paid: the page says "Thanks for your order"
+  Event: the shopper adds an item
+    Say: press Add to cart on a product
+  Event: the shopper opens the checkout
+    Say: press Checkout
+  Event: the shopper pays
+    Say: enter a card and press Pay
+
+Background:
+  Given the cart has 0 items
+  And the checkout is closed
+
+Feature: Buying what is in the cart
+  The cart holds what you mean to buy until you pay for it. The badge on the cart says how
+  many items are in it. Checkout is only for a cart with something in it, and paying empties
+  the cart.
+
+  Expectation: Adding an item puts it in the cart
+    Given the checkout is closed
+    And the cart has below 20 items
+    When the shopper adds an item
+    Then the cart goes up by 1
+
+  Expectation: A cart with items can be checked out
+    Given the checkout is closed
+    And the cart has at least 1 item
+    When the shopper opens the checkout
+    Then the checkout is open
+
+  Expectation: An empty cart has nothing to check out
+    The Checkout button does nothing while the cart is empty.
+    Given the checkout is closed
+    And the cart has 0 items
+    When the shopper opens the checkout
+    Then the checkout is closed
+
+  Expectation: Paying empties the cart
+    Given the checkout is open
+    When the shopper pays
+    Then the checkout is paid
+    And the cart has 0 items
+
+Story: Buy two things
+  As a shopper
+  I want to pay for everything in my cart at once
+  So that it arrives together
+
+  You have found two things you want. Add each to the cart, check the badge, then pay once
+  for both.
+
+  When the shopper adds an item
+  Then the cart has 1 item
+  When the shopper adds an item
+  Then the cart has 2 items
+  When the shopper opens the checkout
+  Then the checkout is open
+  When the shopper pays
+  Then the checkout is paid

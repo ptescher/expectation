@@ -125,12 +125,18 @@ fn behaves_as_expected() {
 `assert_passes` fails the test with every failing check, and writes screenshots under
 `docs_dir`. `acceptance.docs(Some(&report)).write(dir)` writes the manual.
 
+Not a Rust project? [Getting started without Rust](https://expectation.sim001.net/guide/getting-started-node.html)
+runs the same kind of suite through a JavaScript driver. To write a feature's expectations
+before it is built, see [Spec first](https://expectation.sim001.net/guide/spec-first.html);
+to run all of this on every pull request, [In CI](https://expectation.sim001.net/guide/ci.html).
+
 ## Examples
 
 | Example | What it shows |
 | --- | --- |
 | [turnstile](crates/harness/examples/turnstile.rs) | The smallest whole run: an inline suite, closures for the driver, one story and a generated test. |
 | [kettle](crates/harness/examples/kettle) | A suite across several files: two exceptions, four stories, three generated tests, a toy world with time in it, SVG screenshots and the generated manual. |
+| [cart-node](examples/cart-node) | The smallest whole run without Rust: a JavaScript driver for a Node module, `expectation-run`, and a script that starts both. |
 | [quote](crates/harness/examples/quote) | Contract coverage end to end: the driver hands over each step's HTTP requests as HAR, [the HAR and OpenAPI extension](extensions/har-openapi) holds them against the contract, and the manual shows what the tests saw. |
 
 ```bash
@@ -138,6 +144,7 @@ cargo run -p expectation_harness --example turnstile
 cargo run -p expectation_harness --example kettle                      # docs in target/expectation-docs/kettle
 cargo run -p expectation_harness --example kettle -- out --bug         # a seeded defect, to see a failure
 cargo run -p expectation_cli -- check crates/harness/examples/kettle   # check it without running anything
+EXPECTATION_RUN=target/debug/expectation-run node examples/cart-node/run.mjs   # after cargo build -p expectation_remote
 cargo test --workspace                                                 # the examples, as tests too
 git config core.hooksPath .githooks                                    # check fmt and clippy before each commit
 ```
@@ -168,7 +175,7 @@ SwiftUI and React Native.
 | `expectation_service` | [crates/service](crates/service) | The external things a run needs (a server, a database, a container): started once, stopped after, and "not supported yet" with how to get them when they can't be had |
 | `expectation_harness` | [crates/harness](crates/harness) | The `Driver` trait, closure `Bindings`, the runner, and the `Acceptance` pipeline |
 | `expectation_remote` | [crates/remote](crates/remote) | Driving an app through a driver embedded in it (Swift, JavaScript and Rust clients), and `expectation-run` |
-| `expectation_cli` | [crates/cli](crates/cli) | The `expectation` command: `check`, `graph`, `states`, `plan`, `docs`, `screenshots` |
+| `expectation_cli` | [crates/cli](crates/cli) | The `expectation` command: `init`, `check`, `graph`, `states`, `plan`, `docs`, `screenshots` |
 
 ## The language
 
@@ -517,6 +524,7 @@ The docs are only as good as the words in the specs. Some habits that help:
 ## The `expectation` command
 
 ```bash
+cargo run -p expectation_cli -- init  [dir]                # a starter suite to edit (default: expectations/)
 cargo run -p expectation_cli -- check <dir>                # diagnostics; exits 1 on errors
 cargo run -p expectation_cli -- graph <dir> [--dot]        # the flow DAG as Mermaid or DOT
 cargo run -p expectation_cli -- states <dir> [--by <states>] [--dot]  # the app's states and the moves between them
@@ -527,7 +535,9 @@ cargo run -p expectation_cli -- docs  <dir> <out-dir>      # docs from the resul
 [The command's chapter](https://expectation.sim001.net/guide/cli.html) has every option, and
 the `screenshots` commands.
 
-Or install it: `cargo install --git https://github.com/ptescher/expectation expectation_cli`.
+Or install it: `cargo install --git https://github.com/ptescher/expectation expectation_cli`
+([pin a commit](https://expectation.sim001.net/guide/cli.html#pinning-a-version) for a build
+you can repeat). `expectation --help` lists the commands.
 
 ## License
 

@@ -32,7 +32,8 @@ talked to you. For each user-facing feature, cover:
    and any limit that matters, like "one cheap rate per boil".
 5. **What is settled and what is not.** Say what is agreed. If something is undecided, write
    `Unresolved:` and the question, and mark the expectation `Approval: proposed`. Do not
-   invent an answer to make the page read smoothly; ask for the decision.
+   invent an answer to make the page read smoothly; ask for the decision. (`Unresolved:` is
+   ordinary description text that is easy to search for, not a keyword.)
 6. **The promises the tests check.** These are the `Expectation:`s under the description.
 
 Leave filler out, not context. A paragraph per point is normal. A description that a reader
@@ -221,6 +222,9 @@ Where the model has no `Say:` or `Shows:` for something, the page falls back to 
 sentence made from the step. That is the cue to add one.
 
 ## The workflow
+
+This is for a product that exists. For a feature that isn't built yet, start from
+[Spec first](spec-first.md) and come back here for the depth of the pages.
 
 1. **Look at the product first.** Read the code, the UI, existing docs, tickets and the
    people who know it. Note what you can see and what you are assuming.

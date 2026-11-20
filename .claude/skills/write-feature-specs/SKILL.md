@@ -5,13 +5,22 @@ description: Write or improve an Expectation (.expect) suite so it is both an ac
 
 # Writing feature specs that make useful docs
 
-Follow `book/src/feature-docs.md`; the worked example is `examples/smart-kettle/`. Language
-reference: `book/src/language.md`.
+Follow https://expectation.sim001.net/guide/feature-docs.html; the worked example is
+https://github.com/ptescher/expectation/tree/main/examples/smart-kettle. Language reference:
+https://expectation.sim001.net/guide/language.html. (In the Expectation repository itself these
+are `book/src/feature-docs.md`, `examples/smart-kettle/` and `book/src/language.md`.)
 
 ## Before writing
 
-Inspect the product: code, UI, existing docs, tickets. Note what you can see and what you are
-assuming. Do not invent behaviour. If something is undecided, ask the user, or record it.
+**If the product exists**, inspect it: code, UI, existing docs, tickets. Note what you can see
+and what you are assuming. Do not invent behaviour. If something is undecided, ask the user, or
+record it.
+
+**If the feature is not built yet**, the suite is its specification, and the source is what the
+user asked for, not the code. Write what was asked, mark each expectation `Status: pending` and
+the feature `Approval: proposed`, and ask about anything the request leaves open. Then follow
+https://expectation.sim001.net/guide/spec-first.html: agree it, build it, remove the pending
+marks, gate on a strict run.
 
 Inventory the product's main user goals *from the product*, not from the suite, and keep a
 coverage map: goal → feature page → tutorial → expectations → evidence → gap. List goals with
@@ -23,13 +32,16 @@ no page or only partial coverage.
 2. The normal workflow, the inputs and outputs.
 3. How to read the result (what a dot, number or banner means, and what to do).
 4. Empty, unavailable, invalid or partial states, and limits that matter.
-5. What is settled and what is not. Write `Unresolved: <question>`, mark the expectation
-   `Approval: proposed`, and ask for the decision. Never fill the gap yourself.
+5. What is settled and what is not. Write `Unresolved: <question>` in the description (plain
+   text, not a keyword), mark the expectation `Approval: proposed`, and ask for the decision.
+   Never fill the gap yourself.
 6. The promises that the `Expectation:`s verify.
 
 Enough detail that a reader needs no prior conversation; cut filler, not context. Use `Say:`,
 `Set:`, `Shows:` on the vocabulary, and `Term:` for jargon. Model an outside service's health
-as a state so the unavailable case can be specified and tested.
+as a state so the unavailable case can be specified and tested. States are named values or
+numbers only: a list is a count, the record in view is a state, typed-in text is the case it
+falls in (https://expectation.sim001.net/guide/modelling.html).
 
 ## For each story (it becomes a tutorial)
 

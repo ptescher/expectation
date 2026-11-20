@@ -204,6 +204,10 @@ pub enum Began {
     /// The test before it on the same driver had passed and left the system where this one
     /// starts: everything it is given was observed to hold, so nothing was reset or arranged.
     Continued,
+    /// The system was put back as it was when an earlier test's start, the same as this one's,
+    /// had been arranged on the same driver (a checkpoint), and everything this test is given
+    /// was then observed to hold: nothing was reset or arranged again.
+    Restored,
 }
 
 impl Began {
@@ -211,11 +215,12 @@ impl Began {
         match self {
             Began::Arranged => "arranged",
             Began::Continued => "continued",
+            Began::Restored => "restored",
         }
     }
 
     pub fn parse(s: &str) -> Option<Began> {
-        [Began::Arranged, Began::Continued]
+        [Began::Arranged, Began::Continued, Began::Restored]
             .into_iter()
             .find(|b| b.name() == s)
     }

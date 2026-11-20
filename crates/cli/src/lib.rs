@@ -12,8 +12,11 @@ use std::process::exit;
 
 const USAGE: &str = "\
 usage: expectation <command> <suite-dir> [options]
+       expectation --help | --version
 
 commands:
+  init  [dir]               write a starter suite to <dir> (default: expectations) that checks
+                            clean, to edit into your own; refuses a directory that has a suite
   check <dir>               check the vocabulary, conflicts, overrides and stories
   graph <dir> [--dot]       print the flow DAG as Mermaid, or Graphviz DOT
   states <dir> [--by <states>] [--dot]
@@ -112,6 +115,18 @@ fn load_platform_with(dir: &str, platform: Option<&str>, approved_only: bool) ->
 /// package.
 pub fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
+    match args.first().map(String::as_str) {
+        // Asked for, so it is the answer, not an error: stdout and 0.
+        Some("--help" | "-h" | "help") => {
+            print!("{USAGE}");
+            return;
+        }
+        Some("--version" | "-V") => {
+            println!("expectation {}", env!("CARGO_PKG_VERSION"));
+            return;
+        }
+        _ => {}
+    }
     // `--by <states>` takes a value; the other options are flags.
     let mut take = |name: &str| {
         args.iter().position(|a| a == name).map(|i| {
@@ -150,6 +165,8 @@ pub fn main() {
         .map(|s| s.as_str())
         .collect();
     match pos.as_slice() {
+        ["init"] => init("expectations"),
+        ["init", dir] => init(dir),
         ["check", dir] => {
             // Every platform the suite declares reads as a suite of its own, and must check clean.
             let platforms = load(dir).suite.platforms;
@@ -229,6 +246,47 @@ pub fn main() {
             exit(2);
         }
     }
+}
+
+/// The suite `init` writes: small enough to read in a minute, and it checks with no warnings, so
+/// the first thing a new suite shows is what a clean one looks like.
+pub const STARTER: &str = include_str!("starter.expect");
+
+/// Writes the starter suite to `dir`, unless a suite is already there.
+fn init(dir: &str) {
+    let fail = |e: String| -> ! {
+        eprintln!("error: {e}");
+        exit(2)
+    };
+    let root = Path::new(dir);
+    if has_suite(root) {
+        fail(format!(
+            "{dir} already has `.expect` files; `init` only starts a new suite"
+        ));
+    }
+    let file = root.join("turnstile.expect");
+    std::fs::create_dir_all(root)
+        .and_then(|_| std::fs::write(&file, STARTER))
+        .unwrap_or_else(|e| fail(format!("couldn't write {}: {e}", file.display())));
+    println!("wrote {}", file.display());
+    println!("next: expectation check {dir}");
+    println!("      expectation plan {dir} --coverage");
+    println!("      expectation docs {dir} docs");
+}
+
+/// Whether any `.expect` file is under `dir`.
+fn has_suite(dir: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    entries.flatten().any(|e| {
+        let p = e.path();
+        if p.is_dir() {
+            has_suite(&p)
+        } else {
+            p.extension().is_some_and(|x| x == "expect")
+        }
+    })
 }
 
 /// The manual, once for each platform the suite declares (the first at `out`, the others

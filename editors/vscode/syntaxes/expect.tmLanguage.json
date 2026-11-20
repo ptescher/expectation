@@ -1,0 +1,100 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Expectation",
+  "scopeName": "source.expect",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#block" },
+    { "include": "#declaration" },
+    { "include": "#fixed" },
+    { "include": "#attribute" },
+    { "include": "#step" },
+    { "include": "#narrative" },
+    { "include": "#inline" }
+  ],
+  "repository": {
+    "comment": {
+      "comment": "Whole lines only: a # after a value is part of the value.",
+      "name": "comment.line.number-sign.expect",
+      "match": "^\\s*#.*$"
+    },
+    "block": {
+      "match": "^\\s*(Suite|Section|Vocabulary|Background|Feature|Expectation|Story|Scenario|Term)(:)\\s*(.*)$",
+      "captures": {
+        "1": { "name": "keyword.control.block.expect" },
+        "2": { "name": "punctuation.separator.expect" },
+        "3": { "name": "entity.name.section.expect", "patterns": [{ "include": "#inline" }] }
+      }
+    },
+    "declaration": {
+      "match": "^\\s*(State|Event|Phrase|Platform)(\\[[^\\]]*\\])?(:)\\s*(.*)$",
+      "captures": {
+        "1": { "name": "storage.type.expect" },
+        "2": { "name": "entity.other.attribute-name.platform.expect" },
+        "3": { "name": "punctuation.separator.expect" },
+        "4": { "patterns": [{ "include": "#values" }, { "include": "#inline" }] }
+      }
+    },
+    "fixed": {
+      "comment": "Lines whose value is one of a few words.",
+      "match": "^\\s*(Approval|Status|Docs|Scopes)(:)\\s*(approved|proposed|pending|hidden|sections)?(.*)$",
+      "captures": {
+        "1": { "name": "keyword.other.expect" },
+        "2": { "name": "punctuation.separator.expect" },
+        "3": { "name": "constant.language.expect" },
+        "4": { "name": "invalid.illegal.expect" }
+      }
+    },
+    "attribute": {
+      "match": "^\\s*(Say|Set|Shows|Launch|About|Overrides|Hands over to|Follows|On|Reference)(\\[[^\\]]*\\])?(:)\\s*(.*)$",
+      "captures": {
+        "1": { "name": "keyword.other.expect" },
+        "2": { "name": "entity.other.attribute-name.platform.expect" },
+        "3": { "name": "punctuation.separator.expect" },
+        "4": { "name": "string.unquoted.expect", "patterns": [{ "include": "#inline" }] }
+      }
+    },
+    "step": {
+      "match": "^\\s*(Given|When|Then|And|But)\\b\\s*(.*)$",
+      "captures": {
+        "1": { "name": "keyword.control.step.expect" },
+        "2": { "patterns": [{ "include": "#predicate" }, { "include": "#inline" }] }
+      }
+    },
+    "narrative": {
+      "match": "^\\s*(As an?|I want|So that)\\b(.*)$",
+      "captures": {
+        "1": { "name": "keyword.other.narrative.expect" },
+        "2": { "name": "string.unquoted.expect" }
+      }
+    },
+    "values": {
+      "patterns": [
+        { "name": "keyword.operator.expect", "match": "\\||\\.\\." },
+        { "name": "keyword.operator.word.expect", "match": "\\b(is|are|has|have)\\b" },
+        { "include": "#number" }
+      ]
+    },
+    "predicate": {
+      "patterns": [
+        {
+          "name": "keyword.operator.word.expect",
+          "match": "\\b(is not|is|are not|are|has|have|not|or|above|below|at least|at most|between|goes up by|goes down by|stays the same)\\b"
+        },
+        { "include": "#number" }
+      ]
+    },
+    "number": {
+      "name": "constant.numeric.expect",
+      "match": "(?<![\\w.])-?\\d+(\\.\\d+)?(?![\\w.])"
+    },
+    "inline": {
+      "patterns": [
+        { "name": "markup.underline.link.expect", "match": "\\[\\[[^\\]]+\\]\\]" },
+        { "name": "variable.parameter.expect", "match": "\\{value\\}" },
+        { "name": "markup.inline.raw.expect", "match": "`[^`]*`" },
+        { "name": "markup.underline.link.url.expect", "match": "https?://[^\\s|]+" }
+      ]
+    }
+  }
+}

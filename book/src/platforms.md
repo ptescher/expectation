@@ -11,17 +11,21 @@ Vocabulary:
 
   Event: the user unlocks the door
     Say: press UNLOCK
-    Say[iOS]: tap UNLOCK          # how the docs tell an iOS reader to do it
+    # How the docs tell an iOS reader to do it:
+    Say[iOS]: tap UNLOCK
   State: the door is locked | unlocked
-    Shows[iOS]: unlocked: the UNLOCKED badge turns green   # replaces the plain Shows lines
+    # Replaces the plain Shows lines:
+    Shows[iOS]: unlocked: the UNLOCKED badge turns green
 
   Phrase: the app is open on a new account
     Given the tool is pan
   Phrase[iOS]: the app is open on a new account
-    Given the user is signed in   # a start that iOS can reach
+    # A start that iOS can reach:
+    Given the user is signed in
 
 Section: Drawing
-  On: desktop                     # also under a Feature, Expectation or Story
+  # Also under a Feature, Expectation or Story:
+  On: desktop
 ```
 
 ## The rules

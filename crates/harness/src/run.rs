@@ -1,8 +1,8 @@
 //! Running plans against a driver.
 
-use crate::driver::{Driver, Need, Progress};
+use crate::driver::{Checkpoint, Driver, Need, Progress};
 use crate::service::Services;
-use expectation_model::{Suite, Trigger};
+use expectation_model::{Condition, Suite, Trigger};
 use expectation_story::{
     Attachment, Began, Check, CheckResult, Control, Plan, PlanResult, Report, Run, Status,
     StepResult, Window, now_ms,
@@ -49,6 +49,10 @@ pub struct RunOptions {
     /// each result says how it began ([`PlanResult::began`]). On by default; a driver can
     /// refuse it for itself ([`Driver::may_continue`]), and one that wants services afresh
     /// for each test ([`Driver::fresh`]) never continues.
+    ///
+    /// A start that several tests share is also arranged once, for a driver that can save it
+    /// ([`Driver::checkpoint`]): the others have it put back, and what they are given is
+    /// observed afterwards as it is after arranging.
     pub share_starts: bool,
 }
 
@@ -75,6 +79,12 @@ struct Session {
     launched: Option<String>,
     /// The last test it ran, if that test passed: the system is where that test ends.
     last: Option<usize>,
+    /// The starts this driver has saved ([`Driver::checkpoint`]), each as it was arranged for
+    /// the program as it is running now, kept while a test that is left starts there.
+    checkpoints: Vec<(Condition, Checkpoint)>,
+    /// Another test that is left has the same start as the one taken, so the start is worth
+    /// saving.
+    shared: bool,
 }
 
 impl Session {
@@ -97,15 +107,23 @@ impl Session {
 }
 
 /// The test to run next, taken out of `left`: one that starts where the last one ended, so it
-/// may need no reset, or else the first that is left.
+/// may need no reset (when the driver may `follow` on), or one whose start is saved, or else the
+/// first that is left.
 fn take(
     suite: &Suite,
     plans: &[Plan],
     left: &mut Vec<usize>,
-    session: &Session,
+    session: &mut Session,
     share: bool,
+    follow: bool,
 ) -> Option<usize> {
-    let follows = session.last.filter(|_| share).and_then(|last| {
+    let starts_at = |start: &Condition| {
+        left.iter()
+            .position(|&i| !plans[i].pending && plans[i].start == *start)
+    };
+    // A saved start that no test is waiting for is let go.
+    session.checkpoints.retain(|(s, _)| starts_at(s).is_some());
+    let follows = session.last.filter(|_| share && follow).and_then(|last| {
         let last = &plans[last];
         let end = last.steps.last().map_or(&last.start, |s| &s.state);
         left.iter().position(|&i| {
@@ -116,7 +134,26 @@ fn take(
                 && end.implies(&p.start)
         })
     });
-    (!left.is_empty()).then(|| left.remove(follows.unwrap_or(0)))
+    // Or one whose start this driver has saved, so the tests that share a start stay with the
+    // worker that arranged it.
+    let saved = || {
+        left.iter().position(|&i| {
+            let p = &plans[i];
+            !p.pending
+                && session.launched_for(suite, p)
+                && session.checkpoints.iter().any(|(s, _)| *s == p.start)
+        })
+    };
+    let at = follows.or_else(saved).unwrap_or(0);
+    if left.is_empty() {
+        return None;
+    }
+    let taken = left.remove(at);
+    session.shared = share
+        && left
+            .iter()
+            .any(|&i| !plans[i].pending && plans[i].start == plans[taken].start);
+    Some(taken)
 }
 
 /// Run every plan, each chosen by [`take`], and give the results in the plans' order.
@@ -131,8 +168,15 @@ fn run_each(
     let mut left: Vec<usize> = (0..plans.len()).collect();
     let mut results: Vec<Option<PlanResult>> = plans.iter().map(|_| None).collect();
     while let Some(i) = {
-        let share = opts.share_starts && driver.may_continue();
-        take(suite, plans, &mut left, &session, share)
+        let follow = driver.may_continue();
+        take(
+            suite,
+            plans,
+            &mut left,
+            &mut session,
+            opts.share_starts,
+            follow,
+        )
     } {
         let result = one(&plans[i], driver, &mut session);
         session.after(i, &result);
@@ -215,9 +259,15 @@ where
                 let mut worker: Option<Worker> = None;
                 let mut session = Session::default();
                 loop {
-                    let share = opts.share_starts
-                        && worker.as_ref().is_some_and(|w| w.driver.may_continue());
-                    let taken = take(suite, plans, &mut left.lock().unwrap(), &session, share);
+                    let follow = worker.as_ref().is_some_and(|w| w.driver.may_continue());
+                    let taken = take(
+                        suite,
+                        plans,
+                        &mut left.lock().unwrap(),
+                        &mut session,
+                        opts.share_starts,
+                        follow,
+                    );
                     let Some(i) = taken else { break };
                     let plan = &plans[i];
                     // Built when there is a plan to run, so a worker with nothing to do starts nothing.
@@ -447,8 +497,9 @@ fn run_steps(
     if let Some(how) = suite.launch_of(plan.section)
         && !session.launched_for(suite, plan)
     {
-        // Started again, it isn't where the last test left it.
+        // Started again, it isn't where the last test left it, or where a start was saved.
         session.last = None;
+        session.checkpoints.clear();
         if let Err(e) = driver.launch(how) {
             return skip_all(failed(format!("couldn't launch: {e}")), vec![]);
         }
@@ -481,30 +532,80 @@ fn run_steps(
         && driver.may_continue()
         && driver.fresh().is_empty()
         && observe(suite, driver, &plan.start_checks, 0).status == Status::Passed;
-    if !continued {
-        if let Err(e) = driver.reset() {
-            let start = setup_failed(format!("couldn't reset: {e}"), driver, &mut keep);
-            return skip_all(start, attachments);
-        }
+    let arrange = |driver: &mut dyn Driver| -> Result<(), String> {
+        driver.reset().map_err(|e| format!("couldn't reset: {e}"))?;
         for (x, c) in plan.start.iter() {
             let var = suite.vocabulary.var(x);
             let value = var
                 .witness(c)
                 .expect("plans only arrange satisfiable states");
-            if let Err(e) = driver.arrange(var, &value) {
-                let error = format!("couldn't arrange {}: {e}", var.describe(c));
+            driver
+                .arrange(var, &value)
+                .map_err(|e| format!("couldn't arrange {}: {e}", var.describe(c)))?;
+        }
+        Ok(())
+    };
+    // A start is saved and put back as the driver alone has it: not with services that are
+    // started afresh for each test.
+    let saves = opts.share_starts && driver.fresh().is_empty();
+    let saved = |session: &Session| {
+        session
+            .checkpoints
+            .iter()
+            .position(|(s, _)| *s == plan.start)
+    };
+    let mut how = if continued {
+        Began::Continued
+    } else if let Some(at) = saved(session).filter(|_| saves)
+        && driver.restore(&session.checkpoints[at].1).is_ok()
+    {
+        Began::Restored
+    } else {
+        Began::Arranged
+    };
+    let (seen, mut start) = loop {
+        if how == Began::Arranged {
+            // Also after a start that couldn't be put back, or didn't hold when it was: that
+            // checkpoint is no good, and the start isn't saved again.
+            let fresh = saved(session)
+                .map(|at| session.checkpoints.remove(at))
+                .is_none();
+            if let Err(error) = arrange(driver) {
                 let start = setup_failed(error, driver, &mut keep);
                 return skip_all(start, attachments);
             }
+            // Saved before it settles, so a restored start settles as an arranged one does.
+            if saves
+                && fresh
+                && session.shared
+                && let Ok(Some(checkpoint)) = driver.checkpoint()
+            {
+                session.checkpoints.push((plan.start.clone(), checkpoint));
+            }
         }
-    }
-    driver.settle();
-    // Setting the test up is not using the controls.
-    let mut seen = Seen::new(opts.controls);
-    seen.take(driver);
-    seen.used.clear();
-    seen.look(driver);
-    let mut start = observe(suite, driver, &plan.start_checks, opts.patience);
+        driver.settle();
+        // Setting the test up is not using the controls.
+        let mut seen = Seen::new(opts.controls);
+        seen.take(driver);
+        seen.used.clear();
+        seen.look(driver);
+        let start = observe(suite, driver, &plan.start_checks, opts.patience);
+        if start.status == Status::Passed {
+            break (seen, start);
+        }
+        match how {
+            // What was put back is not where this test starts: arrange it after all.
+            Began::Restored => how = Began::Arranged,
+            _ => {
+                // A start that didn't hold is not one to put back for another test.
+                if let Some(at) = saved(session) {
+                    session.checkpoints.remove(at);
+                }
+                break (seen, start);
+            }
+        }
+    };
+    let mut seen = seen;
     start.screenshot = shoot(driver, 0);
     start.window = Some(Window {
         start_ms: began,
@@ -546,11 +647,7 @@ fn run_steps(
         controls: seen.controls,
         used: seen.used,
         run: None,
-        began: Some(if continued {
-            Began::Continued
-        } else {
-            Began::Arranged
-        }),
+        began: Some(how),
         attachments,
         stale: false,
     }

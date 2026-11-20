@@ -2,6 +2,7 @@
 
 For how deep a feature description should go, with an example that has an outside service,
 an unavailable state and an open decision, see [Feature docs that explain](feature-docs.md).
+For lists, records and typed-in text, see [Modelling an app with data](modelling.md).
 
 The generated manual is only as good as the words in the specs. A suite that tests well but
 reads badly is half done: the same lines are the user's documentation. This is a loop that

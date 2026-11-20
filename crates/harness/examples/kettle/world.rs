@@ -283,4 +283,7 @@ pub fn driver(lock_leaks: bool) -> Bindings<World> {
             Progress::Advanced
         })
         .on_screenshot(|w| Screenshot::svg(w.svg()))
+        // The world is plain data, so a start that several tests share is arranged once, saved
+        // as a copy, and put back for the others.
+        .checkpoints()
 }

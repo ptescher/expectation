@@ -130,6 +130,10 @@ fn main() {
                 println!("{USAGE}");
                 return;
             }
+            "-V" | "--version" => {
+                println!("expectation-run {}", env!("CARGO_PKG_VERSION"));
+                return;
+            }
             _ if a.starts_with("--") => fail(&format!("unknown option {a}")),
             _ => suite = Some(a),
         }
@@ -218,6 +222,7 @@ fn main() {
         };
         let how = match r.began {
             Some(expectation_harness::Began::Continued) => " (continued)",
+            Some(expectation_harness::Began::Restored) => " (restored)",
             _ => "",
         };
         println!("{mark} {}{how}", plan.title);

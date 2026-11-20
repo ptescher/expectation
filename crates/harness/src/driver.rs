@@ -52,6 +52,24 @@ pub struct Capture {
     pub bytes: Vec<u8>,
 }
 
+/// The system as it was at one moment, saved by [`Driver::checkpoint`] so that
+/// [`Driver::restore`] can put it back. What it holds is the driver's own business: a copy of a
+/// simulation's state, the name of a snapshot. The runner only keeps it and hands it back, and
+/// drops it when no test that is left starts there, so a driver that must free something then
+/// (delete a snapshot) does so when what it put in is dropped.
+pub struct Checkpoint(Box<dyn std::any::Any>);
+
+impl Checkpoint {
+    pub fn new<T: 'static>(saved: T) -> Self {
+        Checkpoint(Box::new(saved))
+    }
+
+    /// What the driver put in, if it was a `T`.
+    pub fn get<T: 'static>(&self) -> Option<&T> {
+        self.0.downcast_ref()
+    }
+}
+
 /// Something a plan needs the driver to do.
 #[derive(Clone, Copy, Debug)]
 pub enum Need<'a> {
@@ -111,6 +129,25 @@ pub trait Driver {
     /// suite describes (a log, a clock, a cache) could change what the next one sees.
     fn may_continue(&self) -> bool {
         true
+    }
+
+    /// Save the system as it is now, if this driver can; `None` (the default) when it can't.
+    /// The runner asks right after it has reset and arranged a start that another test shares,
+    /// and puts it back with [`Driver::restore`] before that test instead of resetting and
+    /// arranging again. Save everything a test could notice, also what no state of the suite
+    /// describes (a log, a clock): a restored start should be the arranged one, not just look
+    /// like it. An error is taken as `None`.
+    fn checkpoint(&mut self) -> Result<Option<Checkpoint>, String> {
+        Ok(None)
+    }
+
+    /// Put the system back as it was at `saved`, one of this driver's own checkpoints. The
+    /// runner then settles and observes what the test is given, as it does after arranging;
+    /// when this fails, or what the test is given doesn't hold afterwards, it drops the
+    /// checkpoint, and resets and arranges the start instead.
+    fn restore(&mut self, saved: &Checkpoint) -> Result<(), String> {
+        let _ = saved;
+        Err("this driver has no checkpoints".into())
     }
 
     /// Make `var` hold `value` before the first step ("Given …").

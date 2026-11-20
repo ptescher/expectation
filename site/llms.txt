@@ -9,13 +9,16 @@ For AI agents: install the skill at https://expectation.sim001.net/skills/expect
 - [For AI agents](https://expectation.sim001.net/guide/agents.html): commands, workflow and where everything is
 - [Skill: expectation](https://expectation.sim001.net/skills/expectation/SKILL.md): the overview skill
 - [Skill: write-feature-specs](https://expectation.sim001.net/skills/write-feature-specs/SKILL.md): writing feature specs that make useful docs
-- [Getting started](https://expectation.sim001.net/guide/getting-started.html): a complete suite and test in a few minutes
+- [Getting started](https://expectation.sim001.net/guide/getting-started.html): a complete suite and test in a few minutes, from a Rust test
+- [Getting started without Rust](https://expectation.sim001.net/guide/getting-started-node.html): the same with a JavaScript driver and `expectation-run`, and how to drive a web app through Playwright
+- [Spec first](https://expectation.sim001.net/guide/spec-first.html): write a feature's expectations before it is built, get them approved, build until they pass, gate on the run
 - [The language](https://expectation.sim001.net/guide/language.html): every line of the `.expect` format
 
 ## Writing suites
 
 - [Feature docs that explain](https://expectation.sim001.net/guide/feature-docs.html): the depth a feature page needs, a worked example, and how to audit coverage, evidence and readability
 - [Writing specs that read well](https://expectation.sim001.net/guide/writing-specs.html)
+- [Modelling an app with data](https://expectation.sim001.net/guide/modelling.html): lists as counts, the record in view as a state, typed-in text as the case it falls in, roles
 - [Platforms](https://expectation.sim001.net/guide/platforms.html)
 - [From stories to acceptance tests](https://expectation.sim001.net/guide/stories.html)
 
@@ -25,6 +28,7 @@ For AI agents: install the skill at https://expectation.sim001.net/skills/expect
 - [Remote drivers](https://expectation.sim001.net/guide/remote.html): Swift, JavaScript and Rust clients, embedded in the app or in a UI-automation test process, driven by `expectation-run`
 - [The generated manual](https://expectation.sim001.net/guide/manual.html): includes custom themes and approved-only manuals
 - [Evidence and contract coverage](https://expectation.sim001.net/guide/evidence.html): run ids, step windows and attachments for extensions; the coverage file format and the rules it is held to
+- [In CI](https://expectation.sim001.net/guide/ci.html): check on every pull request, a strict run as a gate, a GitHub Actions workflow
 - [The expectation command](https://expectation.sim001.net/guide/cli.html)
 - [Diagnostics](https://expectation.sim001.net/guide/diagnostics.html)
 

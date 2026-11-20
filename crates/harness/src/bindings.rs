@@ -9,7 +9,7 @@
 //!     .on_advance(|w| { w.tick(0.1); Progress::Advanced });
 //! ```
 
-use crate::driver::{Capture, Driver, Need, Progress, Screenshot};
+use crate::driver::{Capture, Checkpoint, Driver, Need, Progress, Screenshot};
 use expectation_model::text;
 use expectation_model::{Event, Value, Variable};
 use expectation_story::Control;
@@ -23,6 +23,8 @@ type Lister<W> = Box<dyn FnMut(&W) -> Vec<Control>>;
 type Taker<W> = Box<dyn FnMut(&mut W) -> Vec<String>>;
 type Shooter<W> = Box<dyn FnMut(&W) -> Screenshot>;
 type Capturer<W> = Box<dyn FnMut(&mut W) -> Vec<Capture>>;
+type Saver<W> = Box<dyn Fn(&W) -> Checkpoint>;
+type Restorer<W> = Box<dyn Fn(&mut W, &Checkpoint) -> Result<(), String>>;
 
 pub struct Bindings<W> {
     pub world: W,
@@ -40,6 +42,7 @@ pub struct Bindings<W> {
     needs: Vec<String>,
     fresh: Vec<String>,
     always_reset: bool,
+    checkpoints: Option<(Saver<W>, Restorer<W>)>,
 }
 
 impl<W> Bindings<W> {
@@ -60,6 +63,7 @@ impl<W> Bindings<W> {
             needs: vec![],
             fresh: vec![],
             always_reset: false,
+            checkpoints: None,
         }
     }
 
@@ -156,6 +160,25 @@ fn unbound(what: &str, name: &str) -> String {
     format!("nothing is bound to {what} `{name}`")
 }
 
+impl<W: Clone + 'static> Bindings<W> {
+    /// Save the world as a copy of it, and restore a start by putting the copy back (see
+    /// [`Driver::checkpoint`]): for a world that is plain data, where a copy is all of it. A
+    /// start that several tests share is then arranged once.
+    pub fn checkpoints(mut self) -> Self {
+        self.checkpoints = Some((
+            Box::new(|w| Checkpoint::new(w.clone())),
+            Box::new(|w, saved| {
+                *w = saved
+                    .get::<W>()
+                    .ok_or("the checkpoint is not one of this world's")?
+                    .clone();
+                Ok(())
+            }),
+        ));
+        self
+    }
+}
+
 impl<W> Driver for Bindings<W> {
     fn needs(&self) -> Vec<String> {
         self.needs.clone()
@@ -167,6 +190,17 @@ impl<W> Driver for Bindings<W> {
 
     fn may_continue(&self) -> bool {
         !self.always_reset
+    }
+
+    fn checkpoint(&mut self) -> Result<Option<Checkpoint>, String> {
+        Ok(self.checkpoints.as_ref().map(|(save, _)| save(&self.world)))
+    }
+
+    fn restore(&mut self, saved: &Checkpoint) -> Result<(), String> {
+        match &self.checkpoints {
+            Some((_, restore)) => restore(&mut self.world, saved),
+            None => Err("this driver has no checkpoints".into()),
+        }
     }
 
     fn reset(&mut self) -> Result<(), String> {

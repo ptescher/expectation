@@ -1,0 +1,33 @@
+# On a tag `v<version>`: builds the two commands for Linux and macOS and attaches them to a
+# GitHub release, so a project can use Expectation without a Rust toolchain.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  binaries:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+      ARCHIVE: expectation-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release -p expectation_cli -p expectation_remote
+      - run: tar -czf "$ARCHIVE" -C target/release expectation expectation-run
+      # Both jobs get here; whichever is second finds the release already made.
+      - run: gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --verify-tag --generate-notes || gh release view "$TAG" >/dev/null
+      - run: gh release upload "$TAG" "$ARCHIVE" --clobber

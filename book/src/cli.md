@@ -10,6 +10,43 @@ cargo install --git https://github.com/ptescher/expectation expectation_cli
 
 Or, from a checkout: `cargo run -p expectation_cli -- <command>`.
 
+`expectation --help` prints the commands and `expectation --version` the version.
+
+## Pinning a version
+
+A suite, the command, the runner and the client in your app should all come from one commit of
+Expectation. `cargo install --git` without a revision takes whatever `main` is that day, so
+pin it. This prints the commit `main` is at now:
+
+```bash
+git ls-remote https://github.com/ptescher/expectation HEAD
+```
+
+Install that commit, and write it down where the project keeps its setup (a script, the
+README, the CI workflow):
+
+```bash
+cargo install --git https://github.com/ptescher/expectation --rev <commit> expectation_cli
+cargo install --git https://github.com/ptescher/expectation --rev <commit> expectation_remote
+```
+
+A Rust project pins the crates the same way (`rev = "<commit>"` beside `git = …`), and its
+`Cargo.lock` keeps them there. Tagged releases are listed in the
+[changelog](https://github.com/ptescher/expectation/blob/main/CHANGELOG.md); once there is
+one, `--tag v<version>` does the same job as `--rev`.
+
+## init
+
+```bash
+expectation init              # writes expectations/turnstile.expect
+expectation init <dir>
+```
+
+Writes a starter suite: a coin-operated turnstile with three expectations and a story,
+commented line by line, that checks with no errors or warnings. Edit it into your own. It
+never writes over a suite: a directory that already has `.expect` files, at any depth, is an
+error (exit 2).
+
 ## check
 
 ```bash
@@ -155,6 +192,6 @@ fn main() {
 
 | Code | Means |
 | --- | --- |
-| 0 | Done, with no errors (there may be warnings). |
+| 0 | Done, with no errors (there may be warnings). Also `--help` and `--version`. |
 | 1 | The suite has errors. |
-| 2 | A usage error, or a directory that can't be read. |
+| 2 | A usage error (the usage is printed to stderr), or a directory that can't be read. |

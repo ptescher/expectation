@@ -461,21 +461,18 @@ fn shows(
                     return (Some(v.clone()), text.trim().to_string());
                 }
             }
-            // "80 %", "at least 99 %": a value or comparison as steps write it.
-            expectation_model::VarKind::Number { .. } => {
-                let comparison = [
-                    "above",
-                    "below",
-                    "at least",
-                    "at most",
-                    "between",
-                    "more than",
-                    "fewer than",
-                ];
-                if value.starts_with(|c: char| c.is_ascii_digit())
-                    || comparison.iter().any(|w| value.starts_with(w))
-                {
-                    return (Some(value.to_string()), text.trim().to_string());
+            // "80 %", "at least 99 %", "over 50 %": a value or comparison as steps write it,
+            // kept in the form the docs say it ("above 50 %") so they find it.
+            expectation_model::VarKind::Number { min, max, unit } => {
+                let pred = text::normalize(value);
+                if let Ok(c) = step::number_constraint(&pred, false, *min, *max, unit) {
+                    let said = var.predicate(&c);
+                    let said = ["is ", "are ", "has ", "have "]
+                        .iter()
+                        .find_map(|v| said.strip_prefix(v))
+                        .unwrap_or(&said)
+                        .to_string();
+                    return (Some(said), text.trim().to_string());
                 }
             }
         }

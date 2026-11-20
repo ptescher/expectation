@@ -193,6 +193,56 @@ RunOptions { share_starts: false, ..Default::default() }   // one run
 A driver that asks for services afresh before each test (`fresh`) never continues: those
 services must not keep what the last test left.
 
+### Saving a start that several tests share
+
+Continuing only helps when one test ends where another starts. Often many tests have the same
+arranged start instead, such as "a plane flying a short mission", and each one builds it
+again. A driver that can save the system and put it back lets the runner arrange such a start
+once:
+
+```rust,ignore
+/// Save the system as it is now, if this driver can. None: it can't (the default).
+fn checkpoint(&mut self) -> Result<Option<Checkpoint>, String> {
+    Ok(Some(Checkpoint::new(self.sim.clone())))
+}
+
+/// Put the system back as it was at `saved`.
+fn restore(&mut self, saved: &Checkpoint) -> Result<(), String> {
+    self.sim = saved.get::<Sim>().ok_or("not one of my checkpoints")?.clone();
+    Ok(())
+}
+```
+
+A `Checkpoint` holds whatever the driver puts in it: a copy of the state, or the name of a
+snapshot it took. With `Bindings`, a world that is `Clone` gets both methods from
+`.checkpoints()`, as the kettle example does.
+
+The runner asks for a checkpoint right after it has reset and arranged a start, and only when
+another test that is still to run has the same start. Before that test it calls `restore`
+instead of `reset` and `arrange`. Then it settles and observes what the test is given, exactly
+as it does after arranging. If `restore` fails, or what the test is given doesn't hold
+afterwards, the runner drops the checkpoint, and resets and arranges the start after all. It
+drops a checkpoint as well once no test is left that starts there, so a driver that has
+something to free (a snapshot to delete) can do that when what it put in is dropped. A
+`Launch:` that starts the program again drops them all.
+
+A test whose start was put back says `restored` where one that continued says `continued`:
+in `PlanResult::began`, in the saved results, and on its page of the manual.
+
+Implement checkpoints when a start is slow to build and the system's state is something you
+can copy or snapshot whole: a simulation core, a VM, a database with snapshots. Save
+everything a test could notice, including what no state of the suite describes (a log, a
+clock, a cache). Then a restored start is the arranged start, not just one that looks like
+it, and you don't need to opt out as you might for continuing. Leave them out when part of
+the state can't be captured, such as a device, a remote service, or a process you can't copy.
+The observation after a restore only sees what the suite describes, so it can't catch the
+rest.
+
+The two work together. A test that can continue where the last one ended does so, because
+that costs nothing. Otherwise the runner prefers a test whose start is saved, and arranges a
+start only when it has to. `share_starts: false` turns both off for a run, and a driver with
+`fresh` services saves nothing.
+
 ### A run as a gate
 
 A run passes when nothing failed. Tests the driver can't run yet, pending ones and ones that
